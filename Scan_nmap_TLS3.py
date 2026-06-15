@@ -506,6 +506,12 @@ def main():
 
     apply_endpoint_grades(results, findings)
 
+    if not results:
+        print(
+            "\nNo TLS service found on the selected ports. "
+            "Use -p fast, -p all, or specify ports with -p."
+        )
+
     table = PrettyTable(
         [
             "IP",

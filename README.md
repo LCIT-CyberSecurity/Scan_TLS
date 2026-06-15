@@ -140,6 +140,12 @@ Quickly discover common TCP ports before testing TLS:
 python3 Scan_nmap_TLS3.py -p fast 192.168.1.0/24
 ```
 
+Scan standard SMTP and submission ports:
+
+```bash
+python3 Scan_nmap_TLS3.py -p 25,465,587 smtp.example.com
+```
+
 Discover all open TCP ports before testing TLS:
 
 ```bash
