@@ -313,7 +313,7 @@ SHA-1: 11:22:33
             "2099-01-01",
             "",
             "RSA",
-            2048,
+            1024,
         )
 
         self.assertEqual(result, ("KO", "RSA key size"))
@@ -342,7 +342,7 @@ SHA-1: 11:22:33
 
         self.assertEqual(result, ("KO", "SHA-1"))
 
-    def test_rejects_rsa_key_smaller_than_3072_bits(self):
+    def test_accepts_rsa_key_2048_bits(self):
         result = scanner.check_compliance(
             "TLSv1.2",
             "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
@@ -352,7 +352,7 @@ SHA-1: 11:22:33
             2048,
         )
 
-        self.assertEqual(result, "KO")
+        self.assertEqual(result, "OK")
 
     def test_accepts_tls_1_3_with_valid_certificate(self):
         result = scanner.check_compliance(

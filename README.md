@@ -84,7 +84,7 @@ A result is marked `KO` when at least one of these conditions is detected:
 - MD5 or SHA-1 in the cipher suite or certificate signature.
 - Weak or obsolete cipher components: `NULL`, `EXPORT`, `RC4`, `DES`,
   `3DES`, or `IDEA`.
-- An RSA certificate key smaller than 3072 bits, or an RSA key whose size
+- An RSA certificate key smaller than 2048 bits, or an RSA key whose size
   cannot be determined.
 - An expired certificate or an unreadable expiration date.
 
@@ -93,10 +93,9 @@ SHA-256/SHA-384. CBC suites using SHA-1 remain `KO`. Static RSA key exchange is
 accepted but lowers the endpoint grade to `B` because it does not provide
 forward secrecy.
 
-The RSA threshold follows the ANSSI recommendation of at least 3072 bits.
-ANSSI still defines 2048 bits as the minimum for uses ending no later than
-December 31, 2030, but recommends 3072 bits even before that date. See the
-[ANSSI cryptographic mechanisms guide, version 3.00](https://messervices.cyber.gouv.fr/documents-guides/anssi-guide-mecanismes-crypto-3.00.pdf).
+RSA 2048 is accepted by the scanner. See the
+[ANSSI cryptographic mechanisms guide, version 3.00](https://messervices.cyber.gouv.fr/documents-guides/anssi-guide-mecanismes-crypto-3.00.pdf)
+for the broader recommendations around key sizes.
 
 ## Endpoint Grade
 

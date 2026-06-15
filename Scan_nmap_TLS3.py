@@ -207,7 +207,7 @@ def evaluate_compliance(
         return "KO", "Cipher suite"
 
     if public_key_type == "RSA" and (
-        public_key_bits is None or public_key_bits < 3072
+        public_key_bits is None or public_key_bits < 2048
     ):
         return "KO", "RSA key size"
 
