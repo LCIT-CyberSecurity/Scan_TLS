@@ -7,6 +7,7 @@ import threading
 from datetime import datetime
 
 
+# Command-line parsing and input normalization.
 def parse_args():
     parser = argparse.ArgumentParser(
         description="Scan TLS configurations on one or more targets."
@@ -72,6 +73,7 @@ def normalize_targets(targets):
     return " ".join(target for target in normalized_targets if target)
 
 
+# DNS and certificate metadata extraction.
 def resolve_fqdn(ip_address):
     try:
         fqdn = socket.gethostbyaddr(ip_address)[0].rstrip(".")
@@ -109,6 +111,7 @@ def extract_signature_algorithm(certificate_output):
     return signature_match.group(1) if signature_match else ""
 
 
+# Cipher-suite parsing and per-row compliance evaluation.
 def is_cipher_suite_compliant(tls_version, cipher_suite):
     cipher_suite = cipher_suite.upper()
     cipher_tokens = cipher_suite.split("_")
@@ -219,6 +222,7 @@ def evaluate_compliance(
     return "OK", ""
 
 
+# Endpoint grading is separate from compliance and uses the weakest finding.
 def grade_finding(finding):
     tls_version = finding["tls_version"]
     cipher_suite = finding["cipher_suite"].upper()
@@ -301,9 +305,11 @@ def apply_endpoint_grades(results, findings):
         for endpoint, endpoint_findings in findings.items()
     }
     for row in results:
+        # A grade belongs to one IP and port, not to the whole host.
         row.insert(3, endpoint_grades[(row[0], row[2])])
 
 
+# Runtime dependencies are loaded after argument parsing to keep --help usable.
 def load_dependencies():
     try:
         import nmap
@@ -327,9 +333,11 @@ def run_scan_with_progress(scanner, tqdm, description, **scan_options):
         except Exception as error:
             scan_error.append(error)
 
+    # python-nmap blocks until completion, so a worker thread keeps tqdm active.
     scan_thread = threading.Thread(target=run_scan, daemon=True)
     scan_thread.start()
 
+    # Nmap does not expose a reliable percentage here; show elapsed activity.
     progress = tqdm(
         total=None,
         desc=description,
@@ -378,6 +386,7 @@ def discover_open_tcp_ports(nmap, tqdm, targets, mode):
     return open_ports
 
 
+# Transform raw Nmap script output into table/CSV rows and grading findings.
 def collect_scan_results(scanner, args, results, findings, fqdn_cache):
     for host in scanner.all_hosts():
         if "tcp" not in scanner[host]:
@@ -457,6 +466,7 @@ def main():
         "-sV --version-light --script ssl-cert,ssl-enum-ciphers"
     )
 
+    # Discovery modes first identify open ports, then run TLS scripts on them.
     if args.ports in ["fast", "all"]:
         scan_label = "common" if args.ports == "fast" else "all"
         print(f"Discovering open TCP ports ({scan_label} ports)...")
@@ -526,6 +536,7 @@ def main():
         ]
     )
     for row in results:
+        # The last value is the CSV-only reason and is hidden in the terminal.
         table.add_row(row[:-1])
     print("\n" + str(table))
 
