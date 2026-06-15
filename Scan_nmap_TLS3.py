@@ -17,6 +17,16 @@ def parse_args():
         help="disable DNS resolution and leave the FQDN column empty",
     )
     parser.add_argument(
+        "-p",
+        "--ports",
+        default="443",
+        type=parse_ports,
+        help=(
+            'TCP ports to test, for example "443,8443,9000-9010", '
+            '"fast", or "all"'
+        ),
+    )
+    parser.add_argument(
         "targets",
         help="comma-separated FQDNs, IP addresses, or subnets",
     )
@@ -26,6 +36,34 @@ def parse_args():
         help="optional CSV output filename",
     )
     return parser.parse_args()
+
+
+def parse_ports(value):
+    value = value.strip().lower()
+    if value in ["fast", "all"]:
+        return value
+
+    ports = []
+    for item in value.split(","):
+        item = item.strip()
+        if not item:
+            raise argparse.ArgumentTypeError("port entries cannot be empty")
+
+        if "-" in item:
+            bounds = item.split("-")
+            if len(bounds) != 2 or not all(bound.isdigit() for bound in bounds):
+                raise argparse.ArgumentTypeError(f"invalid port range: {item}")
+            start, end = (int(bound) for bound in bounds)
+            if start > end:
+                raise argparse.ArgumentTypeError(f"invalid port range: {item}")
+            if start < 1 or end > 65535:
+                raise argparse.ArgumentTypeError("ports must be between 1 and 65535")
+        elif not item.isdigit() or not 1 <= int(item) <= 65535:
+            raise argparse.ArgumentTypeError("ports must be between 1 and 65535")
+
+        ports.append(item)
+
+    return ",".join(ports)
 
 
 def normalize_targets(targets):
@@ -148,6 +186,91 @@ def check_compliance(
     return "KO" if cert_expiry_date < datetime.now() else "OK"
 
 
+def grade_finding(finding):
+    tls_version = finding["tls_version"]
+    cipher_suite = finding["cipher_suite"].upper()
+    cipher_tokens = cipher_suite.split("_")
+    signature_algorithm = extract_signature_algorithm(
+        finding["certificate_output"]
+    ).upper()
+    normalized_signature = signature_algorithm.replace("-", "").replace("_", "")
+    public_key_type = finding["public_key_type"]
+    public_key_bits = finding["public_key_bits"]
+
+    try:
+        cert_expiry_date = datetime.strptime(
+            finding["cert_validity"],
+            "%Y-%m-%d",
+        )
+    except ValueError:
+        return "F"
+
+    if cert_expiry_date < datetime.now():
+        return "F"
+
+    if any(token in cipher_tokens for token in ["NULL", "EXPORT", "RC4"]):
+        return "F"
+
+    if tls_version not in ["TLSv1.0", "TLSv1.1", "TLSv1.2", "TLSv1.3"]:
+        return "F"
+
+    if public_key_type == "RSA" and (
+        public_key_bits is None or public_key_bits < 2048
+    ):
+        return "F"
+
+    if "MD5" in cipher_tokens or "MD5" in normalized_signature:
+        return "D"
+
+    if tls_version == "TLSv1.0" or any(
+        token in cipher_tokens for token in ["DES", "3DES", "IDEA"]
+    ):
+        return "D"
+
+    if (
+        tls_version == "TLSv1.1"
+        or "SHA1" in cipher_tokens
+        or cipher_suite.endswith("_SHA")
+        or "SHA1" in normalized_signature
+    ):
+        return "C"
+
+    if public_key_type == "RSA" and public_key_bits < 3072:
+        return "B"
+
+    if tls_version == "TLSv1.2" and cipher_suite.startswith("TLS_RSA_"):
+        return "B"
+
+    if "_CBC_" in cipher_suite:
+        return "A"
+
+    return "A+"
+
+
+def calculate_host_grade(findings):
+    grade_order = {"A+": 0, "A": 1, "B": 2, "C": 3, "D": 4, "F": 5}
+    grades = [grade_finding(finding) for finding in findings]
+    if not grades:
+        return "F"
+
+    worst_grade = max(grades, key=grade_order.get)
+    has_tls_1_3 = any(
+        finding["tls_version"] == "TLSv1.3" for finding in findings
+    )
+    if worst_grade == "A+" and not has_tls_1_3:
+        return "A"
+    return worst_grade
+
+
+def apply_host_grades(results, findings):
+    host_grades = {
+        host: calculate_host_grade(host_findings)
+        for host, host_findings in findings.items()
+    }
+    for row in results:
+        row.insert(3, host_grades[row[0]])
+
+
 def load_dependencies():
     try:
         import nmap
@@ -162,6 +285,95 @@ def load_dependencies():
     return nmap, PrettyTable, tqdm
 
 
+def discover_open_tcp_ports(nmap, targets, mode):
+    scanner = nmap.PortScanner()
+    scan_options = {
+        "fast": {
+            "arguments": "-F -T4 --open --max-retries 1",
+        },
+        "all": {
+            "ports": "1-65535",
+            "arguments": "-T4 --open --max-retries 1",
+        },
+    }
+    scanner.scan(hosts=targets, **scan_options[mode])
+
+    open_ports = {}
+    for host in scanner.all_hosts():
+        if "tcp" not in scanner[host]:
+            continue
+        ports = [
+            port
+            for port, port_info in scanner[host]["tcp"].items()
+            if port_info.get("state") == "open"
+        ]
+        if ports:
+            open_ports[host] = sorted(ports)
+    return open_ports
+
+
+def collect_scan_results(scanner, args, results, findings, fqdn_cache):
+    for host in scanner.all_hosts():
+        if "tcp" not in scanner[host]:
+            continue
+
+        fqdn = fqdn_cache.setdefault(
+            host,
+            "" if args.ip else resolve_fqdn(host),
+        )
+        for port, port_info in scanner[host]["tcp"].items():
+            if port_info.get("state") != "open" or "script" not in port_info:
+                continue
+
+            certificate_output = port_info["script"].get("ssl-cert", "")
+            public_key_type, public_key_bits = extract_public_key(
+                certificate_output
+            )
+            public_key = public_key_type
+            if public_key_bits is not None:
+                public_key = f"{public_key_type} {public_key_bits} bits"
+
+            cert_validity = "N/A"
+            if "Not valid after:" in certificate_output:
+                start = certificate_output.find("Not valid after:") + len(
+                    "Not valid after:"
+                )
+                end = certificate_output.find("T", start)
+                cert_validity = certificate_output[start:end].strip()
+
+            cipher_output = port_info["script"].get("ssl-enum-ciphers", "")
+            for tls_version, cipher_suite in extract_cipher_suites(cipher_output):
+                compliance = check_compliance(
+                    tls_version,
+                    cipher_suite,
+                    cert_validity,
+                    certificate_output,
+                    public_key_type,
+                    public_key_bits,
+                )
+                finding = {
+                    "tls_version": tls_version,
+                    "cipher_suite": cipher_suite,
+                    "cert_validity": cert_validity,
+                    "certificate_output": certificate_output,
+                    "public_key_type": public_key_type,
+                    "public_key_bits": public_key_bits,
+                }
+                findings.setdefault(host, []).append(finding)
+                results.append(
+                    [
+                        host,
+                        fqdn,
+                        port,
+                        tls_version,
+                        cipher_suite,
+                        public_key,
+                        cert_validity,
+                        compliance,
+                    ]
+                )
+
+
 def main():
     args = parse_args()
     targets = normalize_targets(args.targets)
@@ -170,72 +382,58 @@ def main():
         return 1
 
     nmap, PrettyTable, tqdm = load_dependencies()
-    scanner = nmap.PortScanner()
-
     print("Initializing TLS information scan...")
-    scanner.scan(
-        hosts=targets,
-        arguments="-p 443 --script ssl-cert,ssl-enum-ciphers",
+    results = []
+    findings = {}
+    fqdn_cache = {}
+    tls_arguments = (
+        "-sV --version-light --script ssl-cert,ssl-enum-ciphers"
     )
 
-    results = []
-    hosts = list(scanner.all_hosts())
-    progress = tqdm(total=len(hosts), desc="Scanning hosts")
-
-    for host in hosts:
-        progress.update(1)
-        if "tcp" not in scanner[host] or 443 not in scanner[host]["tcp"]:
-            continue
-
-        port_info = scanner[host]["tcp"][443]
-        if "script" not in port_info:
-            continue
-
-        certificate_output = port_info["script"].get("ssl-cert", "")
-        public_key_type, public_key_bits = extract_public_key(certificate_output)
-        public_key = public_key_type
-        if public_key_bits is not None:
-            public_key = f"{public_key_type} {public_key_bits} bits"
-
-        cert_validity = "N/A"
-        if "Not valid after:" in certificate_output:
-            start = certificate_output.find("Not valid after:") + len(
-                "Not valid after:"
+    if args.ports in ["fast", "all"]:
+        scan_label = "common" if args.ports == "fast" else "all"
+        print(f"Discovering open TCP ports ({scan_label} ports)...")
+        open_ports = discover_open_tcp_ports(nmap, targets, args.ports)
+        progress = tqdm(total=len(open_ports), desc="Scanning hosts")
+        for host, ports in open_ports.items():
+            scanner = nmap.PortScanner()
+            scanner.scan(
+                hosts=host,
+                ports=",".join(str(port) for port in ports),
+                arguments=tls_arguments,
             )
-            end = certificate_output.find("T", start)
-            cert_validity = certificate_output[start:end].strip()
-
-        cipher_output = port_info["script"].get("ssl-enum-ciphers", "")
-        fqdn = "" if args.ip else resolve_fqdn(host)
-        for tls_version, cipher_suite in extract_cipher_suites(cipher_output):
-            compliance = check_compliance(
-                tls_version,
-                cipher_suite,
-                cert_validity,
-                certificate_output,
-                public_key_type,
-                public_key_bits,
+            collect_scan_results(
+                scanner,
+                args,
+                results,
+                findings,
+                fqdn_cache,
             )
-            results.append(
-                [
-                    host,
-                    fqdn,
-                    443,
-                    tls_version,
-                    cipher_suite,
-                    public_key,
-                    cert_validity,
-                    compliance,
-                ]
-            )
+            progress.update(1)
+        progress.close()
+    else:
+        scanner = nmap.PortScanner()
+        scanner.scan(
+            hosts=targets,
+            ports=args.ports,
+            arguments=tls_arguments,
+        )
+        collect_scan_results(
+            scanner,
+            args,
+            results,
+            findings,
+            fqdn_cache,
+        )
 
-    progress.close()
+    apply_host_grades(results, findings)
 
     table = PrettyTable(
         [
             "IP",
             "FQDN",
             "Port",
+            "Grade",
             "TLS Version",
             "Cipher Suite",
             "Public Key",
@@ -255,6 +453,7 @@ def main():
                     "IP",
                     "FQDN",
                     "Port",
+                    "Grade",
                     "TLS Version",
                     "Cipher Suite",
                     "Public Key",

@@ -13,6 +13,9 @@ or outdated protocols.
 - Checks protocol versions, cipher suites, certificate signatures, RSA key
   sizes, and certificate expiration.
 - Reports every cipher suite detected by Nmap.
+- Supports one or more TCP ports, or automatic discovery of all open TCP
+  ports.
+- Assigns a host grade from `A+` to `F`, based on the weakest finding.
 - Displays separate `IP` and `FQDN` columns in the terminal table.
 - Optionally exports results with separate `IP` and `FQDN` columns to CSV.
 
@@ -42,17 +45,24 @@ python3 -m pip install python-nmap prettytable tqdm
 Run the scanner with one or more comma-separated targets:
 
 ```bash
-python3 Scan_nmap_TLS3.py [-i] <targets> [csv_filename]
+python3 Scan_nmap_TLS3.py [-i] [-p PORTS] <targets> [csv_filename]
 ```
 
 - `<targets>`: Comma-separated FQDNs, IP addresses, or subnets.
 - `[csv_filename]`: Optional output filename for exporting the results to CSV.
+- `-p`, `--ports`: TCP ports to test. The default is `443`. Use a
+  comma-separated list, ranges, `fast`, or `all`.
 - `-i`, `--ip`: Disable DNS resolution. The terminal and CSV `FQDN` columns
   remain empty. DNS resolution is enabled by default.
 
 The terminal table and CSV export always contain separate `IP` and `FQDN`
 columns. The `FQDN` field is empty when reverse DNS resolution is disabled or
 not available.
+
+With `-p fast`, the scanner uses Nmap `-F` to discover approximately the 100
+most common TCP ports. With `-p all`, it discovers open TCP ports from `1` to
+`65535`. Both modes use Nmap timing option `-T4`, then run the TLS scripts only
+on open ports. The `all` mode can still take time on large subnets.
 
 ## Compliance Policy
 
@@ -77,12 +87,47 @@ ANSSI still defines 2048 bits as the minimum for uses ending no later than
 December 31, 2030, but recommends 3072 bits even before that date. See the
 [ANSSI cryptographic mechanisms guide, version 3.00](https://messervices.cyber.gouv.fr/documents-guides/anssi-guide-mecanismes-crypto-3.00.pdf).
 
+## Host Grade
+
+The `Grade` column is placed between `Port` and `TLS Version`. The weakest
+finding detected on a host determines its grade, which is repeated on every
+row for that host:
+
+- `A+`: TLS 1.3 is available and no weaker finding is detected.
+- `A`: All findings are acceptable, but TLS 1.3 is absent or CBC is enabled.
+- `B`: RSA 2048 certificate or static RSA key exchange.
+- `C`: SHA-1 or TLS 1.1.
+- `D`: MD5, TLS 1.0, DES, 3DES, or IDEA.
+- `F`: RC4, `NULL`, `EXPORT`, an expired or unreadable certificate, or an RSA
+  key smaller than 2048 bits. Unknown TLS versions are also graded `F`.
+
+This grade is inspired by SSL assessment tools but does not reproduce the
+Qualys SSL Labs algorithm.
+
 ## Examples
 
 Scan multiple subnets:
 
 ```bash
 python3 Scan_nmap_TLS3.py 192.168.1.0/24,10.0.0.0/24
+```
+
+Scan several TCP ports:
+
+```bash
+python3 Scan_nmap_TLS3.py -p 443,8443,9443 192.168.1.0/24
+```
+
+Quickly discover common TCP ports before testing TLS:
+
+```bash
+python3 Scan_nmap_TLS3.py -p fast 192.168.1.0/24
+```
+
+Discover all open TCP ports before testing TLS:
+
+```bash
+python3 Scan_nmap_TLS3.py -p all 192.168.1.10
 ```
 
 Scan multiple individual IP addresses without subnet notation:
