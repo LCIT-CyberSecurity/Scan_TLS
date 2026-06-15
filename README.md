@@ -1,39 +1,60 @@
 # TLS Scanner
 
-The `TLS_Scanner` script is a Python-based tool that utilizes Nmap to scan specific hosts or IP address ranges to detect TLS versions, certificates validity, cipher suites in use. It checks the compliance of the cipher suites against current security standards, excluding algorithms considered weak or outdated.
+`TLS Scanner` is a Python tool that uses Nmap to scan hosts or IP address
+ranges for TLS versions, certificate validity, and cipher suites. It checks
+the detected configuration against current security standards and flags weak
+or outdated protocols.
 
 ## Features
 
-- Scans port 443 to detect TLS versions, certificate validity and cipher suites.
-- Checks compliance with current security standards for encryption, hashing algorithms and also certificate validy.
-- Displays results in a readable table or exports them to a CSV format.
+- Scans port 443 for TLS versions, certificate validity, and cipher suites.
+- Checks TLS protocol and certificate compliance.
+- Displays results in a readable table.
+- Optionally exports results to a CSV file.
 
-## Installation
+## Requirements
 
-**Install python3 and nmap package before launch this script !! **
+- Python 3
+- Nmap
+- The Python packages listed below
 
-The script requires Python 3 and the installation of some dependencies. Here's how to install:
+Verify that Python 3 is installed:
 
-
-Ensure you have Python 3 installed on your system. You can verify this by running:
-
-python --version
-or
-
+```bash
 python3 --version
-Install the required dependencies, including Nmap and the necessary Python packages:
-Installing Nmap: Please follow the instructions on the official Nmap website to download and install Nmap if you haven't already done so.
+```
 
-Installing the required Python packages:
+Install Nmap by following the instructions on the
+[official Nmap website](https://nmap.org/download.html).
 
-pip install python-nmap
-pip install prettytable
-pip install tqdm
-Usage
-To run the script, use the following command:
+Install the required Python packages:
 
-python scan_nmap_TLS3.py <target> [csv]
-<target>: Specify the IP address or the IP address range to scan. For example, 192.168.1.1 or 192.168.1.0/24.
-[csv]: Add csv after the target address if you wish to export the results to a CSV file. This parameter is optional.
-Example Command
-python3 Scan_nmap_TLS3.py 192.168.1.0/24 toto.csv
+```bash
+python3 -m pip install python-nmap prettytable tqdm
+```
+
+## Usage
+
+Run the scanner with a host or IP address range:
+
+```bash
+python3 Scan_nmap_TLS3.py <target> [csv_filename]
+```
+
+- `<target>`: IP address or IP address range to scan, such as
+  `192.168.1.1` or `192.168.1.0/24`.
+- `[csv_filename]`: Optional output filename for exporting the results to CSV.
+
+## Examples
+
+Display the scan results in the terminal:
+
+```bash
+python3 Scan_nmap_TLS3.py 192.168.1.1
+```
+
+Scan a subnet and export the results:
+
+```bash
+python3 Scan_nmap_TLS3.py 192.168.1.0/24 results.csv
+```
