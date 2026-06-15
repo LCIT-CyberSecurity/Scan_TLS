@@ -67,6 +67,7 @@ class DiscoverPortsTests(unittest.TestCase):
 
         result = scanner.discover_open_tcp_ports(
             FakeNmap,
+            FakeTqdm,
             "192.0.2.10",
             "all",
         )
@@ -96,13 +97,75 @@ class DiscoverPortsTests(unittest.TestCase):
             def PortScanner():
                 return fake_scanner
 
-        scanner.discover_open_tcp_ports(FakeNmap, "192.0.2.10", "fast")
+        scanner.discover_open_tcp_ports(
+            FakeNmap,
+            FakeTqdm,
+            "192.0.2.10",
+            "fast",
+        )
 
         self.assertNotIn("ports", fake_scanner.scan_call)
         self.assertEqual(
             fake_scanner.scan_call["arguments"],
             "-F -T4 --open --max-retries 1",
         )
+
+
+class FakeTqdm:
+    def __init__(self, *args, **kwargs):
+        self.closed = False
+        self.updates = 0
+
+    def update(self, value):
+        self.updates += value
+
+    def close(self):
+        self.closed = True
+
+
+class ScanProgressTests(unittest.TestCase):
+    def test_runs_scan_and_closes_progress_bar(self):
+        class FakeScanner:
+            def __init__(self):
+                self.scan_options = None
+
+            def scan(self, **kwargs):
+                self.scan_options = kwargs
+
+        fake_scanner = FakeScanner()
+        progress_instances = []
+
+        def fake_tqdm(*args, **kwargs):
+            progress = FakeTqdm(*args, **kwargs)
+            progress_instances.append(progress)
+            return progress
+
+        scanner.run_scan_with_progress(
+            fake_scanner,
+            fake_tqdm,
+            "TLS scan",
+            hosts="192.0.2.10",
+            ports="443",
+        )
+
+        self.assertEqual(
+            fake_scanner.scan_options,
+            {"hosts": "192.0.2.10", "ports": "443"},
+        )
+        self.assertTrue(progress_instances[0].closed)
+
+    def test_propagates_scan_error(self):
+        class FailingScanner:
+            def scan(self, **kwargs):
+                raise RuntimeError("scan failed")
+
+        with self.assertRaisesRegex(RuntimeError, "scan failed"):
+            scanner.run_scan_with_progress(
+                FailingScanner(),
+                FakeTqdm,
+                "TLS scan",
+                hosts="192.0.2.10",
+            )
 
 
 class ResolveFqdnTests(unittest.TestCase):
@@ -209,7 +272,7 @@ SHA-1: 11:22:33
 
         self.assertEqual(result, "KO")
 
-    def test_rejects_static_rsa_key_exchange(self):
+    def test_accepts_static_rsa_key_exchange(self):
         result = scanner.check_compliance(
             "TLSv1.2",
             "TLS_RSA_WITH_AES_256_GCM_SHA384",
@@ -219,7 +282,19 @@ SHA-1: 11:22:33
             3072,
         )
 
-        self.assertEqual(result, "KO")
+        self.assertEqual(result, "OK")
+
+    def test_accepts_static_rsa_with_cbc_and_sha256(self):
+        result = scanner.check_compliance(
+            "TLSv1.2",
+            "TLS_RSA_WITH_AES_256_CBC_SHA256",
+            "2099-01-01",
+            "",
+            "RSA",
+            3072,
+        )
+
+        self.assertEqual(result, "OK")
 
     def test_rejects_rsa_key_smaller_than_3072_bits(self):
         result = scanner.check_compliance(
@@ -268,7 +343,6 @@ SHA-1: 11:22:33
         )
 
         self.assertEqual(result, "OK")
-
 
 class CipherSuiteExtractionTests(unittest.TestCase):
     def test_extracts_every_cipher_suite_with_its_tls_version(self):

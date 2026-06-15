@@ -17,6 +17,7 @@ or outdated protocols.
   ports.
 - Assigns a grade from `A+` to `F` to each host and port, based on the weakest
   finding for that endpoint.
+- Displays an activity bar with elapsed time while Nmap is running.
 - Displays separate `IP` and `FQDN` columns in the terminal table.
 - Optionally exports results with separate `IP` and `FQDN` columns to CSV.
 
@@ -49,12 +50,13 @@ Run the scanner with one or more comma-separated targets:
 python3 Scan_nmap_TLS3.py [-i] [-p PORTS] <targets> [csv_filename]
 ```
 
-- `<targets>`: Comma-separated FQDNs, IP addresses, or subnets.
-- `[csv_filename]`: Optional output filename for exporting the results to CSV.
-- `-p`, `--ports`: TCP ports to test. The default is `443`. Use a
-  comma-separated list, ranges, `fast`, or `all`.
-- `-i`, `--ip`: Disable DNS resolution. The terminal and CSV `FQDN` columns
-  remain empty. DNS resolution is enabled by default.
+| Parameter | Description |
+| --- | --- |
+| `<targets>` | Comma-separated FQDNs, IP addresses, or subnets. |
+| `[csv_filename]` | Optional CSV output filename. |
+| `-p`, `--ports` | Ports to test: one port, a list, ranges, `fast`, or `all`. Default: `443`. |
+| `-i`, `--ip` | Disable DNS resolution and leave the `FQDN` column empty. |
+| `-h`, `--help` | Display command-line help. |
 
 The terminal table and CSV export always contain separate `IP` and `FQDN`
 columns. The `FQDN` field is empty when reverse DNS resolution is disabled or
@@ -65,6 +67,9 @@ most common TCP ports. With `-p all`, it discovers open TCP ports from `1` to
 `65535`. Both modes use Nmap timing option `-T4`, then run the TLS scripts only
 on open ports. The `all` mode can still take time on large subnets.
 
+The activity bar is indeterminate because `python-nmap` does not expose a
+reliable completion percentage while Nmap is running.
+
 ## Compliance Policy
 
 A result is marked `KO` when at least one of these conditions is detected:
@@ -73,15 +78,14 @@ A result is marked `KO` when at least one of these conditions is detected:
 - MD5 or SHA-1 in the cipher suite or certificate signature.
 - Weak or obsolete cipher components: `NULL`, `EXPORT`, `RC4`, `DES`,
   `3DES`, or `IDEA`.
-- TLS 1.2 without ephemeral `ECDHE` or `DHE` key exchange.
 - An RSA certificate key smaller than 3072 bits, or an RSA key whose size
   cannot be determined.
 - An expired certificate or an unreadable expiration date.
 
 Accepted cipher suites use AES-GCM, AES-CCM, ChaCha20-Poly1305, or CBC with
-SHA-256/SHA-384. CBC suites using SHA-1 remain `KO`. TLS 1.2 also requires an
-ephemeral key exchange. TLS 1.3 provides ephemeral key exchange independently
-of the cipher suite name.
+SHA-256/SHA-384. CBC suites using SHA-1 remain `KO`. Static RSA key exchange is
+accepted but lowers the endpoint grade to `B` because it does not provide
+forward secrecy.
 
 The RSA threshold follows the ANSSI recommendation of at least 3072 bits.
 ANSSI still defines 2048 bits as the minimum for uses ending no later than
@@ -120,6 +124,12 @@ Scan several TCP ports:
 python3 Scan_nmap_TLS3.py -p 443,8443,9443 192.168.1.0/24
 ```
 
+Scan a port range and individual ports:
+
+```bash
+python3 Scan_nmap_TLS3.py -p 443,8000-8010,8443 server.example.com
+```
+
 Quickly discover common TCP ports before testing TLS:
 
 ```bash
@@ -155,4 +165,16 @@ Disable DNS resolution and leave the `FQDN` column empty:
 
 ```bash
 python3 Scan_nmap_TLS3.py -i 192.168.1.0/24,10.0.0.5,web.example.com results.csv
+```
+
+Combine fast port discovery, multiple targets, disabled DNS, and CSV export:
+
+```bash
+python3 Scan_nmap_TLS3.py -i -p fast 192.168.1.0/24,10.0.0.5 results.csv
+```
+
+Display all command-line options:
+
+```bash
+python3 Scan_nmap_TLS3.py --help
 ```

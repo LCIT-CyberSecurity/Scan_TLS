@@ -3,6 +3,7 @@ import csv
 import re
 import socket
 import sys
+import threading
 from datetime import datetime
 
 
@@ -135,7 +136,7 @@ def is_cipher_suite_compliant(tls_version, cipher_suite):
     if tls_version == "TLSv1.3":
         return True
 
-    return cipher_suite.startswith(("TLS_ECDHE_", "TLS_DHE_"))
+    return cipher_suite.startswith(("TLS_ECDHE_", "TLS_DHE_", "TLS_RSA_"))
 
 
 def extract_cipher_suites(cipher_output):
@@ -285,7 +286,34 @@ def load_dependencies():
     return nmap, PrettyTable, tqdm
 
 
-def discover_open_tcp_ports(nmap, targets, mode):
+def run_scan_with_progress(scanner, tqdm, description, **scan_options):
+    scan_error = []
+
+    def run_scan():
+        try:
+            scanner.scan(**scan_options)
+        except Exception as error:
+            scan_error.append(error)
+
+    scan_thread = threading.Thread(target=run_scan, daemon=True)
+    scan_thread.start()
+
+    progress = tqdm(
+        total=None,
+        desc=description,
+        unit="step",
+        bar_format="{desc}: {elapsed} [{bar:20}]",
+    )
+    while scan_thread.is_alive():
+        progress.update(1)
+        scan_thread.join(timeout=0.2)
+    progress.close()
+
+    if scan_error:
+        raise scan_error[0]
+
+
+def discover_open_tcp_ports(nmap, tqdm, targets, mode):
     scanner = nmap.PortScanner()
     scan_options = {
         "fast": {
@@ -296,7 +324,13 @@ def discover_open_tcp_ports(nmap, targets, mode):
             "arguments": "-T4 --open --max-retries 1",
         },
     }
-    scanner.scan(hosts=targets, **scan_options[mode])
+    run_scan_with_progress(
+        scanner,
+        tqdm,
+        "TCP discovery",
+        hosts=targets,
+        **scan_options[mode],
+    )
 
     open_ports = {}
     for host in scanner.all_hosts():
@@ -393,11 +427,19 @@ def main():
     if args.ports in ["fast", "all"]:
         scan_label = "common" if args.ports == "fast" else "all"
         print(f"Discovering open TCP ports ({scan_label} ports)...")
-        open_ports = discover_open_tcp_ports(nmap, targets, args.ports)
+        open_ports = discover_open_tcp_ports(
+            nmap,
+            tqdm,
+            targets,
+            args.ports,
+        )
         progress = tqdm(total=len(open_ports), desc="Scanning hosts")
         for host, ports in open_ports.items():
             scanner = nmap.PortScanner()
-            scanner.scan(
+            run_scan_with_progress(
+                scanner,
+                tqdm,
+                f"TLS scan {host}",
                 hosts=host,
                 ports=",".join(str(port) for port in ports),
                 arguments=tls_arguments,
@@ -413,7 +455,10 @@ def main():
         progress.close()
     else:
         scanner = nmap.PortScanner()
-        scanner.scan(
+        run_scan_with_progress(
+            scanner,
+            tqdm,
+            "TLS scan",
             hosts=targets,
             ports=args.ports,
             arguments=tls_arguments,
