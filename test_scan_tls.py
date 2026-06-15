@@ -66,6 +66,23 @@ class ComplianceTests(unittest.TestCase):
 
         self.assertEqual(result, "KO")
 
+    def test_ignores_sha1_certificate_fingerprint(self):
+        certificate_output = """
+Signature Algorithm: sha256WithRSAEncryption
+MD5: aa:bb:cc
+SHA-1: 11:22:33
+"""
+        result = scanner.check_compliance(
+            "TLSv1.2",
+            "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
+            "2099-01-01",
+            certificate_output,
+            "RSA",
+            4096,
+        )
+
+        self.assertEqual(result, "OK")
+
     def test_rejects_cbc_cipher(self):
         result = scanner.check_compliance(
             "TLSv1.2",
@@ -126,6 +143,18 @@ class ComplianceTests(unittest.TestCase):
 
         self.assertEqual(result, "OK")
 
+    def test_accepts_tls_1_2_with_dhe_and_ccm(self):
+        result = scanner.check_compliance(
+            "TLSv1.2",
+            "TLS_DHE_RSA_WITH_AES_256_CCM",
+            "2099-01-01",
+            "Signature Algorithm: sha256WithRSAEncryption",
+            "EC",
+            256,
+        )
+
+        self.assertEqual(result, "OK")
+
 
 class CipherSuiteExtractionTests(unittest.TestCase):
     def test_extracts_every_cipher_suite_with_its_tls_version(self):
@@ -159,6 +188,17 @@ Public Key bits: 3072
         self.assertEqual(
             scanner.extract_public_key(certificate_output),
             ("RSA", 3072),
+        )
+
+    def test_extracts_certificate_signature_algorithm(self):
+        certificate_output = """
+Signature Algorithm: sha256WithRSAEncryption
+SHA-1: 11:22:33
+"""
+
+        self.assertEqual(
+            scanner.extract_signature_algorithm(certificate_output),
+            "sha256WithRSAEncryption",
         )
 
 

@@ -61,6 +61,15 @@ def extract_public_key(certificate_output):
     return key_type, key_bits
 
 
+def extract_signature_algorithm(certificate_output):
+    signature_match = re.search(
+        r"Signature Algorithm:\s*([^\s]+)",
+        certificate_output,
+        re.IGNORECASE,
+    )
+    return signature_match.group(1) if signature_match else ""
+
+
 def is_cipher_suite_compliant(tls_version, cipher_suite):
     cipher_suite = cipher_suite.upper()
     cipher_tokens = cipher_suite.split("_")
@@ -80,7 +89,7 @@ def is_cipher_suite_compliant(tls_version, cipher_suite):
     authenticated_encryption = any(
         algorithm in cipher_suite
         for algorithm in ["_GCM_", "_CCM_", "CHACHA20_POLY1305"]
-    )
+    ) or cipher_suite.endswith(("_GCM", "_CCM"))
     if not authenticated_encryption:
         return False
 
@@ -112,7 +121,8 @@ def check_compliance(
     public_key_type,
     public_key_bits,
 ):
-    security_details = f"{cipher_suite} {certificate_output}".upper()
+    signature_algorithm = extract_signature_algorithm(certificate_output)
+    security_details = f"{cipher_suite} {signature_algorithm}".upper()
     normalized_details = security_details.replace("-", "").replace("_", "")
 
     if "MD5" in normalized_details or "SHA1" in normalized_details:
