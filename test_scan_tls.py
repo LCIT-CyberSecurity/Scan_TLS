@@ -296,6 +296,42 @@ SHA-1: 11:22:33
 
         self.assertEqual(result, "OK")
 
+    def test_returns_short_csv_reason_for_ko(self):
+        result = scanner.evaluate_compliance(
+            "TLSv1.2",
+            "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384",
+            "2099-01-01",
+            "",
+            "RSA",
+            2048,
+        )
+
+        self.assertEqual(result, ("KO", "RSA key size"))
+
+    def test_returns_empty_csv_reason_for_ok(self):
+        result = scanner.evaluate_compliance(
+            "TLSv1.2",
+            "TLS_RSA_WITH_AES_256_CBC_SHA256",
+            "2099-01-01",
+            "",
+            "RSA",
+            3072,
+        )
+
+        self.assertEqual(result, ("OK", ""))
+
+    def test_returns_sha1_reason_for_legacy_sha_suffix(self):
+        result = scanner.evaluate_compliance(
+            "TLSv1.2",
+            "TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA",
+            "2099-01-01",
+            "",
+            "RSA",
+            3072,
+        )
+
+        self.assertEqual(result, ("KO", "SHA-1"))
+
     def test_rejects_rsa_key_smaller_than_3072_bits(self):
         result = scanner.check_compliance(
             "TLSv1.2",

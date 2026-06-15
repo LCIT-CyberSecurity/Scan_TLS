@@ -62,6 +62,10 @@ The terminal table and CSV export always contain separate `IP` and `FQDN`
 columns. The `FQDN` field is empty when reverse DNS resolution is disabled or
 not available.
 
+The CSV export adds a `Reason` column after `Compliance`. It contains a short
+English cause for `KO` results and remains empty for `OK` results. This column
+is not displayed in the terminal table.
+
 With `-p fast`, the scanner uses Nmap `-F` to discover approximately the 100
 most common TCP ports. With `-p all`, it discovers open TCP ports from `1` to
 `65535`. Both modes use Nmap timing option `-T4`, then run the TLS scripts only

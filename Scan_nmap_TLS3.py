@@ -161,30 +161,62 @@ def check_compliance(
     public_key_type,
     public_key_bits,
 ):
+    compliance, _ = evaluate_compliance(
+        tls_version,
+        cipher_suite,
+        cert_validity,
+        certificate_output,
+        public_key_type,
+        public_key_bits,
+    )
+    return compliance
+
+
+def evaluate_compliance(
+    tls_version,
+    cipher_suite,
+    cert_validity,
+    certificate_output,
+    public_key_type,
+    public_key_bits,
+):
     signature_algorithm = extract_signature_algorithm(certificate_output)
     security_details = f"{cipher_suite} {signature_algorithm}".upper()
     normalized_details = security_details.replace("-", "").replace("_", "")
+    cipher_tokens = cipher_suite.upper().split("_")
 
-    if "MD5" in normalized_details or "SHA1" in normalized_details:
-        return "KO"
+    if "MD5" in normalized_details:
+        return "KO", "MD5"
+
+    if "SHA1" in normalized_details or cipher_suite.upper().endswith("_SHA"):
+        return "KO", "SHA-1"
 
     if tls_version not in ["TLSv1.2", "TLSv1.3"]:
-        return "KO"
+        return "KO", "TLS version"
+
+    if any(
+        token in cipher_tokens
+        for token in ["NULL", "EXPORT", "RC4", "DES", "3DES", "IDEA"]
+    ):
+        return "KO", "Weak cipher"
 
     if not is_cipher_suite_compliant(tls_version, cipher_suite):
-        return "KO"
+        return "KO", "Cipher suite"
 
     if public_key_type == "RSA" and (
         public_key_bits is None or public_key_bits < 3072
     ):
-        return "KO"
+        return "KO", "RSA key size"
 
     try:
         cert_expiry_date = datetime.strptime(cert_validity, "%Y-%m-%d")
     except ValueError:
-        return "KO"
+        return "KO", "Certificate date"
 
-    return "KO" if cert_expiry_date < datetime.now() else "OK"
+    if cert_expiry_date < datetime.now():
+        return "KO", "Certificate expired"
+
+    return "OK", ""
 
 
 def grade_finding(finding):
@@ -377,7 +409,7 @@ def collect_scan_results(scanner, args, results, findings, fqdn_cache):
 
             cipher_output = port_info["script"].get("ssl-enum-ciphers", "")
             for tls_version, cipher_suite in extract_cipher_suites(cipher_output):
-                compliance = check_compliance(
+                compliance, reason = evaluate_compliance(
                     tls_version,
                     cipher_suite,
                     cert_validity,
@@ -404,6 +436,7 @@ def collect_scan_results(scanner, args, results, findings, fqdn_cache):
                         public_key,
                         cert_validity,
                         compliance,
+                        reason,
                     ]
                 )
 
@@ -487,7 +520,7 @@ def main():
         ]
     )
     for row in results:
-        table.add_row(row)
+        table.add_row(row[:-1])
     print("\n" + str(table))
 
     if args.csv_filename:
@@ -504,6 +537,7 @@ def main():
                     "Public Key",
                     "Certificate Validity",
                     "Compliance",
+                    "Reason",
                 ]
             )
             writer.writerows(results)
