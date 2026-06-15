@@ -86,11 +86,12 @@ def is_cipher_suite_compliant(tls_version, cipher_suite):
     if cipher_suite.endswith("_SHA"):
         return False
 
-    authenticated_encryption = any(
+    accepted_encryption = any(
         algorithm in cipher_suite
         for algorithm in ["_GCM_", "_CCM_", "CHACHA20_POLY1305"]
     ) or cipher_suite.endswith(("_GCM", "_CCM"))
-    if not authenticated_encryption:
+    accepted_encryption = accepted_encryption or "_CBC_" in cipher_suite
+    if not accepted_encryption:
         return False
 
     if tls_version == "TLSv1.3":

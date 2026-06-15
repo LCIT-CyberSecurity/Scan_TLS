@@ -62,15 +62,15 @@ A result is marked `KO` when at least one of these conditions is detected:
 - MD5 or SHA-1 in the cipher suite or certificate signature.
 - Weak or obsolete cipher components: `NULL`, `EXPORT`, `RC4`, `DES`,
   `3DES`, or `IDEA`.
-- A non-authenticated encryption mode such as CBC.
 - TLS 1.2 without ephemeral `ECDHE` or `DHE` key exchange.
 - An RSA certificate key smaller than 3072 bits, or an RSA key whose size
   cannot be determined.
 - An expired certificate or an unreadable expiration date.
 
-Accepted cipher suites use authenticated encryption such as AES-GCM, AES-CCM,
-or ChaCha20-Poly1305. TLS 1.2 also requires an ephemeral key exchange. TLS 1.3
-provides ephemeral key exchange independently of the cipher suite name.
+Accepted cipher suites use AES-GCM, AES-CCM, ChaCha20-Poly1305, or CBC with
+SHA-256/SHA-384. CBC suites using SHA-1 remain `KO`. TLS 1.2 also requires an
+ephemeral key exchange. TLS 1.3 provides ephemeral key exchange independently
+of the cipher suite name.
 
 The RSA threshold follows the ANSSI recommendation of at least 3072 bits.
 ANSSI still defines 2048 bits as the minimum for uses ending no later than

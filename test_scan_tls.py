@@ -83,10 +83,34 @@ SHA-1: 11:22:33
 
         self.assertEqual(result, "OK")
 
-    def test_rejects_cbc_cipher(self):
+    def test_accepts_cbc_cipher_with_sha384(self):
         result = scanner.check_compliance(
             "TLSv1.2",
             "TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384",
+            "2099-01-01",
+            "",
+            "RSA",
+            3072,
+        )
+
+        self.assertEqual(result, "OK")
+
+    def test_accepts_dhe_cbc_cipher_with_sha256(self):
+        result = scanner.check_compliance(
+            "TLSv1.2",
+            "TLS_DHE_RSA_WITH_AES_256_CBC_SHA256",
+            "2099-01-01",
+            "",
+            "RSA",
+            3072,
+        )
+
+        self.assertEqual(result, "OK")
+
+    def test_rejects_cbc_cipher_with_sha1(self):
+        result = scanner.check_compliance(
+            "TLSv1.2",
+            "TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA",
             "2099-01-01",
             "",
             "RSA",
