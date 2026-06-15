@@ -191,6 +191,24 @@ class ResolveFqdnTests(unittest.TestCase):
         self.assertEqual(scanner.resolve_fqdn("192.0.2.10"), "")
 
 
+class ResolveTargetFqdnTests(unittest.TestCase):
+    @patch("Scan_nmap_TLS3.socket.gethostbyname_ex")
+    def test_maps_target_fqdn_to_its_resolved_ip_addresses(self, gethostbyname_ex):
+        gethostbyname_ex.return_value = (
+            "smtp.free.fr",
+            ["mail.free.fr"],
+            ["212.27.48.4", "2001:db8::1"],
+        )
+
+        self.assertEqual(
+            scanner.resolve_target_fqdns("smtp.free.fr,192.0.2.10,192.0.2.0/24"),
+            {
+                "212.27.48.4": "smtp.free.fr",
+                "2001:db8::1": "smtp.free.fr",
+            },
+        )
+
+
 # Per-suite compliance policy and CSV-only reason generation.
 class ComplianceTests(unittest.TestCase):
     def test_rejects_tls_1_0(self):

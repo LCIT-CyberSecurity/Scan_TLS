@@ -1,5 +1,6 @@
 import argparse
 import csv
+import ipaddress
 import re
 import socket
 import sys
@@ -80,6 +81,33 @@ def resolve_fqdn(ip_address):
     except (socket.herror, socket.gaierror, OSError):
         return ""
     return fqdn if fqdn != ip_address else ""
+
+
+def resolve_target_fqdns(targets):
+    fqdn_cache = {}
+    for target in normalize_targets(targets).split():
+        try:
+            ipaddress.ip_network(target, strict=False)
+            continue
+        except ValueError:
+            pass
+
+        try:
+            ipaddress.ip_address(target)
+            continue
+        except ValueError:
+            pass
+
+        try:
+            canonical_name, _, addresses = socket.gethostbyname_ex(target)
+        except (socket.gaierror, OSError):
+            continue
+
+        fqdn = canonical_name.rstrip(".") if canonical_name else target.rstrip(".")
+        for address in addresses:
+            fqdn_cache.setdefault(address, fqdn)
+
+    return fqdn_cache
 
 
 def extract_public_key(certificate_output):
@@ -461,7 +489,7 @@ def main():
     print("Initializing TLS information scan...")
     results = []
     findings = {}
-    fqdn_cache = {}
+    fqdn_cache = resolve_target_fqdns(targets)
     tls_arguments = (
         "-sV --version-light --script ssl-cert,ssl-enum-ciphers"
     )
