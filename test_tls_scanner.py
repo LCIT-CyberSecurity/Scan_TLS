@@ -6,6 +6,7 @@ from argparse import ArgumentTypeError
 import Scan_nmap_TLS3 as scanner
 
 
+# Input normalization and command-line port validation.
 class NormalizeTargetsTests(unittest.TestCase):
     def test_normalizes_comma_separated_targets_for_nmap(self):
         targets = "192.168.1.0/24, 10.0.0.5,web.example.com"
@@ -34,6 +35,7 @@ class ParsePortsTests(unittest.TestCase):
             scanner.parse_ports("443,70000")
 
 
+# Nmap port-discovery behavior without performing network scans.
 class DiscoverPortsTests(unittest.TestCase):
     def test_scans_all_tcp_ports_and_returns_only_open_ports(self):
         class FakePortScanner:
@@ -111,6 +113,7 @@ class DiscoverPortsTests(unittest.TestCase):
         )
 
 
+# Minimal tqdm replacement used to test progress handling deterministically.
 class FakeTqdm:
     def __init__(self, *args, **kwargs):
         self.closed = False
@@ -123,6 +126,7 @@ class FakeTqdm:
         self.closed = True
 
 
+# Progress display lifecycle and background scan error propagation.
 class ScanProgressTests(unittest.TestCase):
     def test_runs_scan_and_closes_progress_bar(self):
         class FakeScanner:
@@ -168,6 +172,7 @@ class ScanProgressTests(unittest.TestCase):
             )
 
 
+# Reverse DNS resolution and failure fallback.
 class ResolveFqdnTests(unittest.TestCase):
     @patch("Scan_nmap_TLS3.socket.gethostbyaddr")
     def test_returns_resolved_fqdn(self, gethostbyaddr):
@@ -182,6 +187,7 @@ class ResolveFqdnTests(unittest.TestCase):
         self.assertEqual(scanner.resolve_fqdn("192.0.2.10"), "")
 
 
+# Per-suite compliance policy and CSV-only reason generation.
 class ComplianceTests(unittest.TestCase):
     def test_rejects_tls_1_0(self):
         result = scanner.check_compliance(
@@ -380,6 +386,7 @@ SHA-1: 11:22:33
 
         self.assertEqual(result, "OK")
 
+# Parsing of every TLS version and cipher suite returned by Nmap.
 class CipherSuiteExtractionTests(unittest.TestCase):
     def test_extracts_every_cipher_suite_with_its_tls_version(self):
         cipher_output = """
@@ -402,6 +409,7 @@ TLSv1.2:
         )
 
 
+# Certificate public-key and signature metadata extraction.
 class PublicKeyTests(unittest.TestCase):
     def test_extracts_rsa_key_size(self):
         certificate_output = """
@@ -426,6 +434,7 @@ SHA-1: 11:22:33
         )
 
 
+# Endpoint grades use the weakest finding for each individual host and port.
 class HostGradeTests(unittest.TestCase):
     def finding(
         self,
