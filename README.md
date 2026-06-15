@@ -13,7 +13,7 @@ or outdated protocols.
 - Checks protocol versions, cipher suites, certificate signatures, RSA key
   sizes, and certificate expiration.
 - Reports every cipher suite detected by Nmap.
-- Displays results in a readable table.
+- Displays separate `IP` and `FQDN` columns in the terminal table.
 - Optionally exports results with separate `IP` and `FQDN` columns to CSV.
 
 ## Requirements
@@ -47,11 +47,12 @@ python3 Scan_nmap_TLS3.py [-i] <targets> [csv_filename]
 
 - `<targets>`: Comma-separated FQDNs, IP addresses, or subnets.
 - `[csv_filename]`: Optional output filename for exporting the results to CSV.
-- `-i`, `--ip`: Display IP addresses instead of resolving FQDNs in the
-  terminal table. DNS resolution is enabled by default.
+- `-i`, `--ip`: Disable DNS resolution. The terminal and CSV `FQDN` columns
+  remain empty. DNS resolution is enabled by default.
 
-The CSV export always contains separate `IP` and `FQDN` columns. The `FQDN`
-field is empty when reverse DNS resolution is not available.
+The terminal table and CSV export always contain separate `IP` and `FQDN`
+columns. The `FQDN` field is empty when reverse DNS resolution is disabled or
+not available.
 
 ## Compliance Policy
 
@@ -103,7 +104,7 @@ results:
 python3 Scan_nmap_TLS3.py 192.168.1.0/24,10.0.0.5,web.example.com results.csv
 ```
 
-Disable DNS display and show IP addresses in the terminal:
+Disable DNS resolution and leave the `FQDN` column empty:
 
 ```bash
 python3 Scan_nmap_TLS3.py -i 192.168.1.0/24,10.0.0.5,web.example.com results.csv

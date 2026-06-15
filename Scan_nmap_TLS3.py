@@ -14,7 +14,7 @@ def parse_args():
         "-i",
         "--ip",
         action="store_true",
-        help="display IP addresses instead of resolved FQDNs",
+        help="disable DNS resolution and leave the FQDN column empty",
     )
     parser.add_argument(
         "targets",
@@ -195,7 +195,7 @@ def main():
             cert_validity = certificate_output[start:end].strip()
 
         cipher_output = port_info["script"].get("ssl-enum-ciphers", "")
-        fqdn = resolve_fqdn(host)
+        fqdn = "" if args.ip else resolve_fqdn(host)
         for tls_version, cipher_suite in extract_cipher_suites(cipher_output):
             compliance = check_compliance(
                 tls_version,
@@ -222,7 +222,8 @@ def main():
 
     table = PrettyTable(
         [
-            "Host",
+            "IP",
+            "FQDN",
             "Port",
             "TLS Version",
             "Cipher Suite",
@@ -232,9 +233,7 @@ def main():
         ]
     )
     for row in results:
-        ip_address, fqdn, *scan_details = row
-        displayed_host = ip_address if args.ip else fqdn or ip_address
-        table.add_row([displayed_host, *scan_details])
+        table.add_row(row)
     print("\n" + str(table))
 
     if args.csv_filename:
