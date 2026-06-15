@@ -21,11 +21,11 @@ def parse_args():
     parser.add_argument(
         "-p",
         "--ports",
-        default="443",
+        default="fast",
         type=parse_ports,
         help=(
             'TCP ports to test, for example "443,8443,9000-9010", '
-            '"fast", or "all"'
+            '"fast", or "all" (default: fast)'
         ),
     )
     parser.add_argument(

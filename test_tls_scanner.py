@@ -18,6 +18,10 @@ class NormalizeTargetsTests(unittest.TestCase):
 
 
 class ParsePortsTests(unittest.TestCase):
+    @patch("Scan_nmap_TLS3.sys.argv", ["Scan_nmap_TLS3.py", "192.0.2.10"])
+    def test_defaults_to_fast_port_discovery(self):
+        self.assertEqual(scanner.parse_args().ports, "fast")
+
     def test_uses_multiple_ports_and_ranges(self):
         self.assertEqual(
             scanner.parse_ports("443, 8443, 9000-9010"),

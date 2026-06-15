@@ -7,7 +7,8 @@ or outdated protocols.
 
 ## Features
 
-- Scans port 443 for TLS versions, certificate validity, and cipher suites.
+- Scans common TCP ports by default for TLS versions, certificate validity,
+  and cipher suites.
 - Resolves host FQDNs by default.
 - Accepts multiple FQDNs, IP addresses, and subnets in one scan.
 - Checks protocol versions, cipher suites, certificate signatures, RSA key
@@ -54,7 +55,7 @@ python3 Scan_nmap_TLS3.py [-i] [-p PORTS] <targets> [csv_filename]
 | --- | --- |
 | `<targets>` | Comma-separated FQDNs, IP addresses, or subnets. |
 | `[csv_filename]` | Optional CSV output filename. |
-| `-p`, `--ports` | Ports to test: one port, a list, ranges, `fast`, or `all`. Default: `443`. |
+| `-p`, `--ports` | Ports to test: one port, a list, ranges, `fast`, or `all`. Default: `fast`. |
 | `-i`, `--ip` | Disable DNS resolution and leave the `FQDN` column empty. |
 | `-h`, `--help` | Display command-line help. |
 
@@ -69,7 +70,8 @@ is not displayed in the terminal table.
 With `-p fast`, the scanner uses Nmap `-F` to discover approximately the 100
 most common TCP ports. With `-p all`, it discovers open TCP ports from `1` to
 `65535`. Both modes use Nmap timing option `-T4`, then run the TLS scripts only
-on open ports. The `all` mode can still take time on large subnets.
+on open ports. If `-p` is omitted, `fast` is used for every specified subnet,
+IP address, and FQDN. The `all` mode can still take time on large subnets.
 
 The activity bar is indeterminate because `python-nmap` does not expose a
 reliable completion percentage while Nmap is running.
@@ -116,7 +118,7 @@ Qualys SSL Labs algorithm.
 
 ## Examples
 
-Scan multiple subnets:
+Scan multiple subnets using the default fast port discovery:
 
 ```bash
 python3 Scan_nmap_TLS3.py 192.168.1.0/24,10.0.0.0/24
