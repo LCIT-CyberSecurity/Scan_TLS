@@ -367,14 +367,16 @@ class HostGradeTests(unittest.TestCase):
 
         self.assertEqual(scanner.calculate_host_grade([finding]), "F")
 
-    def test_applies_same_worst_grade_to_every_row_for_host(self):
+    def test_applies_worst_grade_per_host_and_port(self):
         results = [
             ["192.0.2.10", "host.example", 443, "TLSv1.3"],
             ["192.0.2.10", "host.example", 8443, "TLSv1.2"],
         ]
         findings = {
-            "192.0.2.10": [
+            ("192.0.2.10", 443): [
                 self.finding(),
+            ],
+            ("192.0.2.10", 8443): [
                 self.finding(
                     tls_version="TLSv1.0",
                     cipher_suite="TLS_RSA_WITH_AES_128_CBC_SHA",
@@ -382,9 +384,9 @@ class HostGradeTests(unittest.TestCase):
             ]
         }
 
-        scanner.apply_host_grades(results, findings)
+        scanner.apply_endpoint_grades(results, findings)
 
-        self.assertEqual(results[0][3], "D")
+        self.assertEqual(results[0][3], "A+")
         self.assertEqual(results[1][3], "D")
 
     def test_returns_f_for_unknown_tls_version(self):

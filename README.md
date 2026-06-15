@@ -15,7 +15,8 @@ or outdated protocols.
 - Reports every cipher suite detected by Nmap.
 - Supports one or more TCP ports, or automatic discovery of all open TCP
   ports.
-- Assigns a host grade from `A+` to `F`, based on the weakest finding.
+- Assigns a grade from `A+` to `F` to each host and port, based on the weakest
+  finding for that endpoint.
 - Displays separate `IP` and `FQDN` columns in the terminal table.
 - Optionally exports results with separate `IP` and `FQDN` columns to CSV.
 
@@ -87,11 +88,12 @@ ANSSI still defines 2048 bits as the minimum for uses ending no later than
 December 31, 2030, but recommends 3072 bits even before that date. See the
 [ANSSI cryptographic mechanisms guide, version 3.00](https://messervices.cyber.gouv.fr/documents-guides/anssi-guide-mecanismes-crypto-3.00.pdf).
 
-## Host Grade
+## Endpoint Grade
 
 The `Grade` column is placed between `Port` and `TLS Version`. The weakest
-finding detected on a host determines its grade, which is repeated on every
-row for that host:
+finding detected for a specific host and port determines its grade, which is
+repeated on every cipher-suite row for that endpoint. A weak service on one
+port does not lower the grade of another port on the same host:
 
 - `A+`: TLS 1.3 is available and no weaker finding is detected.
 - `A`: All findings are acceptable, but TLS 1.3 is absent or CBC is enabled.

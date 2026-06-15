@@ -262,13 +262,13 @@ def calculate_host_grade(findings):
     return worst_grade
 
 
-def apply_host_grades(results, findings):
-    host_grades = {
-        host: calculate_host_grade(host_findings)
-        for host, host_findings in findings.items()
+def apply_endpoint_grades(results, findings):
+    endpoint_grades = {
+        endpoint: calculate_host_grade(endpoint_findings)
+        for endpoint, endpoint_findings in findings.items()
     }
     for row in results:
-        row.insert(3, host_grades[row[0]])
+        row.insert(3, endpoint_grades[(row[0], row[2])])
 
 
 def load_dependencies():
@@ -359,7 +359,7 @@ def collect_scan_results(scanner, args, results, findings, fqdn_cache):
                     "public_key_type": public_key_type,
                     "public_key_bits": public_key_bits,
                 }
-                findings.setdefault(host, []).append(finding)
+                findings.setdefault((host, port), []).append(finding)
                 results.append(
                     [
                         host,
@@ -426,7 +426,7 @@ def main():
             fqdn_cache,
         )
 
-    apply_host_grades(results, findings)
+    apply_endpoint_grades(results, findings)
 
     table = PrettyTable(
         [
