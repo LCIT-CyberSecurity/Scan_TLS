@@ -2,10 +2,24 @@ import argparse
 import csv
 import ipaddress
 import re
+import shutil
 import socket
+import subprocess
 import sys
 import threading
 from datetime import datetime
+
+
+MINIMUM_PQC_OPENSSL_VERSION = (3, 5, 0)
+PQC_TLS_GROUPS = (
+    "X25519MLKEM768",
+    "SecP256r1MLKEM768",
+    "SecP384r1MLKEM1024",
+)
+
+
+class PQCPrerequisiteError(RuntimeError):
+    pass
 
 
 # Command-line parsing and input normalization.
@@ -18,6 +32,13 @@ def parse_args():
         "--ip",
         action="store_true",
         help="disable DNS resolution and leave the FQDN column empty",
+    )
+    parser.add_argument(
+        "-c",
+        "--crypto",
+        choices=["standard", "pqc"],
+        default="standard",
+        help="compliance criterion to use (default: standard)",
     )
     parser.add_argument(
         "-p",
@@ -39,6 +60,84 @@ def parse_args():
         help="optional CSV output filename",
     )
     return parser.parse_args()
+
+
+def parse_openssl_version(version_output):
+    match = re.search(r"\bOpenSSL\s+(\d+)\.(\d+)\.(\d+)", version_output)
+    if not match:
+        return None
+    return tuple(int(part) for part in match.groups())
+
+
+def check_pqc_prerequisites():
+    if shutil.which("openssl") is None:
+        raise PQCPrerequisiteError(
+            "PQC preflight check failed.\n\n"
+            "OpenSSL 3.5 or later is required for PQC scans.\n"
+            "Detected version: OpenSSL not found\n\n"
+            "Please install OpenSSL 3.5 or later and ensure that TLS ML-KEM "
+            "groups,\nincluding X25519MLKEM768, are available."
+        )
+
+    try:
+        version_result = subprocess.run(
+            ["openssl", "version"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise PQCPrerequisiteError(
+            "PQC preflight check failed: unable to execute OpenSSL."
+        ) from error
+
+    version_text = (version_result.stdout or version_result.stderr).strip()
+    version = parse_openssl_version(version_text)
+    if version_result.returncode != 0 or version is None:
+        raise PQCPrerequisiteError(
+            "PQC preflight check failed.\n\n"
+            "OpenSSL 3.5 or later is required for PQC scans.\n"
+            f"Detected version: {version_text or 'unknown'}"
+        )
+
+    if version < MINIMUM_PQC_OPENSSL_VERSION:
+        raise PQCPrerequisiteError(
+            "PQC preflight check failed.\n\n"
+            "OpenSSL 3.5 or later is required for PQC scans.\n"
+            f"Detected version: {version_text}\n\n"
+            "Please upgrade OpenSSL and ensure that TLS ML-KEM groups,\n"
+            "including X25519MLKEM768, are available."
+        )
+
+    try:
+        groups_result = subprocess.run(
+            ["openssl", "list", "-tls-groups"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise PQCPrerequisiteError(
+            "PQC preflight check failed: unable to list OpenSSL TLS groups."
+        ) from error
+
+    groups_output = f"{groups_result.stdout}\n{groups_result.stderr}"
+    available_groups = [
+        group for group in PQC_TLS_GROUPS if group.lower() in groups_output.lower()
+    ]
+    if groups_result.returncode != 0 or not available_groups:
+        raise PQCPrerequisiteError(
+            "PQC preflight check failed.\n\n"
+            "OpenSSL 3.5 or later with TLS ML-KEM support is required for "
+            "PQC scans.\n"
+            f"Detected version: {version_text}\n"
+            "Required TLS group: X25519MLKEM768\n\n"
+            "Please ensure that the required TLS ML-KEM groups are available."
+        )
+
+    return version_text, available_groups
 
 
 def parse_ports(value):
@@ -137,6 +236,64 @@ def extract_signature_algorithm(certificate_output):
         re.IGNORECASE,
     )
     return signature_match.group(1) if signature_match else ""
+
+
+def format_openssl_endpoint(host, port):
+    if ":" in host and not host.startswith("["):
+        return f"[{host}]:{port}"
+    return f"{host}:{port}"
+
+
+def probe_pqc_key_exchange(host, port, server_name, groups=PQC_TLS_GROUPS):
+    endpoint = format_openssl_endpoint(host, port)
+    for group in groups:
+        command = [
+            "openssl",
+            "s_client",
+            "-connect",
+            endpoint,
+            "-tls1_3",
+            "-groups",
+            group,
+            "-brief",
+        ]
+        if server_name:
+            command.extend(["-servername", server_name])
+
+        try:
+            result = subprocess.run(
+                command,
+                input="",
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+
+        output = f"{result.stdout}\n{result.stderr}"
+        negotiated_tls_1_3 = re.search(
+            r"Protocol(?: version)?\s*:\s*TLSv1\.3",
+            output,
+            re.IGNORECASE,
+        )
+        if (
+            result.returncode == 0
+            and negotiated_tls_1_3
+            and group.lower() in output.lower()
+        ):
+            return group
+
+    return "Not supported"
+
+
+def evaluate_pqc_compliance(tls_version, key_exchange):
+    if tls_version != "TLSv1.3":
+        return "KO", "TLS 1.3 required"
+    if key_exchange in PQC_TLS_GROUPS:
+        return "OK", ""
+    return "KO", "No supported PQC group"
 
 
 # Cipher-suite parsing and per-row compliance evaluation.
@@ -445,15 +602,31 @@ def collect_scan_results(scanner, args, results, findings, fqdn_cache):
                 cert_validity = certificate_output[start:end].strip()
 
             cipher_output = port_info["script"].get("ssl-enum-ciphers", "")
-            for tls_version, cipher_suite in extract_cipher_suites(cipher_output):
-                compliance, reason = evaluate_compliance(
-                    tls_version,
-                    cipher_suite,
-                    cert_validity,
-                    certificate_output,
-                    public_key_type,
-                    public_key_bits,
+            cipher_suites = extract_cipher_suites(cipher_output)
+            key_exchange = None
+            if args.crypto == "pqc" and cipher_suites:
+                key_exchange = probe_pqc_key_exchange(
+                    host,
+                    port,
+                    fqdn,
+                    args.pqc_groups,
                 )
+
+            for tls_version, cipher_suite in cipher_suites:
+                if args.crypto == "pqc":
+                    compliance, reason = evaluate_pqc_compliance(
+                        tls_version,
+                        key_exchange,
+                    )
+                else:
+                    compliance, reason = evaluate_compliance(
+                        tls_version,
+                        cipher_suite,
+                        cert_validity,
+                        certificate_output,
+                        public_key_type,
+                        public_key_bits,
+                    )
                 finding = {
                     "tls_version": tls_version,
                     "cipher_suite": cipher_suite,
@@ -463,19 +636,19 @@ def collect_scan_results(scanner, args, results, findings, fqdn_cache):
                     "public_key_bits": public_key_bits,
                 }
                 findings.setdefault((host, port), []).append(finding)
-                results.append(
-                    [
-                        host,
-                        fqdn,
-                        port,
-                        tls_version,
-                        cipher_suite,
-                        public_key,
-                        cert_validity,
-                        compliance,
-                        reason,
-                    ]
-                )
+                row = [
+                    host,
+                    fqdn,
+                    port,
+                    tls_version,
+                    cipher_suite,
+                    public_key,
+                    cert_validity,
+                ]
+                if args.crypto == "pqc":
+                    row.append(key_exchange)
+                row.extend([compliance, reason])
+                results.append(row)
 
 
 def main():
@@ -484,6 +657,15 @@ def main():
     if not targets:
         print("At least one target is required.")
         return 1
+
+    if args.crypto == "pqc":
+        try:
+            openssl_version, args.pqc_groups = check_pqc_prerequisites()
+        except PQCPrerequisiteError as error:
+            print(error, file=sys.stderr)
+            return 2
+        print(f"PQC preflight check passed: {openssl_version}")
+        print("Compliance criterion: POST-QUANTUM")
 
     nmap, PrettyTable, tqdm = load_dependencies()
     print("Initializing TLS information scan...")
@@ -550,19 +732,21 @@ def main():
             "Use -p fast, -p all, or specify ports with -p."
         )
 
-    table = PrettyTable(
-        [
-            "IP",
-            "FQDN",
-            "Port",
-            "Grade",
-            "TLS Version",
-            "Cipher Suite",
-            "Public Key",
-            "Certificate Validity",
-            "Compliance",
-        ]
-    )
+    headers = [
+        "IP",
+        "FQDN",
+        "Port",
+        "TLS Grade" if args.crypto == "pqc" else "Grade",
+        "TLS Version",
+        "Cipher Suite",
+        "Public Key",
+        "Certificate Validity",
+    ]
+    if args.crypto == "pqc":
+        headers.append("Key Exchange")
+    headers.append("Compliance")
+
+    table = PrettyTable(headers)
     for row in results:
         # The last value is the CSV-only reason and is hidden in the terminal.
         table.add_row(row[:-1])
@@ -571,20 +755,20 @@ def main():
     if args.csv_filename:
         with open(args.csv_filename, "w", newline="") as file:
             writer = csv.writer(file)
-            writer.writerow(
-                [
-                    "IP",
-                    "FQDN",
-                    "Port",
-                    "Grade",
-                    "TLS Version",
-                    "Cipher Suite",
-                    "Public Key",
-                    "Certificate Validity",
-                    "Compliance",
-                    "Reason",
-                ]
-            )
+            csv_headers = [
+                "IP",
+                "FQDN",
+                "Port",
+                "TLS Grade" if args.crypto == "pqc" else "Grade",
+                "TLS Version",
+                "Cipher Suite",
+                "Public Key",
+                "Certificate Validity",
+            ]
+            if args.crypto == "pqc":
+                csv_headers.append("Key Exchange")
+            csv_headers.extend(["Compliance", "Reason"])
+            writer.writerow(csv_headers)
             writer.writerows(results)
         print(f"\nResults have been saved to {args.csv_filename}")
 
