@@ -51,15 +51,27 @@ def parse_args():
         ),
     )
     parser.add_argument(
+        "-e",
+        "--export",
+        dest="export_filename",
+        metavar="FILENAME",
+        help="export results to a CSV file",
+    )
+    parser.add_argument(
         "targets",
         help="comma-separated FQDNs, IP addresses, or subnets",
     )
     parser.add_argument(
         "csv_filename",
         nargs="?",
-        help="optional CSV output filename",
+        help="optional CSV output filename (legacy syntax)",
     )
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.export_filename and args.csv_filename:
+        parser.error("use either --export or the positional CSV filename, not both")
+    if args.export_filename:
+        args.csv_filename = args.export_filename
+    return args
 
 
 def parse_openssl_version(version_output):

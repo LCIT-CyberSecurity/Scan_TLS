@@ -51,6 +51,36 @@ class ParsePortsTests(unittest.TestCase):
             scanner.parse_ports("443,70000")
 
 
+class ExportArgumentTests(unittest.TestCase):
+    @patch(
+        "Scan_nmap_TLS3.sys.argv",
+        ["Scan_nmap_TLS3.py", "192.0.2.10", "results.csv"],
+    )
+    def test_accepts_legacy_positional_csv_filename(self):
+        self.assertEqual(scanner.parse_args().csv_filename, "results.csv")
+
+    @patch(
+        "Scan_nmap_TLS3.sys.argv",
+        ["Scan_nmap_TLS3.py", "192.0.2.10", "-e", "results.csv"],
+    )
+    def test_accepts_export_option(self):
+        self.assertEqual(scanner.parse_args().csv_filename, "results.csv")
+
+    @patch(
+        "Scan_nmap_TLS3.sys.argv",
+        [
+            "Scan_nmap_TLS3.py",
+            "192.0.2.10",
+            "legacy.csv",
+            "-e",
+            "results.csv",
+        ],
+    )
+    def test_rejects_both_export_syntaxes(self):
+        with self.assertRaises(SystemExit):
+            scanner.parse_args()
+
+
 # Nmap port-discovery behavior without performing network scans.
 class DiscoverPortsTests(unittest.TestCase):
     def test_scans_all_tcp_ports_and_returns_only_open_ports(self):
