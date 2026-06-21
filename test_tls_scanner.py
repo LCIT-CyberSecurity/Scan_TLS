@@ -80,6 +80,68 @@ class ExportArgumentTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             scanner.parse_args()
 
+    @patch(
+        "Scan_nmap_TLS3.sys.argv",
+        ["Scan_nmap_TLS3.py", "192.0.2.10", "-e", "results.cbom.json"],
+    )
+    def test_detects_cbom_export(self):
+        args = scanner.parse_args()
+
+        self.assertEqual(args.csv_filename, "results.cbom.json")
+        self.assertEqual(args.export_format, "cbom")
+
+    @patch(
+        "Scan_nmap_TLS3.sys.argv",
+        ["Scan_nmap_TLS3.py", "192.0.2.10", "-e", "results.json"],
+    )
+    def test_rejects_ambiguous_export_extension(self):
+        with self.assertRaises(SystemExit):
+            scanner.parse_args()
+
+
+class CbomExportTests(unittest.TestCase):
+    def test_builds_cyclonedx_cryptographic_assets(self):
+        results = [
+            [
+                "192.0.2.10",
+                "host.example",
+                443,
+                "A+",
+                "TLSv1.3",
+                "TLS_AES_256_GCM_SHA384",
+                "RSA 3072 bits",
+                "2099-01-01",
+                "OK",
+                "",
+            ]
+        ]
+
+        cbom = scanner.build_cbom(results)
+
+        self.assertEqual(cbom["bomFormat"], "CycloneDX")
+        self.assertEqual(cbom["specVersion"], "1.6")
+        self.assertEqual(cbom["metadata"]["lifecycles"], [{"phase": "discovery"}])
+        asset_types = {
+            component["cryptoProperties"]["assetType"]
+            for component in cbom["components"]
+        }
+        self.assertEqual(
+            asset_types,
+            {"algorithm", "related-crypto-material", "protocol"},
+        )
+        protocol = next(
+            component
+            for component in cbom["components"]
+            if component["cryptoProperties"]["assetType"] == "protocol"
+        )
+        protocol_properties = protocol["cryptoProperties"]["protocolProperties"]
+        self.assertEqual(protocol_properties["type"], "tls")
+        self.assertEqual(protocol_properties["version"], "1.3")
+        self.assertEqual(
+            protocol_properties["cipherSuites"],
+            [{"name": "TLS_AES_256_GCM_SHA384"}],
+        )
+
 
 # Nmap port-discovery behavior without performing network scans.
 class DiscoverPortsTests(unittest.TestCase):

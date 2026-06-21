@@ -52,13 +52,14 @@ python3 -m pip install python-nmap prettytable tqdm
 Run the scanner with one or more comma-separated targets:
 
 ```bash
-python3 Scan_nmap_TLS3.py [-i] [-c {standard,pqc}] [-p PORTS] <targets> [csv_filename]
+python3 Scan_nmap_TLS3.py [-i] [-c {standard,pqc}] [-p PORTS] [-e FILENAME] <targets> [csv_filename]
 ```
 
 | Parameter | Description |
 | --- | --- |
 | `<targets>` | Comma-separated FQDNs, IP addresses, or subnets. |
 | `[csv_filename]` | Optional CSV output filename. |
+| `-e`, `--export` | Export to `.csv` or CycloneDX 1.6 `.cbom.json`. |
 | `-p`, `--ports` | Ports to test: one port, a list, ranges, `fast`, or `all`. Default: `fast`. |
 | `-c`, `--crypto` | Compliance profile: `standard` or `pqc`. Default: `standard`. |
 | `-i`, `--ip` | Disable DNS resolution and leave the `FQDN` column empty. |
@@ -71,6 +72,17 @@ not available.
 The CSV export adds a `Reason` column after `Compliance`. It contains a short
 English cause for `KO` results and remains empty for `OK` results. This column
 is not displayed in the terminal table.
+
+Use `-e` to select an export format from the filename:
+
+```bash
+python3 Scan_nmap_TLS3.py example.com -e results.csv
+python3 Scan_nmap_TLS3.py example.com -e results.cbom.json
+```
+
+The CBOM export conforms to the CycloneDX 1.6 JSON schema and inventories the
+TLS protocols, cipher suites, public keys, and observed PQC key-exchange groups.
+The legacy positional CSV filename remains supported.
 
 With `-p fast`, the scanner uses Nmap `-F` to discover approximately the 100
 most common TCP ports. With `-p all`, it discovers open TCP ports from `1` to
