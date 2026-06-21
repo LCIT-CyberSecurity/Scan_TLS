@@ -99,6 +99,42 @@ class ExportArgumentTests(unittest.TestCase):
             scanner.parse_args()
 
 
+class CsvExportTests(unittest.TestCase):
+    def test_appends_scan_timestamp_and_parameters(self):
+        args = SimpleNamespace(
+            crypto="standard",
+            targets="192.0.2.0/24,host.example",
+            ports="fast",
+            ip=False,
+        )
+        results = [["finding"]]
+
+        headers, rows = scanner.build_csv_export(
+            results,
+            args,
+            "2026-06-21T14:00:00Z",
+        )
+
+        self.assertEqual(
+            headers[-5:],
+            [
+                "Scan Timestamp",
+                "Scan Targets",
+                "Port Selection",
+                "Crypto Profile",
+                "DNS Resolution",
+            ],
+        )
+        self.assertEqual(
+            rows[0][-5:],
+            [
+                "2026-06-21T14:00:00Z",
+                args.targets,
+                "fast",
+                "standard",
+                "enabled",
+            ],
+        )
 class CbomExportTests(unittest.TestCase):
     def test_builds_cyclonedx_cryptographic_assets(self):
         results = [
@@ -566,12 +602,14 @@ class PQCPrerequisiteTests(unittest.TestCase):
         self.assertEqual(groups, ["X25519MLKEM768"])
 
     @patch("Scan_nmap_TLS3.load_dependencies")
+    @patch("Scan_nmap_TLS3.print_startup_banner")
     @patch("Scan_nmap_TLS3.check_pqc_prerequisites")
     @patch("Scan_nmap_TLS3.parse_args")
     def test_main_stops_before_loading_nmap_when_preflight_fails(
         self,
         parse_args,
         check_prerequisites,
+        print_startup_banner,
         load_dependencies,
     ):
         parse_args.return_value = SimpleNamespace(
@@ -583,6 +621,7 @@ class PQCPrerequisiteTests(unittest.TestCase):
         )
 
         self.assertEqual(scanner.main(), 2)
+        print_startup_banner.assert_called_once_with()
         load_dependencies.assert_not_called()
 
 

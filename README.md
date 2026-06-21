@@ -84,6 +84,8 @@ The terminal table and CSV export contain separate `IP` and `FQDN` columns.
 The `FQDN` field is empty when reverse DNS resolution is disabled or
 unavailable. The CSV export adds a `Reason` column after `Compliance` with a
 short cause for `KO` results. This column is not displayed in the terminal.
+Each CSV row also records the UTC scan timestamp, requested targets, port
+selection, cryptographic profile, and whether DNS resolution was enabled.
 
 CBOM means **Cryptography Bill of Materials**. The `.cbom.json` export uses
 CycloneDX JSON 1.6, standardized as

@@ -19,9 +19,22 @@ PQC_TLS_GROUPS = (
     "SecP384r1MLKEM1024",
 )
 
+STARTUP_BANNER = """
+┌──[ TLS_SCAN ]────────────────────────────────────────────┐
+│  by LCIT Cybersecurity                                   │
+├──────────────────────────────────────────────────────────┤
+│  > TLS Reconnaissance                                    │
+│  > Crypto Inventory | CBOM | Post-Quantum Readiness      │
+└──[ Know your crypto surface. ]───────────────────────────┘
+""".strip()
+
 
 class PQCPrerequisiteError(RuntimeError):
     pass
+
+
+def print_startup_banner():
+    print(STARTUP_BANNER)
 
 
 # Command-line parsing and input normalization.
@@ -676,6 +689,42 @@ def collect_scan_results(scanner, args, results, findings, fqdn_cache):
                 results.append(row)
 
 
+def build_csv_export(results, args, scan_timestamp):
+    headers = [
+        "IP",
+        "FQDN",
+        "Port",
+        "TLS Grade" if args.crypto == "pqc" else "Grade",
+        "TLS Version",
+        "Cipher Suite",
+        "Public Key",
+        "Certificate Validity",
+    ]
+    if args.crypto == "pqc":
+        headers.append("Key Exchange")
+    headers.extend(
+        [
+            "Compliance",
+            "Reason",
+            "Scan Timestamp",
+            "Scan Targets",
+            "Port Selection",
+            "Crypto Profile",
+            "DNS Resolution",
+        ]
+    )
+
+    scan_metadata = [
+        scan_timestamp,
+        args.targets,
+        str(args.ports),
+        args.crypto,
+        "disabled" if args.ip else "enabled",
+    ]
+    rows = [list(row) + scan_metadata for row in results]
+    return headers, rows
+
+
 def build_cbom(results, pqc=False):
     components = []
     algorithm_refs = {}
@@ -824,6 +873,11 @@ def build_cbom(results, pqc=False):
 
 def main():
     args = parse_args()
+    scan_timestamp = (
+        datetime.now(timezone.utc).isoformat(timespec="seconds")
+        .replace("+00:00", "Z")
+    )
+    print_startup_banner()
     targets = normalize_targets(args.targets)
     if not targets:
         print("At least one target is required.")
@@ -930,23 +984,13 @@ def main():
                 json.dump(cbom, file, indent=2)
                 file.write("\n")
         else:
+            csv_headers, csv_rows = build_csv_export(
+                results, args, scan_timestamp
+            )
             with open(args.csv_filename, "w", newline="") as file:
                 writer = csv.writer(file)
-                csv_headers = [
-                    "IP",
-                    "FQDN",
-                    "Port",
-                    "TLS Grade" if args.crypto == "pqc" else "Grade",
-                    "TLS Version",
-                    "Cipher Suite",
-                    "Public Key",
-                    "Certificate Validity",
-                ]
-                if args.crypto == "pqc":
-                    csv_headers.append("Key Exchange")
-                csv_headers.extend(["Compliance", "Reason"])
                 writer.writerow(csv_headers)
-                writer.writerows(results)
+                writer.writerows(csv_rows)
         print(f"\nResults have been saved to {args.csv_filename}")
 
     return 0
