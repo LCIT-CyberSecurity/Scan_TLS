@@ -1,7 +1,8 @@
 import socket
 import unittest
-from unittest.mock import patch
 from argparse import ArgumentTypeError
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 import Scan_nmap_TLS3 as scanner
 
@@ -21,6 +22,17 @@ class ParsePortsTests(unittest.TestCase):
     @patch("Scan_nmap_TLS3.sys.argv", ["Scan_nmap_TLS3.py", "192.0.2.10"])
     def test_defaults_to_fast_port_discovery(self):
         self.assertEqual(scanner.parse_args().ports, "fast")
+
+    @patch("Scan_nmap_TLS3.sys.argv", ["Scan_nmap_TLS3.py", "192.0.2.10"])
+    def test_defaults_to_standard_crypto_criterion(self):
+        self.assertEqual(scanner.parse_args().crypto, "standard")
+
+    @patch(
+        "Scan_nmap_TLS3.sys.argv",
+        ["Scan_nmap_TLS3.py", "-c", "pqc", "192.0.2.10"],
+    )
+    def test_accepts_pqc_crypto_criterion(self):
+        self.assertEqual(scanner.parse_args().crypto, "pqc")
 
     def test_uses_multiple_ports_and_ranges(self):
         self.assertEqual(
@@ -407,6 +419,125 @@ SHA-1: 11:22:33
         )
 
         self.assertEqual(result, "OK")
+
+class PQCPrerequisiteTests(unittest.TestCase):
+    def test_parses_openssl_version(self):
+        self.assertEqual(
+            scanner.parse_openssl_version("OpenSSL 3.5.2 5 Aug 2025"),
+            (3, 5, 2),
+        )
+
+    @patch("Scan_nmap_TLS3.shutil.which", return_value=None)
+    def test_rejects_missing_openssl(self, _which):
+        with self.assertRaisesRegex(
+            scanner.PQCPrerequisiteError,
+            "OpenSSL 3.5 or later is required",
+        ):
+            scanner.check_pqc_prerequisites()
+
+    @patch("Scan_nmap_TLS3.subprocess.run")
+    @patch("Scan_nmap_TLS3.shutil.which", return_value="/usr/bin/openssl")
+    def test_rejects_openssl_older_than_3_5(self, _which, run):
+        run.return_value = Mock(
+            returncode=0,
+            stdout="OpenSSL 3.4.1 11 Feb 2025\n",
+            stderr="",
+        )
+
+        with self.assertRaisesRegex(
+            scanner.PQCPrerequisiteError,
+            "Detected version: OpenSSL 3.4.1",
+        ):
+            scanner.check_pqc_prerequisites()
+
+        run.assert_called_once()
+
+    @patch("Scan_nmap_TLS3.subprocess.run")
+    @patch("Scan_nmap_TLS3.shutil.which", return_value="/usr/bin/openssl")
+    def test_accepts_openssl_3_5_with_ml_kem_tls_group(self, _which, run):
+        run.side_effect = [
+            Mock(
+                returncode=0,
+                stdout="OpenSSL 3.5.0 8 Apr 2025\n",
+                stderr="",
+            ),
+            Mock(
+                returncode=0,
+                stdout="X25519MLKEM768\nX25519\n",
+                stderr="",
+            ),
+        ]
+
+        version, groups = scanner.check_pqc_prerequisites()
+
+        self.assertEqual(version, "OpenSSL 3.5.0 8 Apr 2025")
+        self.assertEqual(groups, ["X25519MLKEM768"])
+
+    @patch("Scan_nmap_TLS3.load_dependencies")
+    @patch("Scan_nmap_TLS3.check_pqc_prerequisites")
+    @patch("Scan_nmap_TLS3.parse_args")
+    def test_main_stops_before_loading_nmap_when_preflight_fails(
+        self,
+        parse_args,
+        check_prerequisites,
+        load_dependencies,
+    ):
+        parse_args.return_value = SimpleNamespace(
+            crypto="pqc",
+            targets="192.0.2.10",
+        )
+        check_prerequisites.side_effect = scanner.PQCPrerequisiteError(
+            "PQC preflight check failed."
+        )
+
+        self.assertEqual(scanner.main(), 2)
+        load_dependencies.assert_not_called()
+
+
+class PQCComplianceTests(unittest.TestCase):
+    def test_accepts_tls_1_3_with_hybrid_ml_kem(self):
+        self.assertEqual(
+            scanner.evaluate_pqc_compliance("TLSv1.3", "X25519MLKEM768"),
+            ("OK", ""),
+        )
+
+    def test_rejects_tls_1_2_even_with_hybrid_ml_kem(self):
+        self.assertEqual(
+            scanner.evaluate_pqc_compliance("TLSv1.2", "X25519MLKEM768"),
+            ("KO", "TLS 1.3 required"),
+        )
+
+    def test_rejects_tls_1_3_without_supported_pqc_group(self):
+        self.assertEqual(
+            scanner.evaluate_pqc_compliance("TLSv1.3", "Not supported"),
+            ("KO", "No supported PQC group"),
+        )
+
+    @patch("Scan_nmap_TLS3.subprocess.run")
+    def test_detects_negotiated_hybrid_group(self, run):
+        run.return_value = Mock(
+            returncode=0,
+            stdout="",
+            stderr=(
+                "CONNECTION ESTABLISHED\n"
+                "Protocol version: TLSv1.3\n"
+                "Negotiated TLS1.3 group: X25519MLKEM768\n"
+            ),
+        )
+
+        result = scanner.probe_pqc_key_exchange(
+            "192.0.2.10",
+            443,
+            "host.example",
+            ["X25519MLKEM768"],
+        )
+
+        self.assertEqual(result, "X25519MLKEM768")
+        command = run.call_args.args[0]
+        self.assertIn("-tls1_3", command)
+        self.assertIn("X25519MLKEM768", command)
+        self.assertEqual(command[-2:], ["-servername", "host.example"])
+
 
 # Parsing of every TLS version and cipher suite returned by Nmap.
 class CipherSuiteExtractionTests(unittest.TestCase):

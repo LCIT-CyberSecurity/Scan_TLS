@@ -21,12 +21,16 @@ or outdated protocols.
 - Displays an activity bar with elapsed time while Nmap is running.
 - Displays separate `IP` and `FQDN` columns in the terminal table.
 - Optionally exports results with separate `IP` and `FQDN` columns to CSV.
+- Provides an optional PQC profile that actively tests TLS 1.3 hybrid ML-KEM
+  key exchange groups.
 
 ## Requirements
 
 - Python 3
 - Nmap
 - The Python packages listed below
+- OpenSSL 3.5 or later with TLS ML-KEM support, only when using the `pqc`
+  profile
 
 Verify that Python 3 is installed:
 
@@ -48,7 +52,7 @@ python3 -m pip install python-nmap prettytable tqdm
 Run the scanner with one or more comma-separated targets:
 
 ```bash
-python3 Scan_nmap_TLS3.py [-i] [-p PORTS] <targets> [csv_filename]
+python3 Scan_nmap_TLS3.py [-i] [-c {standard,pqc}] [-p PORTS] <targets> [csv_filename]
 ```
 
 | Parameter | Description |
@@ -56,6 +60,7 @@ python3 Scan_nmap_TLS3.py [-i] [-p PORTS] <targets> [csv_filename]
 | `<targets>` | Comma-separated FQDNs, IP addresses, or subnets. |
 | `[csv_filename]` | Optional CSV output filename. |
 | `-p`, `--ports` | Ports to test: one port, a list, ranges, `fast`, or `all`. Default: `fast`. |
+| `-c`, `--crypto` | Compliance profile: `standard` or `pqc`. Default: `standard`. |
 | `-i`, `--ip` | Disable DNS resolution and leave the `FQDN` column empty. |
 | `-h`, `--help` | Display command-line help. |
 
@@ -76,7 +81,7 @@ IP address, and FQDN. The `all` mode can still take time on large subnets.
 The activity bar is indeterminate because `python-nmap` does not expose a
 reliable completion percentage while Nmap is running.
 
-## Compliance Policy
+## Standard Compliance Policy
 
 A result is marked `KO` when at least one of these conditions is detected:
 
@@ -96,6 +101,41 @@ forward secrecy.
 RSA 2048 is accepted by the scanner. See the
 [ANSSI cryptographic mechanisms guide, version 3.00](https://messervices.cyber.gouv.fr/documents-guides/anssi-guide-mecanismes-crypto-3.00.pdf)
 for the broader recommendations around key sizes.
+
+## Post-Quantum Compliance Policy
+
+Select the post-quantum profile with `-c pqc`. The standard profile remains
+the default and its behavior and output are unchanged.
+
+The PQC profile requires OpenSSL 3.5 or later. Before loading Nmap or starting
+any network scan, the scanner checks both the OpenSSL version and the actual
+availability of a supported TLS ML-KEM group. If either prerequisite is not
+met, it prints an English error message and exits with status code `2`.
+
+The following TLS 1.3 hybrid key exchange groups are accepted:
+
+- `X25519MLKEM768` (preferred)
+- `SecP256r1MLKEM768`
+- `SecP384r1MLKEM1024`
+
+Each group is tested actively with OpenSSL. A PQC row is marked:
+
+- `OK` when TLS 1.3 is used and one of the accepted hybrid groups is
+  negotiated;
+- `KO` when TLS 1.3 is not used or no accepted hybrid group can be
+  negotiated.
+
+The PQC terminal table retains the standard endpoint information, renames
+`Grade` to `TLS Grade`, and adds a `Key Exchange` column. `TLS Grade` remains
+the standard TLS grade for context; only `Compliance` represents the PQC
+verdict. RSA certificate keys remain informational for the PQC verdict because
+no RSA key size provides post-quantum security.
+
+Example:
+
+```bash
+python3 Scan_nmap_TLS3.py -c pqc -p 443 server.example.com
+```
 
 ## Endpoint Grade
 
