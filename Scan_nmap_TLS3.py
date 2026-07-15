@@ -9,6 +9,7 @@ import subprocess
 import sys
 import threading
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 
@@ -31,6 +32,17 @@ STARTUP_BANNER = """
 
 class PQCPrerequisiteError(RuntimeError):
     pass
+
+
+@dataclass
+class ScanJob:
+    targets: str
+    ports: str
+    crypto: str
+    ip: bool
+    csv_filename: str | None = None
+    export_format: str | None = None
+    pqc_groups: tuple[str, ...] = ()
 
 
 def print_startup_banner():
@@ -98,6 +110,17 @@ def parse_args():
         else:
             parser.error("--export filename must end with .csv or .cbom.json")
     return args
+
+
+def build_cli_scan_job(args):
+    return ScanJob(
+        targets=args.targets,
+        ports=getattr(args, "ports", "fast"),
+        crypto=getattr(args, "crypto", "standard"),
+        ip=getattr(args, "ip", False),
+        csv_filename=getattr(args, "csv_filename", None),
+        export_format=getattr(args, "export_format", None),
+    )
 
 
 def parse_openssl_version(version_output):
@@ -872,20 +895,21 @@ def build_cbom(results, pqc=False):
 
 
 def main():
-    args = parse_args()
+    cli_args = parse_args()
+    job = build_cli_scan_job(cli_args)
     scan_timestamp = (
         datetime.now(timezone.utc).isoformat(timespec="seconds")
         .replace("+00:00", "Z")
     )
     print_startup_banner()
-    targets = normalize_targets(args.targets)
+    targets = normalize_targets(job.targets)
     if not targets:
         print("At least one target is required.")
         return 1
 
-    if args.crypto == "pqc":
+    if job.crypto == "pqc":
         try:
-            openssl_version, args.pqc_groups = check_pqc_prerequisites()
+            openssl_version, job.pqc_groups = check_pqc_prerequisites()
         except PQCPrerequisiteError as error:
             print(error, file=sys.stderr)
             return 2
@@ -902,14 +926,14 @@ def main():
     )
 
     # Discovery modes first identify open ports, then run TLS scripts on them.
-    if args.ports in ["fast", "all"]:
-        scan_label = "common" if args.ports == "fast" else "all"
+    if job.ports in ["fast", "all"]:
+        scan_label = "common" if job.ports == "fast" else "all"
         print(f"Discovering open TCP ports ({scan_label} ports)...")
         open_ports = discover_open_tcp_ports(
             nmap,
             tqdm,
             targets,
-            args.ports,
+            job.ports,
         )
         progress = tqdm(total=len(open_ports), desc="Scanning hosts")
         for host, ports in open_ports.items():
@@ -924,7 +948,7 @@ def main():
             )
             collect_scan_results(
                 scanner,
-                args,
+                job,
                 results,
                 findings,
                 fqdn_cache,
@@ -938,12 +962,12 @@ def main():
             tqdm,
             "TLS scan",
             hosts=targets,
-            ports=args.ports,
+            ports=job.ports,
             arguments=tls_arguments,
         )
         collect_scan_results(
             scanner,
-            args,
+            job,
             results,
             findings,
             fqdn_cache,
@@ -961,13 +985,13 @@ def main():
         "IP",
         "FQDN",
         "Port",
-        "TLS Grade" if args.crypto == "pqc" else "Grade",
+        "TLS Grade" if job.crypto == "pqc" else "Grade",
         "TLS Version",
         "Cipher Suite",
         "Public Key",
         "Certificate Validity",
     ]
-    if args.crypto == "pqc":
+    if job.crypto == "pqc":
         headers.append("Key Exchange")
     headers.append("Compliance")
 
@@ -977,21 +1001,21 @@ def main():
         table.add_row(row[:-1])
     print("\n" + str(table))
 
-    if args.csv_filename:
-        if args.export_format == "cbom":
-            cbom = build_cbom(results, pqc=args.crypto == "pqc")
-            with open(args.csv_filename, "w", encoding="utf-8") as file:
+    if job.csv_filename:
+        if job.export_format == "cbom":
+            cbom = build_cbom(results, pqc=job.crypto == "pqc")
+            with open(job.csv_filename, "w", encoding="utf-8") as file:
                 json.dump(cbom, file, indent=2)
                 file.write("\n")
         else:
             csv_headers, csv_rows = build_csv_export(
-                results, args, scan_timestamp
+                results, job, scan_timestamp
             )
-            with open(args.csv_filename, "w", newline="") as file:
+            with open(job.csv_filename, "w", newline="") as file:
                 writer = csv.writer(file)
                 writer.writerow(csv_headers)
                 writer.writerows(csv_rows)
-        print(f"\nResults have been saved to {args.csv_filename}")
+        print(f"\nResults have been saved to {job.csv_filename}")
 
     return 0
 

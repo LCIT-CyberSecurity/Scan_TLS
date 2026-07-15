@@ -99,6 +99,32 @@ class ExportArgumentTests(unittest.TestCase):
             scanner.parse_args()
 
 
+class ScanJobTests(unittest.TestCase):
+    @patch(
+        "Scan_nmap_TLS3.sys.argv",
+        [
+            "Scan_nmap_TLS3.py",
+            "-i",
+            "-c",
+            "pqc",
+            "-p",
+            "443,8443",
+            "192.0.2.10",
+            "-e",
+            "results.cbom.json",
+        ],
+    )
+    def test_builds_scan_job_from_cli_arguments(self):
+        job = scanner.build_cli_scan_job(scanner.parse_args())
+
+        self.assertEqual(job.targets, "192.0.2.10")
+        self.assertEqual(job.ports, "443,8443")
+        self.assertEqual(job.crypto, "pqc")
+        self.assertTrue(job.ip)
+        self.assertEqual(job.csv_filename, "results.cbom.json")
+        self.assertEqual(job.export_format, "cbom")
+
+
 class CsvExportTests(unittest.TestCase):
     def test_appends_scan_timestamp_and_parameters(self):
         args = SimpleNamespace(
