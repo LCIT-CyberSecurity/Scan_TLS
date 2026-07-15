@@ -2,23 +2,33 @@ import argparse
 import csv
 import ipaddress
 import json
+import logging
 import re
 import shutil
 import socket
 import subprocess
 import sys
 import threading
+import time
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
+from pathlib import Path
 
 
+DEFAULT_LOG_FILE = "logs/scan.log"
 MINIMUM_PQC_OPENSSL_VERSION = (3, 5, 0)
 PQC_TLS_GROUPS = (
     "X25519MLKEM768",
     "SecP256r1MLKEM768",
     "SecP384r1MLKEM1024",
 )
+LOG_LEVELS = {
+    "debug": logging.DEBUG,
+    "info": logging.INFO,
+    "warning": logging.WARNING,
+    "error": logging.ERROR,
+}
 
 STARTUP_BANNER = """
 ┌──[ TLS_SCAN ]────────────────────────────────────────────┐
@@ -43,6 +53,9 @@ class ScanJob:
     csv_filename: str | None = None
     export_format: str | None = None
     pqc_groups: tuple[str, ...] = ()
+    log_level: str = "info"
+    log_file: str | None = DEFAULT_LOG_FILE
+    scan_run_id: str = ""
 
 
 def print_startup_banner():
@@ -85,6 +98,23 @@ def parse_args():
         help="export results to .csv or CycloneDX .cbom.json",
     )
     parser.add_argument(
+        "--log-level",
+        choices=sorted(LOG_LEVELS),
+        default="info",
+        help="log verbosity for scan diagnostics (default: info)",
+    )
+    parser.add_argument(
+        "--log-file",
+        default=DEFAULT_LOG_FILE,
+        metavar="FILENAME",
+        help=f"write scan diagnostics to this file (default: {DEFAULT_LOG_FILE})",
+    )
+    parser.add_argument(
+        "--no-log-file",
+        action="store_true",
+        help="disable file logging for this run",
+    )
+    parser.add_argument(
         "targets",
         help="comma-separated FQDNs, IP addresses, or subnets",
     )
@@ -120,7 +150,41 @@ def build_cli_scan_job(args):
         ip=getattr(args, "ip", False),
         csv_filename=getattr(args, "csv_filename", None),
         export_format=getattr(args, "export_format", None),
+        log_level=getattr(args, "log_level", "info"),
+        log_file=(
+            None
+            if getattr(args, "no_log_file", False)
+            else getattr(args, "log_file", DEFAULT_LOG_FILE)
+        ),
     )
+
+
+def configure_logging(job):
+    logger = logging.getLogger("tls_scan")
+    for handler in logger.handlers[:]:
+        logger.removeHandler(handler)
+        handler.close()
+    logger.setLevel(LOG_LEVELS[job.log_level])
+    logger.propagate = False
+
+    if job.log_file is None:
+        logger.addHandler(logging.NullHandler())
+        return logging.LoggerAdapter(logger, {"scan_run_id": job.scan_run_id})
+
+    log_path = Path(job.log_file)
+    if log_path.parent != Path("."):
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+
+    handler = logging.FileHandler(log_path, encoding="utf-8")
+    handler.setLevel(LOG_LEVELS[job.log_level])
+    formatter = logging.Formatter(
+        "%(asctime)s %(levelname)s run_id=%(scan_run_id)s %(message)s",
+        datefmt="%Y-%m-%dT%H:%M:%SZ",
+    )
+    formatter.converter = time.gmtime
+    handler.setFormatter(formatter)
+    logger.addHandler(handler)
+    return logging.LoggerAdapter(logger, {"scan_run_id": job.scan_run_id})
 
 
 def parse_openssl_version(version_output):
@@ -897,13 +961,32 @@ def build_cbom(results, pqc=False):
 def main():
     cli_args = parse_args()
     job = build_cli_scan_job(cli_args)
+    job.scan_run_id = str(uuid.uuid4())
+    scan_start = time.monotonic()
+    try:
+        logger = configure_logging(job)
+    except OSError as error:
+        print(f"Unable to configure logging: {error}", file=sys.stderr)
+        return 1
+
     scan_timestamp = (
         datetime.now(timezone.utc).isoformat(timespec="seconds")
         .replace("+00:00", "Z")
     )
     print_startup_banner()
     targets = normalize_targets(job.targets)
+    logger.info(
+        "scan_start targets=%s ports=%s crypto=%s dns=%s log_level=%s log_file=%s export=%s",
+        targets,
+        job.ports,
+        job.crypto,
+        "disabled" if job.ip else "enabled",
+        job.log_level,
+        job.log_file or "disabled",
+        job.csv_filename or "none",
+    )
     if not targets:
+        logger.error("scan_failed reason=missing_targets")
         print("At least one target is required.")
         return 1
 
@@ -911,23 +994,33 @@ def main():
         try:
             openssl_version, job.pqc_groups = check_pqc_prerequisites()
         except PQCPrerequisiteError as error:
+            logger.error("pqc_preflight_failed error=%s", error)
             print(error, file=sys.stderr)
             return 2
+        logger.info(
+            "pqc_preflight_passed openssl_version=%s groups=%s",
+            openssl_version,
+            ",".join(job.pqc_groups),
+        )
         print(f"PQC preflight check passed: {openssl_version}")
         print("Compliance criterion: POST-QUANTUM")
 
     nmap, PrettyTable, tqdm = load_dependencies()
+    logger.info("dependencies_loaded")
     print("Initializing TLS information scan...")
     results = []
     findings = {}
     fqdn_cache = resolve_target_fqdns(targets)
+    logger.debug("fqdn_cache_entries=%s", len(fqdn_cache))
     tls_arguments = (
         "-sV --version-light --script ssl-cert,ssl-enum-ciphers"
     )
+    logger.debug("tls_scan_arguments=%s", tls_arguments)
 
     # Discovery modes first identify open ports, then run TLS scripts on them.
     if job.ports in ["fast", "all"]:
         scan_label = "common" if job.ports == "fast" else "all"
+        logger.info("port_discovery_start mode=%s targets=%s", job.ports, targets)
         print(f"Discovering open TCP ports ({scan_label} ports)...")
         open_ports = discover_open_tcp_ports(
             nmap,
@@ -935,9 +1028,20 @@ def main():
             targets,
             job.ports,
         )
+        discovered_count = sum(len(ports) for ports in open_ports.values())
+        logger.info(
+            "port_discovery_done hosts=%s open_ports=%s",
+            len(open_ports),
+            discovered_count,
+        )
         progress = tqdm(total=len(open_ports), desc="Scanning hosts")
         for host, ports in open_ports.items():
             scanner = nmap.PortScanner()
+            logger.info(
+                "tls_scan_start host=%s ports=%s",
+                host,
+                ",".join(str(port) for port in ports),
+            )
             run_scan_with_progress(
                 scanner,
                 tqdm,
@@ -953,10 +1057,12 @@ def main():
                 findings,
                 fqdn_cache,
             )
+            logger.info("tls_scan_done host=%s", host)
             progress.update(1)
         progress.close()
     else:
         scanner = nmap.PortScanner()
+        logger.info("tls_scan_start targets=%s ports=%s", targets, job.ports)
         run_scan_with_progress(
             scanner,
             tqdm,
@@ -972,10 +1078,13 @@ def main():
             findings,
             fqdn_cache,
         )
+        logger.info("tls_scan_done targets=%s ports=%s", targets, job.ports)
 
     apply_endpoint_grades(results, findings)
+    logger.info("scan_results endpoints=%s rows=%s", len(findings), len(results))
 
     if not results:
+        logger.warning("no_tls_service_found ports=%s", job.ports)
         print(
             "\nNo TLS service found on the selected ports. "
             "Use -p fast, -p all, or specify ports with -p."
@@ -1015,8 +1124,16 @@ def main():
                 writer = csv.writer(file)
                 writer.writerow(csv_headers)
                 writer.writerows(csv_rows)
+        logger.info(
+            "export_written file=%s format=%s rows=%s",
+            job.csv_filename,
+            job.export_format or "csv",
+            len(results),
+        )
         print(f"\nResults have been saved to {job.csv_filename}")
 
+    duration_seconds = time.monotonic() - scan_start
+    logger.info("scan_end status=success duration_seconds=%.3f", duration_seconds)
     return 0
 
 

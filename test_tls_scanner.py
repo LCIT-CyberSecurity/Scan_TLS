@@ -1,4 +1,5 @@
 import socket
+import tempfile
 import unittest
 from argparse import ArgumentTypeError
 from types import SimpleNamespace
@@ -33,6 +34,38 @@ class ParsePortsTests(unittest.TestCase):
     )
     def test_accepts_pqc_crypto_criterion(self):
         self.assertEqual(scanner.parse_args().crypto, "pqc")
+
+    @patch("Scan_nmap_TLS3.sys.argv", ["Scan_nmap_TLS3.py", "192.0.2.10"])
+    def test_defaults_to_info_file_logging(self):
+        args = scanner.parse_args()
+
+        self.assertEqual(args.log_level, "info")
+        self.assertEqual(args.log_file, scanner.DEFAULT_LOG_FILE)
+        self.assertFalse(args.no_log_file)
+
+    @patch(
+        "Scan_nmap_TLS3.sys.argv",
+        [
+            "Scan_nmap_TLS3.py",
+            "--log-level",
+            "debug",
+            "--log-file",
+            "custom.log",
+            "192.0.2.10",
+        ],
+    )
+    def test_accepts_log_level_and_file(self):
+        args = scanner.parse_args()
+
+        self.assertEqual(args.log_level, "debug")
+        self.assertEqual(args.log_file, "custom.log")
+
+    @patch(
+        "Scan_nmap_TLS3.sys.argv",
+        ["Scan_nmap_TLS3.py", "--no-log-file", "192.0.2.10"],
+    )
+    def test_accepts_disabling_file_logging(self):
+        self.assertTrue(scanner.parse_args().no_log_file)
 
     def test_uses_multiple_ports_and_ranges(self):
         self.assertEqual(
@@ -109,9 +142,12 @@ class ScanJobTests(unittest.TestCase):
             "pqc",
             "-p",
             "443,8443",
-            "192.0.2.10",
             "-e",
             "results.cbom.json",
+            "--log-level",
+            "debug",
+            "--no-log-file",
+            "192.0.2.10",
         ],
     )
     def test_builds_scan_job_from_cli_arguments(self):
@@ -123,6 +159,30 @@ class ScanJobTests(unittest.TestCase):
         self.assertTrue(job.ip)
         self.assertEqual(job.csv_filename, "results.cbom.json")
         self.assertEqual(job.export_format, "cbom")
+        self.assertEqual(job.log_level, "debug")
+        self.assertIsNone(job.log_file)
+
+
+class LoggingTests(unittest.TestCase):
+    def test_configures_file_logging_with_run_id(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            log_file = f"{temp_dir}/scan.log"
+            job = scanner.ScanJob(
+                targets="192.0.2.10",
+                ports="443",
+                crypto="standard",
+                ip=False,
+                log_file=log_file,
+                scan_run_id="run-123",
+            )
+
+            logger = scanner.configure_logging(job)
+            logger.info("scan_start targets=%s", job.targets)
+
+            with open(log_file, encoding="utf-8") as file:
+                log_text = file.read()
+
+        self.assertIn("INFO run_id=run-123 scan_start targets=192.0.2.10", log_text)
 
 
 class CsvExportTests(unittest.TestCase):
@@ -641,6 +701,7 @@ class PQCPrerequisiteTests(unittest.TestCase):
         parse_args.return_value = SimpleNamespace(
             crypto="pqc",
             targets="192.0.2.10",
+            no_log_file=True,
         )
         check_prerequisites.side_effect = scanner.PQCPrerequisiteError(
             "PQC preflight check failed."
