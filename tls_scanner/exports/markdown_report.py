@@ -1,4 +1,13 @@
-"""Markdown dashboard report builder."""
+"""
+Markdown dashboard report builder.
+
+Called by:
+- `tls_scanner.exports.paths.write_exports`, when the `md` format is requested;
+- Markdown report tests.
+
+Produces:
+- a standalone Markdown report with indicators, charts, host summary, and technical details.
+"""
 
 from ..config import config_targets_to_list
 
@@ -36,6 +45,7 @@ def count_values(values):
     return counts
 
 
+# Use plain Markdown bars so the dashboard remains readable even when Mermaid is unsupported.
 def append_bar_chart(lines, title, counts):
     lines.extend([
         "",

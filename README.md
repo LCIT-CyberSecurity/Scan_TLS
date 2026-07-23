@@ -70,6 +70,8 @@ python3 Scan_nmap_TLS3.py --config config/config.yaml --report external_anssi_we
 | `--list-reports` | List configured report names and exit. |
 | `--dry-run` | Validate config, targets, policies, logging and exports without running Nmap. |
 | `-e`, `--export` | Export a CLI scan to `.csv`, CycloneDX 1.6 `.cbom.json`, or `.md`. |
+| `--policy` | Named encryption policy to enforce for CLI scans. Repeat to require multiple policies. Default: `anssi_encryption_policy`. |
+| `--policy-file` | YAML encryption policy file to enforce for CLI scans. Repeat to require multiple policy files. |
 | `-p`, `--ports` | Ports to test: one port, a list, ranges, `fast`, or `all`. Default: `fast`. |
 | `-c`, `--crypto` | Compliance profile: `standard` or `pqc` (Post-Quantum Cryptography). Default: `standard`. |
 | `-i`, `--ip` | Disable DNS resolution and leave the `FQDN` column empty. |
@@ -146,7 +148,10 @@ targets:
 Encryption policies live in `config/encryption_policy/`. Custom policies use
 the same schema as `anssi_encryption_policy.yaml`. With `strict_all`, a TLS
 finding must satisfy every configured policy. Algorithms not explicitly allowed
-by a policy are considered forbidden when policy enforcement is applied.
+by a policy are considered forbidden when policy enforcement is applied. CLI
+scans without a config file use `anssi_encryption_policy` by default; use
+repeatable `--policy` or `--policy-file` options to enforce one or more custom
+policies.
 
 Command-line values override YAML settings when they are explicitly provided.
 For example, this command keeps the configured report but scans only port

@@ -1,4 +1,13 @@
-"""Export builders for CSV, Markdown, and CycloneDX CBOM."""
+"""
+Facade for export builders.
+
+Called by:
+- package modules that need export functions from a single namespace;
+- optional external users of the package.
+
+Produces:
+- centralized imports for CSV, Markdown dashboard, CBOM, and export paths.
+"""
 
 from .cbom import build_cbom
 from .csv_export import build_csv_export

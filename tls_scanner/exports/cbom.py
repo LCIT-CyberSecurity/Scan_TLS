@@ -1,4 +1,13 @@
-"""CycloneDX CBOM export builder."""
+"""
+CycloneDX CBOM export builder.
+
+Called by:
+- `tls_scanner.exports.paths.write_exports`, when the `cbom` format is requested;
+- CBOM export tests.
+
+Produces:
+- a JSON-serializable CycloneDX dictionary describing observed cryptographic assets.
+"""
 
 import re
 import uuid
@@ -7,6 +16,7 @@ from datetime import datetime, timezone
 from ..constants import PQC_TLS_GROUPS
 
 
+# Build stable refs from asset values so repeated algorithms/keys are de-duplicated in the CBOM.
 def build_cbom(results, pqc=False):
     components = []
     algorithm_refs = {}

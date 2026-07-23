@@ -1,4 +1,14 @@
-"""YAML config loading, validation, and ScanJob construction."""
+"""
+YAML configuration loading, validation, and merge logic.
+
+Called by:
+- `tls_scanner.cli`, to build the executable `ScanJob`;
+- configuration and report-selection tests.
+
+Produces:
+- validated `ScanJob`, `TargetGroup`, and `EncryptionPolicy` objects;
+- explicit `ConfigError` exceptions for invalid configuration.
+"""
 
 import argparse
 import json
@@ -14,10 +24,13 @@ from .constants import (
     LOG_LEVELS,
     SAFE_CONFIG_NAME,
 )
+
+DEFAULT_POLICY_NAME = "anssi_encryption_policy"
 from .models import ConfigError, EncryptionPolicy, ScanJob, TargetGroup
 from .network import parse_ports
 
 
+# Keep YAML parsing at the boundary so the rest of the package works with dictionaries and domain objects.
 def load_yaml_config(config_path):
     try:
         import yaml
@@ -230,14 +243,29 @@ def load_policy_file(policy_file):
         raise ConfigError(f"policy {name} description must be a string")
 
     tls_config = require_mapping(config.get("tls"), f"policy {name}.tls")
+    tls_values = {}
     for key in ("allowed_versions", "allowed_cipher_algorithms", "allowed_signature_hashes"):
         values = tls_config.get(key)
         if not isinstance(values, list) or not values or not all(isinstance(value, str) for value in values):
             raise ConfigError(f"policy {name}.tls.{key} must be a non-empty list of strings")
+        tls_values[key] = tuple(values)
     minimum_rsa_bits = tls_config.get("minimum_rsa_bits")
     if not isinstance(minimum_rsa_bits, int) or minimum_rsa_bits < 1:
         raise ConfigError(f"policy {name}.tls.minimum_rsa_bits must be a positive integer")
-    return EncryptionPolicy(name=name, version=version, description=description, path=str(policy_file))
+    return EncryptionPolicy(
+        name=name,
+        version=version,
+        description=description,
+        path=str(policy_file),
+        allowed_versions=tls_values["allowed_versions"],
+        allowed_cipher_algorithms=tls_values["allowed_cipher_algorithms"],
+        allowed_signature_hashes=tls_values["allowed_signature_hashes"],
+        minimum_rsa_bits=minimum_rsa_bits,
+    )
+
+
+def load_default_policy():
+    return load_named_policies([DEFAULT_POLICY_NAME])[0]
 
 
 def load_named_policies(names):
@@ -291,9 +319,12 @@ def load_report_policies(report_config):
             raise ConfigError(f"duplicate encryption policy in report: {policy.name}")
         seen.add(policy.name)
         unique_policies.append(policy)
+    if not unique_policies:
+        unique_policies.append(load_default_policy())
     return mode, unique_policies
 
 
+# Convert merged config sections into one executable ScanJob; all schema validation happens here.
 def build_job_from_sections(scan_config, export_config, logging_config, targets, report_config=None):
     scan_config = require_mapping(scan_config, "scan")
     export_config = require_mapping(export_config, "export")
@@ -359,6 +390,7 @@ def build_job_from_sections(scan_config, export_config, logging_config, targets,
     )
 
 
+# Named reports inherit defaults, then override only the sections they define.
 # Merge report-level settings over defaults before creating the executable ScanJob.
 def build_config_scan_job(config, report_name=None):
     if "reports" in config:
@@ -388,12 +420,32 @@ def build_config_scan_job(config, report_name=None):
     if "targets" not in scan_config:
         raise ConfigError("scan.targets is required")
     targets = config_targets_to_list(scan_config["targets"], "scan.targets")
-    return build_job_from_sections(
+    job = build_job_from_sections(
         scan_config,
         config.get("export", {}),
         config.get("logging", {}),
         targets,
     )
+    job.policies = (load_default_policy(),)
+    return job
+
+
+def load_cli_policies(args):
+    policies = []
+    policies.extend(load_named_policies(getattr(args, "policy_names", None)))
+    for policy_file in getattr(args, "policy_files", None) or []:
+        policies.append(load_policy_file(policy_file))
+    if not policies:
+        policies.append(load_default_policy())
+
+    seen = set()
+    unique_policies = []
+    for policy in policies:
+        if policy.name in seen:
+            raise ConfigError(f"duplicate encryption policy in CLI arguments: {policy.name}")
+        seen.add(policy.name)
+        unique_policies.append(policy)
+    return tuple(unique_policies)
 
 
 def build_cli_scan_job(args):
@@ -410,6 +462,7 @@ def build_cli_scan_job(args):
             if getattr(args, "no_log_file", False)
             else getattr(args, "log_file", DEFAULT_LOG_FILE)
         ),
+        policies=load_cli_policies(args),
     )
 
 
@@ -442,6 +495,9 @@ def build_scan_job(args):
         job.log_level = args.log_level
     if getattr(args, "log_file_was_explicit", False):
         job.log_file = args.log_file
+    if getattr(args, "policy_was_explicit", False):
+        job.policies = load_cli_policies(args)
+        job.policy_mode = "strict_all"
     if getattr(args, "no_log_file", False):
         job.log_file = None
     job.dry_run = getattr(args, "dry_run", False)

@@ -1,4 +1,13 @@
-"""Shared constants for the TLS scanner package."""
+"""
+Shared constants for the TLS scanner.
+
+Called by:
+- configuration, CLI, logging, PQC, and export modules;
+- the public facade in `tls_scanner.__init__`.
+
+Produces:
+- default values, supported export formats, log levels, and common PQC settings.
+"""
 
 import logging
 import re

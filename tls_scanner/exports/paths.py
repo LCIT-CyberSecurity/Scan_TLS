@@ -1,4 +1,15 @@
-"""Export path, timestamp, and writer orchestration helpers."""
+"""
+Export path, timestamp, and file-writing orchestration.
+
+Called by:
+- `tls_scanner.cli`, after the `ScanJob` and scan results are available;
+- export path tests.
+
+Produces:
+- output file paths;
+- scan/report timestamps;
+- requested CSV, Markdown, or CBOM files.
+"""
 
 import csv
 import json
@@ -30,6 +41,7 @@ def export_extension(export_format):
     raise ConfigError(f"unsupported export format: {export_format}")
 
 
+# Reject path components in templates to prevent exports from escaping the configured directory.
 def build_export_paths(job, timestamp):
     if job.csv_filename:
         return {job.export_format or "csv": Path(job.csv_filename)}

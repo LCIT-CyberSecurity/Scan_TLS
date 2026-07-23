@@ -1,7 +1,31 @@
-"""TLS certificate, cipher, compliance, and endpoint grading logic."""
+"""
+Standard TLS cryptographic analysis and compliance grading.
+
+Called by:
+- `tls_scanner.scanner`, to evaluate each observed cipher suite;
+- `tls_scanner.cli`, to apply endpoint grades after collection;
+- TLS compliance and grading tests.
+
+Produces:
+- OK/KO compliance statuses with reasons;
+- endpoint grades;
+- certificate and cipher details extracted from Nmap script output.
+"""
 
 import re
 from datetime import datetime
+
+from .models import EncryptionPolicy
+
+DEFAULT_TLS_POLICY = EncryptionPolicy(
+    name="anssi_encryption_policy",
+    version="1.0",
+    description="ANSSI TLS encryption policy template.",
+    allowed_versions=("TLSv1.2", "TLSv1.3"),
+    allowed_cipher_algorithms=("AES-GCM", "AES-CCM", "CHACHA20-POLY1305"),
+    allowed_signature_hashes=("SHA-256", "SHA-384", "SHA-512"),
+    minimum_rsa_bits=2048,
+)
 
 
 def extract_public_key(certificate_output):
@@ -33,34 +57,83 @@ def extract_signature_algorithm(certificate_output):
     return signature_match.group(1) if signature_match else ""
 
 
-def is_cipher_suite_compliant(tls_version, cipher_suite):
-    cipher_suite = cipher_suite.upper()
-    cipher_tokens = cipher_suite.split("_")
+def normalize_algorithm_name(value):
+    return value.upper().replace("-", "_")
 
-    if any(
-        weak_token in cipher_tokens
-        for weak_token in ["NULL", "EXPORT", "RC4", "DES", "3DES", "IDEA"]
-    ):
-        return False
 
-    if "MD5" in cipher_tokens or "SHA1" in cipher_tokens:
-        return False
+def normalize_signature_name(value):
+    return value.upper().replace("-", "").replace("_", "")
 
-    if cipher_suite.endswith("_SHA"):
-        return False
 
-    accepted_encryption = any(
-        algorithm in cipher_suite
-        for algorithm in ["_GCM_", "_CCM_", "CHACHA20_POLY1305"]
-    ) or cipher_suite.endswith(("_GCM", "_CCM"))
-    accepted_encryption = accepted_encryption or "_CBC_" in cipher_suite
-    if not accepted_encryption:
-        return False
+def selected_policies(policies=None):
+    return tuple(policies or (DEFAULT_TLS_POLICY,))
 
-    if tls_version == "TLSv1.3":
+
+def cipher_matches_algorithm(cipher_suite, algorithm):
+    normalized_cipher = normalize_algorithm_name(cipher_suite)
+    normalized_algorithm = normalize_algorithm_name(algorithm)
+    if normalized_algorithm == "AES_GCM":
+        return "AES" in normalized_cipher and "GCM" in normalized_cipher
+    if normalized_algorithm == "AES_CCM":
+        return "AES" in normalized_cipher and "CCM" in normalized_cipher
+    if normalized_algorithm == "CHACHA20_POLY1305":
+        return "CHACHA20_POLY1305" in normalized_cipher
+    return normalized_algorithm in normalized_cipher
+
+
+def signature_matches_hash(signature_algorithm, allowed_hash):
+    normalized_signature = normalize_signature_name(signature_algorithm)
+    normalized_hash = normalize_signature_name(allowed_hash)
+    return normalized_hash in normalized_signature
+
+def cipher_suite_hashes(cipher_suite):
+    hashes = []
+    for token in normalize_algorithm_name(cipher_suite).split("_"):
+        if token in {"MD5", "SHA", "SHA1", "SHA224", "SHA256", "SHA384", "SHA512"}:
+            hashes.append("SHA1" if token == "SHA" else token)
+    return tuple(hashes)
+
+
+def cipher_suite_hash_allowed(cipher_suite, policy):
+    hashes = cipher_suite_hashes(cipher_suite)
+    if not hashes:
         return True
+    return all(
+        any(normalize_signature_name(cipher_hash) == normalize_signature_name(allowed_hash)
+            for allowed_hash in policy.allowed_signature_hashes)
+        for cipher_hash in hashes
+    )
 
-    return cipher_suite.startswith(("TLS_ECDHE_", "TLS_DHE_", "TLS_RSA_"))
+
+def policy_allows_cipher_suite(tls_version, cipher_suite, policy):
+    if tls_version not in policy.allowed_versions:
+        return False, "TLS version"
+    if not cipher_suite_hash_allowed(cipher_suite, policy):
+        if any(cipher_hash in {"SHA1", "MD5"} for cipher_hash in cipher_suite_hashes(cipher_suite)):
+            return False, "SHA-1"
+        return False, "Signature hash"
+    if not any(
+        cipher_matches_algorithm(cipher_suite, algorithm)
+        for algorithm in policy.allowed_cipher_algorithms
+    ):
+        return False, "Cipher suite"
+    return True, ""
+
+
+def policy_allows_signature(signature_algorithm, policy):
+    if not signature_algorithm:
+        return True
+    return any(
+        signature_matches_hash(signature_algorithm, allowed_hash)
+        for allowed_hash in policy.allowed_signature_hashes
+    )
+
+
+def is_cipher_suite_compliant(tls_version, cipher_suite, policies=None):
+    return all(
+        policy_allows_cipher_suite(tls_version, cipher_suite, policy)[0]
+        for policy in selected_policies(policies)
+    )
 
 
 def extract_cipher_suites(cipher_output):
@@ -84,6 +157,7 @@ def check_compliance(
     certificate_output,
     public_key_type,
     public_key_bits,
+    policies=None,
 ):
     compliance, _ = evaluate_compliance(
         tls_version,
@@ -92,10 +166,12 @@ def check_compliance(
         certificate_output,
         public_key_type,
         public_key_bits,
+        policies,
     )
     return compliance
 
 
+# Return the first failing compliance reason; this keeps remediation messages actionable.
 def evaluate_compliance(
     tls_version,
     cipher_suite,
@@ -103,34 +179,25 @@ def evaluate_compliance(
     certificate_output,
     public_key_type,
     public_key_bits,
+    policies=None,
 ):
     signature_algorithm = extract_signature_algorithm(certificate_output)
-    security_details = f"{cipher_suite} {signature_algorithm}".upper()
-    normalized_details = security_details.replace("-", "").replace("_", "")
-    cipher_tokens = cipher_suite.upper().split("_")
+    policies = selected_policies(policies)
 
-    if "MD5" in normalized_details:
-        return "KO", "MD5"
-
-    if "SHA1" in normalized_details or cipher_suite.upper().endswith("_SHA"):
-        return "KO", "SHA-1"
-
-    if tls_version not in ["TLSv1.2", "TLSv1.3"]:
-        return "KO", "TLS version"
-
-    if any(
-        token in cipher_tokens
-        for token in ["NULL", "EXPORT", "RC4", "DES", "3DES", "IDEA"]
-    ):
-        return "KO", "Weak cipher"
-
-    if not is_cipher_suite_compliant(tls_version, cipher_suite):
-        return "KO", "Cipher suite"
-
-    if public_key_type == "RSA" and (
-        public_key_bits is None or public_key_bits < 2048
-    ):
-        return "KO", "RSA key size"
+    for policy in policies:
+        cipher_allowed, reason = policy_allows_cipher_suite(
+            tls_version,
+            cipher_suite,
+            policy,
+        )
+        if not cipher_allowed:
+            return "KO", reason
+        if not policy_allows_signature(signature_algorithm, policy):
+            return "KO", "Signature hash"
+        if public_key_type == "RSA" and (
+            public_key_bits is None or public_key_bits < policy.minimum_rsa_bits
+        ):
+            return "KO", "RSA key size"
 
     try:
         cert_expiry_date = datetime.strptime(cert_validity, "%Y-%m-%d")
@@ -143,6 +210,7 @@ def evaluate_compliance(
     return "OK", ""
 
 
+# Endpoint grading is intentionally stricter than per-row compliance and uses the weakest observed signal.
 def grade_finding(finding):
     tls_version = finding["tls_version"]
     cipher_suite = finding["cipher_suite"].upper()

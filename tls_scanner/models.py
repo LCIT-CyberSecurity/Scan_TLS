@@ -1,4 +1,14 @@
-"""Domain models and package-level exceptions."""
+"""
+Domain models and package-level exceptions.
+
+Called by:
+- configuration, CLI, export, and test modules;
+- the public facade in `tls_scanner.__init__`.
+
+Produces:
+- the `ScanJob`, `TargetGroup`, and `EncryptionPolicy` dataclasses;
+- the domain exceptions `ConfigError` and `PQCPrerequisiteError`.
+"""
 
 from dataclasses import dataclass
 
@@ -27,6 +37,10 @@ class EncryptionPolicy:
     version: str = ""
     description: str = ""
     path: str = ""
+    allowed_versions: tuple[str, ...] = ()
+    allowed_cipher_algorithms: tuple[str, ...] = ()
+    allowed_signature_hashes: tuple[str, ...] = ()
+    minimum_rsa_bits: int = 2048
 
 
 @dataclass

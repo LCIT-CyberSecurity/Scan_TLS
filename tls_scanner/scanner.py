@@ -1,4 +1,14 @@
-"""Nmap execution and transformation of raw script output into result rows."""
+"""
+Nmap execution and transformation of TLS script output into structured results.
+
+Called by:
+- `tls_scanner.cli`, to run port discovery and TLS scans;
+- scan and progress tests.
+
+Produces:
+- result rows ready for terminal display and exports;
+- per-endpoint findings later used for grading.
+"""
 
 import sys
 import threading
@@ -52,6 +62,7 @@ def run_scan_with_progress(scanner, tqdm, description, **scan_options):
         raise scan_error[0]
 
 
+# Discovery modes reduce TLS scan time by probing only ports Nmap reports as open.
 def discover_open_tcp_ports(nmap, tqdm, targets, mode):
     scanner = nmap.PortScanner()
     scan_options = {
@@ -140,6 +151,7 @@ def collect_scan_results(scanner, args, results, findings, fqdn_cache):
                         certificate_output,
                         public_key_type,
                         public_key_bits,
+                        args.policies,
                     )
                 finding = {
                     "tls_version": tls_version,

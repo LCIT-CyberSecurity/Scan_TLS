@@ -1,4 +1,16 @@
-"""Post-quantum TLS prerequisite checks and PQC compliance helpers."""
+"""
+OpenSSL prerequisites and post-quantum TLS compliance checks.
+
+Called by:
+- `tls_scanner.cli`, before a scan in PQC mode;
+- `tls_scanner.scanner`, to probe the negotiated TLS group;
+- PQC tests.
+
+Produces:
+- a validated OpenSSL version;
+- available PQC groups;
+- OK/KO statuses for the post-quantum compliance criterion.
+"""
 
 import re
 import shutil
@@ -15,6 +27,7 @@ def parse_openssl_version(version_output):
     return tuple(int(part) for part in match.groups())
 
 
+# PQC mode depends on a recent OpenSSL build and at least one supported hybrid TLS group.
 def check_pqc_prerequisites():
     if shutil.which("openssl") is None:
         raise PQCPrerequisiteError(
@@ -92,6 +105,7 @@ def format_openssl_endpoint(host, port):
     return f"{host}:{port}"
 
 
+# Probe groups one by one because OpenSSL reports the negotiated group only after a real handshake.
 def probe_pqc_key_exchange(host, port, server_name, groups=PQC_TLS_GROUPS):
     endpoint = format_openssl_endpoint(host, port)
     for group in groups:

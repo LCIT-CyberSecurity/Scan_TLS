@@ -1,4 +1,13 @@
-"""Public API for the TLS scanner package."""
+"""
+Public facade for the `tls_scanner` package.
+
+Called by:
+- `Scan_nmap_TLS3.py`, to preserve historical imports from the former monolithic script;
+- tests and external scripts that still import the public API from the package.
+
+Produces:
+- a centralized API that re-exports the useful functions, models, and constants.
+"""
 
 from .cli import has_cli_option, main, parse_args, print_dry_run, print_startup_banner
 from .config import (
@@ -10,6 +19,8 @@ from .config import (
     config_targets_to_list,
     detect_export_format,
     list_config_reports,
+    load_cli_policies,
+    load_default_policy,
     load_named_policies,
     load_named_target_groups,
     load_policy_file,

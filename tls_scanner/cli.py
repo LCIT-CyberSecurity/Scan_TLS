@@ -1,4 +1,15 @@
-"""Command-line interface and top-level scan orchestration."""
+"""
+Command-line interface and top-level TLS scan orchestration.
+
+Called by:
+- `Scan_nmap_TLS3.py`, which remains the root entry point;
+- CLI tests that validate parsing, dry-run behavior, and the main execution flow.
+
+Produces:
+- a CLI return code;
+- readable terminal output;
+- optional exports through `tls_scanner.exports` modules.
+"""
 
 import argparse
 import sys
@@ -52,6 +63,7 @@ def print_startup_banner():
     print(STARTUP_BANNER)
 
 
+# Parse CLI flags first, then record which values were explicit so they can override YAML config.
 def parse_args():
     raw_args = sys.argv[1:]
     parser = argparse.ArgumentParser(
@@ -112,6 +124,20 @@ def parse_args():
         help="export results to .csv, CycloneDX .cbom.json, or .md",
     )
     parser.add_argument(
+        "--policy",
+        dest="policy_names",
+        action="append",
+        metavar="NAME",
+        help="named encryption policy to enforce; repeat to require multiple policies",
+    )
+    parser.add_argument(
+        "--policy-file",
+        dest="policy_files",
+        action="append",
+        metavar="FILENAME",
+        help="YAML encryption policy file to enforce; repeat to require multiple policies",
+    )
+    parser.add_argument(
         "--log-level",
         choices=sorted(LOG_LEVELS),
         default="info",
@@ -147,6 +173,7 @@ def parse_args():
     args.log_level_was_explicit = has_cli_option(raw_args, "--log-level")
     args.log_file_was_explicit = has_cli_option(raw_args, "--log-file")
     args.report_was_explicit = has_cli_option(raw_args, "--report")
+    args.policy_was_explicit = has_cli_option(raw_args, "--policy", "--policy-file")
 
     explicit_export = args.export_filename
     if explicit_export and args.csv_filename:
@@ -193,6 +220,7 @@ def print_dry_run(job, export_paths):
             print(f"- {path}")
 
 
+# Main deliberately stays as orchestration: build job, run scan, grade, display, export.
 def main():
     cli_args = parse_args()
     try:

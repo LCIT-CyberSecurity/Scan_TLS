@@ -1,4 +1,16 @@
-"""Target, port, and DNS helpers used before and during scans."""
+"""
+Target normalization, port parsing, and DNS resolution helpers.
+
+Called by:
+- `tls_scanner.cli`, to prepare scan targets;
+- `tls_scanner.config`, to validate configured ports;
+- `tls_scanner.scanner`, to enrich results with FQDN values.
+
+Produces:
+- normalized target strings/lists;
+- validated port selections;
+- IP-to-FQDN mappings used during result collection.
+"""
 
 import argparse
 import ipaddress

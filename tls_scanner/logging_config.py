@@ -1,4 +1,13 @@
-"""Logging setup for scan diagnostics."""
+"""
+Application logging configuration.
+
+Called by:
+- `tls_scanner.cli`, when a scan or dry-run starts;
+- logging tests.
+
+Produces:
+- a configured `tls_scan` logger with level, format, run ID, and optional file output.
+"""
 
 import logging
 import time

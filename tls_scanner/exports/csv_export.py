@@ -1,4 +1,14 @@
-"""CSV export builder."""
+"""
+CSV export builder.
+
+Called by:
+- `tls_scanner.exports.paths.write_exports`, when the `csv` format is requested;
+- CSV export tests.
+
+Produces:
+- one CSV header row;
+- scan result rows enriched with scan metadata.
+"""
 
 
 def build_csv_export(results, args, scan_timestamp):

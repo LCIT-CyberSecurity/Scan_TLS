@@ -69,6 +69,23 @@ class ParsePortsTests(unittest.TestCase):
 
     @patch(
         "Scan_nmap_TLS3.sys.argv",
+        [
+            "Scan_nmap_TLS3.py",
+            "--policy",
+            "anssi_encryption_policy",
+            "--policy",
+            "custom_policy",
+            "192.0.2.10",
+        ],
+    )
+    def test_accepts_multiple_cli_policies(self):
+        args = scanner.parse_args()
+
+        self.assertEqual(args.policy_names, ["anssi_encryption_policy", "custom_policy"])
+        self.assertTrue(args.policy_was_explicit)
+
+    @patch(
+        "Scan_nmap_TLS3.sys.argv",
         ["Scan_nmap_TLS3.py", "--no-log-file", "192.0.2.10"],
     )
     def test_accepts_disabling_file_logging(self):
@@ -168,6 +185,7 @@ class ScanJobTests(unittest.TestCase):
         self.assertEqual(job.export_format, "cbom")
         self.assertEqual(job.log_level, "debug")
         self.assertIsNone(job.log_file)
+        self.assertEqual(job.policies[0].name, "anssi_encryption_policy")
 
 
 class ConfigTests(unittest.TestCase):
@@ -853,7 +871,7 @@ SHA-1: 11:22:33
 
         self.assertEqual(result, "OK")
 
-    def test_accepts_cbc_cipher_with_sha384(self):
+    def test_rejects_cbc_cipher_with_sha384_by_default_anssi_policy(self):
         result = scanner.check_compliance(
             "TLSv1.2",
             "TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384",
@@ -863,9 +881,9 @@ SHA-1: 11:22:33
             3072,
         )
 
-        self.assertEqual(result, "OK")
+        self.assertEqual(result, "KO")
 
-    def test_accepts_dhe_cbc_cipher_with_sha256(self):
+    def test_rejects_dhe_cbc_cipher_with_sha256_by_default_anssi_policy(self):
         result = scanner.check_compliance(
             "TLSv1.2",
             "TLS_DHE_RSA_WITH_AES_256_CBC_SHA256",
@@ -875,7 +893,7 @@ SHA-1: 11:22:33
             3072,
         )
 
-        self.assertEqual(result, "OK")
+        self.assertEqual(result, "KO")
 
     def test_rejects_cbc_cipher_with_sha1(self):
         result = scanner.check_compliance(
@@ -901,7 +919,7 @@ SHA-1: 11:22:33
 
         self.assertEqual(result, "OK")
 
-    def test_accepts_static_rsa_with_cbc_and_sha256(self):
+    def test_rejects_static_rsa_with_cbc_and_sha256_by_default_anssi_policy(self):
         result = scanner.check_compliance(
             "TLSv1.2",
             "TLS_RSA_WITH_AES_256_CBC_SHA256",
@@ -911,7 +929,7 @@ SHA-1: 11:22:33
             3072,
         )
 
-        self.assertEqual(result, "OK")
+        self.assertEqual(result, "KO")
 
     def test_returns_short_csv_reason_for_ko(self):
         result = scanner.evaluate_compliance(
@@ -928,7 +946,7 @@ SHA-1: 11:22:33
     def test_returns_empty_csv_reason_for_ok(self):
         result = scanner.evaluate_compliance(
             "TLSv1.2",
-            "TLS_RSA_WITH_AES_256_CBC_SHA256",
+            "TLS_RSA_WITH_AES_256_GCM_SHA384",
             "2099-01-01",
             "",
             "RSA",
