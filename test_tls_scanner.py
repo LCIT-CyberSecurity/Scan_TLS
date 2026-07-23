@@ -32,6 +32,22 @@ class ParsePortsTests(unittest.TestCase):
         self.assertEqual(scanner.parse_args().ports, "fast")
 
     @patch("Scan_nmap_TLS3.sys.argv", ["Scan_nmap_TLS3.py", "192.0.2.10"])
+    def test_defaults_to_four_workers(self):
+        self.assertEqual(scanner.parse_args().workers, 4)
+
+    @patch("Scan_nmap_TLS3.sys.argv", ["Scan_nmap_TLS3.py", "--workers", "8", "192.0.2.10"])
+    def test_accepts_workers(self):
+        args = scanner.parse_args()
+
+        self.assertEqual(args.workers, 8)
+        self.assertTrue(args.workers_was_explicit)
+
+    @patch("Scan_nmap_TLS3.sys.argv", ["Scan_nmap_TLS3.py", "--workers", "0", "192.0.2.10"])
+    def test_rejects_workers_below_minimum(self):
+        with self.assertRaises(SystemExit):
+            scanner.parse_args()
+
+    @patch("Scan_nmap_TLS3.sys.argv", ["Scan_nmap_TLS3.py", "192.0.2.10"])
     def test_defaults_to_standard_crypto_criterion(self):
         self.assertEqual(scanner.parse_args().crypto, "standard")
 
@@ -179,6 +195,7 @@ class ScanJobTests(unittest.TestCase):
 
         self.assertEqual(job.targets, "192.0.2.10")
         self.assertEqual(job.ports, "443,8443")
+        self.assertEqual(job.workers, 4)
         self.assertEqual(job.crypto, "pqc")
         self.assertTrue(job.ip)
         self.assertEqual(job.csv_filename, "results.cbom.json")
@@ -208,6 +225,7 @@ scan:
     - 192.0.2.10
     - host.example
   ports: 443,8443
+  workers: 6
   crypto: standard
   resolve_dns: false
 export:
@@ -229,6 +247,7 @@ logging:
 
         self.assertEqual(job.targets, "192.0.2.10,host.example")
         self.assertEqual(job.ports, "443,8443")
+        self.assertEqual(job.workers, 6)
         self.assertEqual(job.crypto, "standard")
         self.assertTrue(job.ip)
         self.assertEqual(job.csv_filename, "results.csv")
@@ -738,6 +757,69 @@ class FakeTqdm:
 
 
 # Progress display lifecycle and background scan error propagation.
+class ParallelScanTests(unittest.TestCase):
+    def test_parallel_tls_scan_uses_one_scanner_per_host_and_stable_order(self):
+        class FakePortScanner:
+            def __init__(self):
+                self.scan_call = None
+                self.host_data = {}
+
+            def scan(self, **kwargs):
+                self.scan_call = kwargs
+                host = kwargs["hosts"]
+                self.host_data = {
+                    host: {
+                        "tcp": {
+                            443: {
+                                "state": "open",
+                                "script": {
+                                    "ssl-cert": "Not valid after: 2099-01-01T00:00:00",
+                                    "ssl-enum-ciphers": "TLSv1.3:\n  TLS_AES_256_GCM_SHA384",
+                                },
+                            }
+                        }
+                    }
+                }
+
+            def all_hosts(self):
+                return list(self.host_data)
+
+            def __getitem__(self, host):
+                return self.host_data[host]
+
+        scanners = []
+
+        class FakeNmap:
+            @staticmethod
+            def PortScanner():
+                fake_scanner = FakePortScanner()
+                scanners.append(fake_scanner)
+                return fake_scanner
+
+        job = scanner.ScanJob(
+            targets="192.0.2.11,192.0.2.10",
+            ports="fast",
+            crypto="standard",
+            ip=True,
+            workers=2,
+        )
+        logger = Mock()
+
+        results, findings = scanner.scan_tls_hosts_parallel(
+            FakeNmap,
+            FakeTqdm,
+            {"192.0.2.11": [443], "192.0.2.10": [443]},
+            job,
+            {},
+            "-sV --script ssl-cert,ssl-enum-ciphers",
+            logger,
+        )
+
+        self.assertEqual([row[0] for row in results], ["192.0.2.10", "192.0.2.11"])
+        self.assertEqual(set(findings), {("192.0.2.10", 443), ("192.0.2.11", 443)})
+        self.assertEqual(len(scanners), 2)
+
+
 class ScanProgressTests(unittest.TestCase):
     def test_runs_scan_and_closes_progress_bar(self):
         class FakeScanner:

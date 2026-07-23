@@ -12,7 +12,7 @@ Produces:
 
 from dataclasses import dataclass
 
-from .constants import DEFAULT_EXPORT_DIR, DEFAULT_LOG_FILE
+from .constants import DEFAULT_EXPORT_DIR, DEFAULT_LOG_FILE, DEFAULT_WORKERS
 
 
 class PQCPrerequisiteError(RuntimeError):
@@ -64,3 +64,4 @@ class ScanJob:
     export_formats: tuple[str, ...] = ()
     filename_template: str = "{timestamp}_{report_name}"
     dry_run: bool = False
+    workers: int = DEFAULT_WORKERS

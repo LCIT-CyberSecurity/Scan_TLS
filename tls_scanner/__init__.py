@@ -31,6 +31,7 @@ from .config import (
     merge_mappings,
     parse_ports_config,
     require_mapping,
+    validate_workers,
     select_config_report,
     validate_config_name,
 )
@@ -41,7 +42,9 @@ from .constants import (
     DEFAULT_LOG_FILE,
     DEFAULT_POLICIES_DIR,
     DEFAULT_TARGETS_DIR,
+    DEFAULT_WORKERS,
     LOG_LEVELS,
+    MAX_WORKERS,
     MINIMUM_PQC_OPENSSL_VERSION,
     PQC_TLS_GROUPS,
     SAFE_CONFIG_NAME,
@@ -86,4 +89,11 @@ from .pqc import (
     parse_openssl_version,
     probe_pqc_key_exchange,
 )
-from .scanner import collect_scan_results, discover_open_tcp_ports, load_dependencies, run_scan_with_progress
+from .scanner import (
+    collect_scan_results,
+    discover_open_tcp_ports,
+    load_dependencies,
+    run_scan_with_progress,
+    scan_tls_host,
+    scan_tls_hosts_parallel,
+)

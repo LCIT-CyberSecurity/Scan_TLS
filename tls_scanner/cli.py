@@ -21,16 +21,23 @@ from .config import (
     build_config_scan_job,
     build_scan_job,
     list_config_reports,
+    validate_workers,
     load_yaml_config,
 )
-from .constants import DEFAULT_CONFIG_FILE, DEFAULT_LOG_FILE, LOG_LEVELS
+from .constants import DEFAULT_CONFIG_FILE, DEFAULT_LOG_FILE, DEFAULT_WORKERS, LOG_LEVELS, MAX_WORKERS
 from .crypto_policy import apply_endpoint_grades
 from .exports.paths import build_export_paths, local_report_timestamp, local_scan_timestamp, write_exports
 from .logging_config import configure_logging
 from .models import ConfigError, PQCPrerequisiteError
 from .network import normalize_targets, parse_ports, resolve_target_fqdns
 from .pqc import check_pqc_prerequisites
-from .scanner import collect_scan_results, discover_open_tcp_ports, load_dependencies, run_scan_with_progress
+from .scanner import (
+    collect_scan_results,
+    discover_open_tcp_ports,
+    load_dependencies,
+    run_scan_with_progress,
+    scan_tls_hosts_parallel,
+)
 
 
 STARTUP_BANNER = """
@@ -61,6 +68,17 @@ def has_cli_option(raw_args, *names):
 
 def print_startup_banner():
     print(STARTUP_BANNER)
+
+
+def parse_workers(value):
+    try:
+        workers = int(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("--workers must be an integer") from error
+    try:
+        return validate_workers(workers, "--workers")
+    except ConfigError as error:
+        raise argparse.ArgumentTypeError(str(error)) from error
 
 
 # Parse CLI flags first, then record which values were explicit so they can override YAML config.
@@ -117,6 +135,13 @@ def parse_args():
         ),
     )
     parser.add_argument(
+        "--workers",
+        default=DEFAULT_WORKERS,
+        type=parse_workers,
+        metavar="COUNT",
+        help=f"parallel TLS host scans, from 1 to {MAX_WORKERS} (default: {DEFAULT_WORKERS})",
+    )
+    parser.add_argument(
         "-e",
         "--export",
         dest="export_filename",
@@ -168,6 +193,7 @@ def parse_args():
     args.config_was_explicit = has_cli_option(raw_args, "--config")
     args.crypto_was_explicit = has_cli_option(raw_args, "-c", "--crypto")
     args.ports_was_explicit = has_cli_option(raw_args, "-p", "--ports")
+    args.workers_was_explicit = has_cli_option(raw_args, "--workers")
     args.ip_was_explicit = has_cli_option(raw_args, "-i", "--ip")
     args.export_was_explicit = has_cli_option(raw_args, "-e", "--export")
     args.log_level_was_explicit = has_cli_option(raw_args, "--log-level")
@@ -204,6 +230,7 @@ def print_dry_run(job, export_paths):
         for group in job.target_groups:
             print(f"- {group.name} ({len(group.targets)} targets)")
     print(f"Ports: {job.ports}")
+    print(f"Workers: {job.workers}")
     print(f"Crypto profile: {job.crypto}")
     print(f"DNS resolution: {'disabled' if job.ip else 'enabled'}")
     print(f"Log level: {job.log_level}")
@@ -256,9 +283,10 @@ def main():
     print_startup_banner()
     targets = normalize_targets(job.targets)
     logger.info(
-        "scan_start targets=%s ports=%s crypto=%s dns=%s log_level=%s log_file=%s export=%s",
+        "scan_start targets=%s ports=%s workers=%s crypto=%s dns=%s log_level=%s log_file=%s export=%s",
         targets,
         job.ports,
+        job.workers,
         job.crypto,
         "disabled" if job.ip else "enabled",
         job.log_level,
@@ -314,32 +342,16 @@ def main():
             len(open_ports),
             discovered_count,
         )
-        progress = tqdm(total=len(open_ports), desc="Scanning hosts")
-        for host, ports in open_ports.items():
-            scanner = nmap.PortScanner()
-            logger.info(
-                "tls_scan_start host=%s ports=%s",
-                host,
-                ",".join(str(port) for port in ports),
-            )
-            run_scan_with_progress(
-                scanner,
-                tqdm,
-                f"TLS scan {host}",
-                hosts=host,
-                ports=",".join(str(port) for port in ports),
-                arguments=tls_arguments,
-            )
-            collect_scan_results(
-                scanner,
-                job,
-                results,
-                findings,
-                fqdn_cache,
-            )
-            logger.info("tls_scan_done host=%s", host)
-            progress.update(1)
-        progress.close()
+        print(f"Scanning TLS services with {job.workers} worker(s)...")
+        results, findings = scan_tls_hosts_parallel(
+            nmap,
+            tqdm,
+            open_ports,
+            job,
+            fqdn_cache,
+            tls_arguments,
+            logger,
+        )
     else:
         scanner = nmap.PortScanner()
         logger.info("tls_scan_start targets=%s ports=%s", targets, job.ports)

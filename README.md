@@ -72,6 +72,7 @@ python3 Scan_nmap_TLS3.py --config config/config.yaml --report external_anssi_we
 | `-e`, `--export` | Export a CLI scan to `.csv`, CycloneDX 1.6 `.cbom.json`, or `.md`. |
 | `--policy` | Named encryption policy to enforce for CLI scans. Repeat to require multiple policies. Default: `anssi_encryption_policy`. |
 | `--policy-file` | YAML encryption policy file to enforce for CLI scans. Repeat to require multiple policy files. |
+| `--workers` | Parallel TLS host scans, from `1` to `32`. Default: `4`; use `1` for sequential scans. |
 | `-p`, `--ports` | Ports to test: one port, a list, ranges, `fast`, or `all`. Default: `fast`. |
 | `-c`, `--crypto` | Compliance profile: `standard` or `pqc` (Post-Quantum Cryptography). Default: `standard`. |
 | `-i`, `--ip` | Disable DNS resolution and leave the `FQDN` column empty. |
@@ -104,6 +105,7 @@ Example report config:
 defaults:
   scan:
     ports: fast
+    workers: 4
     crypto: standard
     resolve_dns: true
   logging:
@@ -151,7 +153,9 @@ finding must satisfy every configured policy. Algorithms not explicitly allowed
 by a policy are considered forbidden when policy enforcement is applied. CLI
 scans without a config file use `anssi_encryption_policy` by default; use
 repeatable `--policy` or `--policy-file` options to enforce one or more custom
-policies.
+policies. Increasing `--workers` can reduce scan time, but it also increases
+concurrent TLS connections against targets; keep `--workers 1` for sensitive or
+fragile environments.
 
 Command-line values override YAML settings when they are explicitly provided.
 For example, this command keeps the configured report but scans only port

@@ -25,6 +25,9 @@ PQC_TLS_GROUPS = (
     "SecP256r1MLKEM768",
     "SecP384r1MLKEM1024",
 )
+DEFAULT_WORKERS = 4
+MAX_WORKERS = 32
+
 LOG_LEVELS = {
     "debug": logging.DEBUG,
     "info": logging.INFO,

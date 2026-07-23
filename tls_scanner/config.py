@@ -21,7 +21,9 @@ from .constants import (
     DEFAULT_LOG_FILE,
     DEFAULT_POLICIES_DIR,
     DEFAULT_TARGETS_DIR,
+    DEFAULT_WORKERS,
     LOG_LEVELS,
+    MAX_WORKERS,
     SAFE_CONFIG_NAME,
 )
 
@@ -223,6 +225,14 @@ def detect_export_format(filename, explicit_export=True):
     raise ConfigError("export.filename must end with .csv, .cbom.json, or .md")
 
 
+def validate_workers(value, field_name="scan.workers"):
+    if not isinstance(value, int) or isinstance(value, bool):
+        raise ConfigError(f"{field_name} must be an integer")
+    if value < 1 or value > MAX_WORKERS:
+        raise ConfigError(f"{field_name} must be between 1 and {MAX_WORKERS}")
+    return value
+
+
 def parse_ports_config(value, field_name="scan.ports"):
     if not isinstance(value, (str, int)):
         raise ConfigError(f"{field_name} must be a string or integer")
@@ -338,6 +348,7 @@ def build_job_from_sections(scan_config, export_config, logging_config, targets,
     resolve_dns = scan_config.get("resolve_dns", True)
     if not isinstance(resolve_dns, bool):
         raise ConfigError("scan.resolve_dns must be a boolean")
+    workers = validate_workers(scan_config.get("workers", DEFAULT_WORKERS))
 
     export_filename = export_config.get("filename")
     if export_filename is not None and not isinstance(export_filename, str):
@@ -387,6 +398,7 @@ def build_job_from_sections(scan_config, export_config, logging_config, targets,
         export_directory=export_directory,
         export_formats=tuple(export_formats),
         filename_template=filename_template,
+        workers=workers,
     )
 
 
@@ -456,6 +468,7 @@ def build_cli_scan_job(args):
         ip=getattr(args, "ip", False),
         csv_filename=getattr(args, "csv_filename", None),
         export_format=getattr(args, "export_format", None),
+        workers=getattr(args, "workers", DEFAULT_WORKERS),
         log_level=getattr(args, "log_level", "info"),
         log_file=(
             None
@@ -485,6 +498,8 @@ def build_scan_job(args):
         job.ports = args.ports
     if getattr(args, "crypto_was_explicit", False):
         job.crypto = args.crypto
+    if getattr(args, "workers_was_explicit", False):
+        job.workers = args.workers
     if getattr(args, "ip_was_explicit", False):
         job.ip = args.ip
     if getattr(args, "export_was_explicit", False) or getattr(args, "csv_filename", None):

@@ -12,6 +12,7 @@ Produces:
 
 import sys
 import threading
+from concurrent.futures import ThreadPoolExecutor
 import time
 
 from .crypto_policy import evaluate_compliance, extract_cipher_suites, extract_public_key
@@ -175,3 +176,90 @@ def collect_scan_results(scanner, args, results, findings, fqdn_cache):
                     row.append(key_exchange)
                 row.extend([compliance, reason])
                 results.append(row)
+
+
+# Each worker owns its PortScanner instance; python-nmap scanner objects are not shared across threads.
+def scan_tls_host(nmap, tqdm, host, ports, job, fqdn_cache, tls_arguments):
+    scanner = nmap.PortScanner()
+    host_results = []
+    host_findings = {}
+    run_scan_with_progress(
+        scanner,
+        tqdm,
+        f"TLS scan {host}",
+        hosts=host,
+        ports=",".join(str(port) for port in ports),
+        arguments=tls_arguments,
+    )
+    collect_scan_results(
+        scanner,
+        job,
+        host_results,
+        host_findings,
+        fqdn_cache,
+    )
+    return host_results, host_findings
+
+
+def scan_tls_hosts_parallel(nmap, tqdm, open_ports, job, fqdn_cache, tls_arguments, logger):
+    if not open_ports:
+        return [], {}
+
+    items = sorted(open_ports.items())
+    if job.workers == 1:
+        results = []
+        findings = {}
+        for host, ports in items:
+            logger.info(
+                "tls_scan_start host=%s ports=%s",
+                host,
+                ",".join(str(port) for port in ports),
+            )
+            host_results, host_findings = scan_tls_host(
+                nmap,
+                tqdm,
+                host,
+                ports,
+                job,
+                fqdn_cache,
+                tls_arguments,
+            )
+            results.extend(host_results)
+            findings.update(host_findings)
+            logger.info("tls_scan_done host=%s", host)
+        return results, findings
+
+    results_by_host = {}
+    findings_by_host = {}
+    max_workers = min(job.workers, len(items))
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {}
+        for host, ports in items:
+            logger.info(
+                "tls_scan_start host=%s ports=%s",
+                host,
+                ",".join(str(port) for port in ports),
+            )
+            futures[executor.submit(
+                scan_tls_host,
+                nmap,
+                tqdm,
+                host,
+                ports,
+                job,
+                fqdn_cache,
+                tls_arguments,
+            )] = host
+
+        for future, host in futures.items():
+            host_results, host_findings = future.result()
+            results_by_host[host] = host_results
+            findings_by_host[host] = host_findings
+            logger.info("tls_scan_done host=%s", host)
+
+    results = []
+    findings = {}
+    for host, _ports in items:
+        results.extend(results_by_host.get(host, []))
+        findings.update(findings_by_host.get(host, {}))
+    return results, findings
