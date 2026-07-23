@@ -2,6 +2,7 @@ import socket
 import tempfile
 import unittest
 from argparse import ArgumentTypeError
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -20,6 +21,12 @@ class NormalizeTargetsTests(unittest.TestCase):
 
 
 class ParsePortsTests(unittest.TestCase):
+    @patch("Scan_nmap_TLS3.sys.argv", ["Scan_nmap_TLS3.py"])
+    def test_accepts_no_arguments_for_default_config_mode(self):
+        args = scanner.parse_args()
+
+        self.assertIsNone(args.targets)
+
     @patch("Scan_nmap_TLS3.sys.argv", ["Scan_nmap_TLS3.py", "192.0.2.10"])
     def test_defaults_to_fast_port_discovery(self):
         self.assertEqual(scanner.parse_args().ports, "fast")
@@ -161,6 +168,116 @@ class ScanJobTests(unittest.TestCase):
         self.assertEqual(job.export_format, "cbom")
         self.assertEqual(job.log_level, "debug")
         self.assertIsNone(job.log_file)
+
+
+class ConfigTests(unittest.TestCase):
+    def write_config(self, content):
+        config_file = tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            suffix=".yaml",
+            delete=False,
+        )
+        with config_file:
+            config_file.write(content)
+        return config_file.name
+
+    def test_builds_scan_job_from_yaml_config(self):
+        config_path = self.write_config(
+            """
+scan:
+  targets:
+    - 192.0.2.10
+    - host.example
+  ports: 443,8443
+  crypto: standard
+  resolve_dns: false
+export:
+  filename: results.csv
+logging:
+  level: debug
+  file: audit.log
+"""
+        )
+
+        try:
+            with patch(
+                "Scan_nmap_TLS3.sys.argv",
+                ["Scan_nmap_TLS3.py", "--config", config_path],
+            ):
+                job = scanner.build_scan_job(scanner.parse_args())
+        finally:
+            Path(config_path).unlink()
+
+        self.assertEqual(job.targets, "192.0.2.10,host.example")
+        self.assertEqual(job.ports, "443,8443")
+        self.assertEqual(job.crypto, "standard")
+        self.assertTrue(job.ip)
+        self.assertEqual(job.csv_filename, "results.csv")
+        self.assertEqual(job.export_format, "csv")
+        self.assertEqual(job.log_level, "debug")
+        self.assertEqual(job.log_file, "audit.log")
+
+    def test_cli_explicit_values_override_yaml_config(self):
+        config_path = self.write_config(
+            """
+scan:
+  targets:
+    - 192.0.2.10
+  ports: fast
+  crypto: standard
+  resolve_dns: true
+logging:
+  level: info
+  file: audit.log
+"""
+        )
+
+        try:
+            with patch(
+                "Scan_nmap_TLS3.sys.argv",
+                [
+                    "Scan_nmap_TLS3.py",
+                    "--config",
+                    config_path,
+                    "-p",
+                    "443",
+                    "-c",
+                    "pqc",
+                    "--no-log-file",
+                    "host.example",
+                ],
+            ):
+                job = scanner.build_scan_job(scanner.parse_args())
+        finally:
+            Path(config_path).unlink()
+
+        self.assertEqual(job.targets, "host.example")
+        self.assertEqual(job.ports, "443")
+        self.assertEqual(job.crypto, "pqc")
+        self.assertIsNone(job.log_file)
+
+    def test_rejects_invalid_yaml_ports_with_config_error(self):
+        config_path = self.write_config(
+            """
+scan:
+  targets: example.com
+  ports: 70000
+"""
+        )
+
+        try:
+            with patch(
+                "Scan_nmap_TLS3.sys.argv",
+                ["Scan_nmap_TLS3.py", "--config", config_path],
+            ):
+                with self.assertRaisesRegex(
+                    scanner.ConfigError,
+                    "scan.ports is invalid",
+                ):
+                    scanner.build_scan_job(scanner.parse_args())
+        finally:
+            Path(config_path).unlink()
 
 
 class LoggingTests(unittest.TestCase):

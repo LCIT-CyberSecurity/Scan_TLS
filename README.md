@@ -44,7 +44,7 @@ Install Nmap by following the instructions on the
 Install the required Python packages:
 
 ```bash
-python3 -m pip install python-nmap prettytable tqdm
+python3 -m pip install python-nmap prettytable tqdm PyYAML
 ```
 
 ## Usage
@@ -52,18 +52,58 @@ python3 -m pip install python-nmap prettytable tqdm
 Run the scanner with one or more comma-separated targets:
 
 ```bash
-python3 Scan_nmap_TLS3.py [-i] [-c {standard,pqc}] [-p PORTS] [-e FILENAME] <targets> [csv_filename]
+python3 Scan_nmap_TLS3.py [--config FILENAME] [-i] [-c {standard,pqc}] [-p PORTS] [-e FILENAME] [--log-level LEVEL] [--log-file FILENAME] [--no-log-file] [targets] [csv_filename]
 ```
 
 | Parameter | Description |
 | --- | --- |
-| `<targets>` | Comma-separated FQDNs, IP addresses, or subnets. |
+| `[targets]` | Comma-separated FQDNs, IP addresses, or subnets. If omitted, `config/default.yaml` is loaded. |
 | `[csv_filename]` | Optional CSV output filename. |
+| `--config` | Load scan settings from a YAML file. |
 | `-e`, `--export` | Export to `.csv` or CycloneDX 1.6 `.cbom.json`. |
 | `-p`, `--ports` | Ports to test: one port, a list, ranges, `fast`, or `all`. Default: `fast`. |
 | `-c`, `--crypto` | Compliance profile: `standard` or `pqc` (Post-Quantum Cryptography). Default: `standard`. |
 | `-i`, `--ip` | Disable DNS resolution and leave the `FQDN` column empty. |
+| `--log-level` | Logging level: `debug`, `info`, `warning`, or `error`. Default: `info`. |
+| `--log-file` | Write logs to this file. Default: `logs/scan.log`. |
+| `--no-log-file` | Disable file logging. |
 | `-h`, `--help` | Display command-line help. |
+
+## YAML configuration
+
+When no target is provided on the command line, the scanner loads
+`config/default.yaml`. Use `--config` to load another YAML file:
+
+```bash
+python3 Scan_nmap_TLS3.py --config config/default.yaml
+```
+
+Example configuration:
+
+```yaml
+scan:
+  targets:
+    - example.com
+    - 192.0.2.10
+  ports: fast
+  crypto: standard
+  resolve_dns: true
+
+export:
+  filename: results.csv
+
+logging:
+  level: info
+  file: logs/scan.log
+```
+
+Command-line values override YAML settings when they are explicitly provided.
+For example, this command keeps the configured targets but scans only port
+`443`:
+
+```bash
+python3 Scan_nmap_TLS3.py --config config/default.yaml -p 443
+```
 
 ## Exports
 

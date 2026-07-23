@@ -16,6 +16,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
+DEFAULT_CONFIG_FILE = "config/default.yaml"
 DEFAULT_LOG_FILE = "logs/scan.log"
 MINIMUM_PQC_OPENSSL_VERSION = (3, 5, 0)
 PQC_TLS_GROUPS = (
@@ -44,6 +45,10 @@ class PQCPrerequisiteError(RuntimeError):
     pass
 
 
+class ConfigError(RuntimeError):
+    pass
+
+
 @dataclass
 class ScanJob:
     targets: str
@@ -64,8 +69,18 @@ def print_startup_banner():
 
 # Command-line parsing and input normalization.
 def parse_args():
+    raw_args = sys.argv[1:]
     parser = argparse.ArgumentParser(
         description="Scan TLS configurations on one or more targets."
+    )
+    parser.add_argument(
+        "--config",
+        default=None,
+        metavar="FILENAME",
+        help=(
+            f"load scan settings from this YAML file; if no target is provided, "
+            f"{DEFAULT_CONFIG_FILE} is used"
+        ),
     )
     parser.add_argument(
         "-i",
@@ -116,6 +131,7 @@ def parse_args():
     )
     parser.add_argument(
         "targets",
+        nargs="?",
         help="comma-separated FQDNs, IP addresses, or subnets",
     )
     parser.add_argument(
@@ -124,6 +140,14 @@ def parse_args():
         help="optional CSV output filename (legacy syntax)",
     )
     args = parser.parse_args()
+    args.config_was_explicit = has_cli_option(raw_args, "--config")
+    args.crypto_was_explicit = has_cli_option(raw_args, "-c", "--crypto")
+    args.ports_was_explicit = has_cli_option(raw_args, "-p", "--ports")
+    args.ip_was_explicit = has_cli_option(raw_args, "-i", "--ip")
+    args.export_was_explicit = has_cli_option(raw_args, "-e", "--export")
+    args.log_level_was_explicit = has_cli_option(raw_args, "--log-level")
+    args.log_file_was_explicit = has_cli_option(raw_args, "--log-file")
+
     explicit_export = args.export_filename
     if explicit_export and args.csv_filename:
         parser.error("use either --export or the positional CSV filename, not both")
@@ -142,6 +166,113 @@ def parse_args():
     return args
 
 
+def has_cli_option(raw_args, *names):
+    for value in raw_args:
+        if value in names:
+            return True
+        if any(value.startswith(f"{name}=") for name in names if name.startswith("--")):
+            return True
+    return False
+
+
+def load_yaml_config(config_path):
+    try:
+        import yaml
+    except ImportError as error:
+        raise ConfigError(
+            "PyYAML is required to read YAML config files. "
+            "Install it with: python3 -m pip install PyYAML"
+        ) from error
+
+    path = Path(config_path)
+    try:
+        with path.open(encoding="utf-8") as file:
+            config = yaml.safe_load(file)
+    except OSError as error:
+        raise ConfigError(f"Unable to read config file {path}: {error}") from error
+    except yaml.YAMLError as error:
+        raise ConfigError(f"Invalid YAML config file {path}: {error}") from error
+
+    if config is None:
+        return {}
+    if not isinstance(config, dict):
+        raise ConfigError(f"Config file {path} must contain a YAML mapping")
+    return config
+
+
+def config_targets_to_cli_value(targets):
+    if isinstance(targets, str):
+        return targets
+    if isinstance(targets, list) and all(isinstance(target, str) for target in targets):
+        return ",".join(targets)
+    raise ConfigError("scan.targets must be a string or a list of strings")
+
+
+def detect_export_format(filename, explicit_export=True):
+    if not filename:
+        return None
+    lower_filename = filename.lower()
+    if lower_filename.endswith(".cbom.json"):
+        return "cbom"
+    if lower_filename.endswith(".csv") or not explicit_export:
+        return "csv"
+    raise ConfigError("export.filename must end with .csv or .cbom.json")
+
+
+def build_config_scan_job(config):
+    scan_config = config.get("scan", {})
+    export_config = config.get("export", {})
+    logging_config = config.get("logging", {})
+    if not isinstance(scan_config, dict):
+        raise ConfigError("scan must be a mapping")
+    if not isinstance(export_config, dict):
+        raise ConfigError("export must be a mapping")
+    if not isinstance(logging_config, dict):
+        raise ConfigError("logging must be a mapping")
+
+    if "targets" not in scan_config:
+        raise ConfigError("scan.targets is required")
+    targets = config_targets_to_cli_value(scan_config["targets"])
+
+    ports_value = scan_config.get("ports", "fast")
+    if not isinstance(ports_value, (str, int)):
+        raise ConfigError("scan.ports must be a string or integer")
+    try:
+        ports = parse_ports(str(ports_value))
+    except argparse.ArgumentTypeError as error:
+        raise ConfigError(f"scan.ports is invalid: {error}") from error
+
+    crypto = scan_config.get("crypto", "standard")
+    if not isinstance(crypto, str) or crypto not in ["standard", "pqc"]:
+        raise ConfigError("scan.crypto must be 'standard' or 'pqc'")
+
+    resolve_dns = scan_config.get("resolve_dns", True)
+    if not isinstance(resolve_dns, bool):
+        raise ConfigError("scan.resolve_dns must be a boolean")
+
+    export_filename = export_config.get("filename")
+    if export_filename is not None and not isinstance(export_filename, str):
+        raise ConfigError("export.filename must be a string")
+
+    log_level = logging_config.get("level", "info")
+    if not isinstance(log_level, str) or log_level not in LOG_LEVELS:
+        raise ConfigError("logging.level must be one of: debug, error, info, warning")
+    log_file = logging_config.get("file", DEFAULT_LOG_FILE)
+    if log_file is not None and not isinstance(log_file, str):
+        raise ConfigError("logging.file must be a string or null")
+
+    return ScanJob(
+        targets=targets,
+        ports=ports,
+        crypto=crypto,
+        ip=not resolve_dns,
+        csv_filename=export_filename,
+        export_format=detect_export_format(export_filename),
+        log_level=log_level,
+        log_file=log_file,
+    )
+
+
 def build_cli_scan_job(args):
     return ScanJob(
         targets=args.targets,
@@ -157,6 +288,36 @@ def build_cli_scan_job(args):
             else getattr(args, "log_file", DEFAULT_LOG_FILE)
         ),
     )
+
+
+def build_scan_job(args):
+    config_path = getattr(args, "config", None)
+    targets = getattr(args, "targets", None)
+    if config_path is None and targets is not None:
+        return build_cli_scan_job(args)
+
+    resolved_config_path = config_path or DEFAULT_CONFIG_FILE
+    job = build_config_scan_job(load_yaml_config(resolved_config_path))
+
+    if args.targets is not None:
+        job.targets = args.targets
+    if args.ports_was_explicit:
+        job.ports = args.ports
+    if args.crypto_was_explicit:
+        job.crypto = args.crypto
+    if args.ip_was_explicit:
+        job.ip = args.ip
+    if args.export_was_explicit or args.csv_filename:
+        job.csv_filename = args.csv_filename
+        job.export_format = args.export_format
+    if args.log_level_was_explicit:
+        job.log_level = args.log_level
+    if args.log_file_was_explicit:
+        job.log_file = args.log_file
+    if args.no_log_file:
+        job.log_file = None
+
+    return job
 
 
 def configure_logging(job):
@@ -960,7 +1121,12 @@ def build_cbom(results, pqc=False):
 
 def main():
     cli_args = parse_args()
-    job = build_cli_scan_job(cli_args)
+    try:
+        job = build_scan_job(cli_args)
+    except ConfigError as error:
+        print(error, file=sys.stderr)
+        return 1
+
     job.scan_run_id = str(uuid.uuid4())
     scan_start = time.monotonic()
     try:

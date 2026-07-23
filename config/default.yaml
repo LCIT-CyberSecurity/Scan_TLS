@@ -1,0 +1,13 @@
+scan:
+  targets:
+    - localhost
+  ports: fast
+  crypto: standard
+  resolve_dns: true
+
+export:
+  filename: null
+
+logging:
+  level: info
+  file: logs/scan.log
