@@ -44,23 +44,32 @@ Install Nmap by following the instructions on the
 Install the required Python packages:
 
 ```bash
-python3 -m pip install python-nmap prettytable tqdm PyYAML
+python3 -m pip install -r requirements.txt
 ```
 
 ## Usage
 
-Run the scanner with one or more comma-separated targets:
+Run an ad hoc scan with one or more comma-separated targets:
 
 ```bash
-python3 Scan_nmap_TLS3.py [--config FILENAME] [-i] [-c {standard,pqc}] [-p PORTS] [-e FILENAME] [--log-level LEVEL] [--log-file FILENAME] [--no-log-file] [targets] [csv_filename]
+python3 Scan_nmap_TLS3.py [-i] [-c {standard,pqc}] [-p PORTS] [-e FILENAME] [--log-level LEVEL] [--log-file FILENAME] [--no-log-file] <targets> [csv_filename]
+```
+
+Run a configured report:
+
+```bash
+python3 Scan_nmap_TLS3.py --config config/config.yaml --report external_anssi_weekly
 ```
 
 | Parameter | Description |
 | --- | --- |
-| `[targets]` | Comma-separated FQDNs, IP addresses, or subnets. If omitted, `config/default.yaml` is loaded. |
-| `[csv_filename]` | Optional CSV output filename. |
-| `--config` | Load scan settings from a YAML file. |
-| `-e`, `--export` | Export to `.csv` or CycloneDX 1.6 `.cbom.json`. |
+| `<targets>` | Comma-separated FQDNs, IP addresses, or subnets for ad hoc CLI scans. |
+| `[csv_filename]` | Optional CSV output filename for legacy CLI syntax. |
+| `--config` | Load scan settings from a YAML file. Default: `config/config.yaml` when no CLI target is provided. |
+| `--report` | Run a named report definition from the config file. Required when the config contains multiple reports. |
+| `--list-reports` | List configured report names and exit. |
+| `--dry-run` | Validate config, targets, policies, logging and exports without running Nmap. |
+| `-e`, `--export` | Export a CLI scan to `.csv`, CycloneDX 1.6 `.cbom.json`, or `.md`. |
 | `-p`, `--ports` | Ports to test: one port, a list, ranges, `fast`, or `all`. Default: `fast`. |
 | `-c`, `--crypto` | Compliance profile: `standard` or `pqc` (Post-Quantum Cryptography). Default: `standard`. |
 | `-i`, `--ip` | Disable DNS resolution and leave the `FQDN` column empty. |
@@ -71,38 +80,89 @@ python3 Scan_nmap_TLS3.py [--config FILENAME] [-i] [-c {standard,pqc}] [-p PORTS
 
 ## YAML configuration
 
-When no target is provided on the command line, the scanner loads
-`config/default.yaml`. Use `--config` to load another YAML file:
+The default config file is `config/config.yaml`. It defines reusable report
+definitions. A report combines target groups, one or more encryption policies,
+scan settings, logging and export settings.
+
+List configured reports:
 
 ```bash
-python3 Scan_nmap_TLS3.py --config config/default.yaml
+python3 Scan_nmap_TLS3.py --config config/config.yaml --list-reports
 ```
 
-Example configuration:
+Validate a report without running Nmap:
+
+```bash
+python3 Scan_nmap_TLS3.py --config config/config.yaml --report external_anssi_weekly --dry-run
+```
+
+Example report config:
 
 ```yaml
-scan:
-  targets:
-    - example.com
-    - 192.0.2.10
-  ports: fast
-  crypto: standard
-  resolve_dns: true
+defaults:
+  scan:
+    ports: fast
+    crypto: standard
+    resolve_dns: true
+  logging:
+    level: info
+    file: logs/scan.log
+  export:
+    directory: scan_reports
+    formats:
+      - csv
+      - cbom
+      - md
+    filename_template: "{timestamp}_{report_name}"
 
-export:
-  filename: results.csv
-
-logging:
-  level: info
-  file: logs/scan.log
+reports:
+  - name: external_anssi_weekly
+    description: Public-facing endpoints checked against ANSSI TLS policy.
+    frequency: weekly
+    target_groups:
+      - external_public_endpoints
+    encryption_policies:
+      mode: strict_all
+      names:
+        - anssi_encryption_policy
 ```
 
+Target groups live in `config/targets_scan/` and can contain FQDNs, IP
+addresses and subnets in CIDR notation:
+
+```yaml
+name: external_public_endpoints
+description: Public-facing endpoints.
+
+targets:
+  fqdn:
+    - example.com
+  ip:
+    - 192.0.2.10
+  subnets:
+    - 192.0.2.0/24
+```
+
+Encryption policies live in `config/encryption_policy/`. Custom policies use
+the same schema as `anssi_encryption_policy.yaml`. With `strict_all`, a TLS
+finding must satisfy every configured policy. Algorithms not explicitly allowed
+by a policy are considered forbidden when policy enforcement is applied.
+
 Command-line values override YAML settings when they are explicitly provided.
-For example, this command keeps the configured targets but scans only port
-`443`:
+For example, this command keeps the configured report but scans only port
+`443` with debug logging:
 
 ```bash
-python3 Scan_nmap_TLS3.py --config config/default.yaml -p 443
+python3 Scan_nmap_TLS3.py --config config/config.yaml --report external_anssi_weekly -p 443 --log-level debug
+```
+
+Configured report exports are written under `scan_reports/` by default. Output
+filenames start with the local machine time:
+
+```text
+scan_reports/2026-07-23-143012_external_anssi_weekly.csv
+scan_reports/2026-07-23-143012_external_anssi_weekly.cbom.json
+scan_reports/2026-07-23-143012_external_anssi_weekly.md
 ```
 
 ## Exports
@@ -112,6 +172,7 @@ Use `-e` to select the export format from the filename:
 ```bash
 python3 Scan_nmap_TLS3.py example.com -e results.csv
 python3 Scan_nmap_TLS3.py example.com -e results.cbom.json
+python3 Scan_nmap_TLS3.py example.com -e results.md
 ```
 
 The legacy positional syntax remains available for CSV exports:

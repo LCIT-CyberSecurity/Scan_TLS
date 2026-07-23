@@ -279,6 +279,230 @@ scan:
         finally:
             Path(config_path).unlink()
 
+    def test_rejects_missing_yaml_config_file(self):
+        with self.assertRaisesRegex(scanner.ConfigError, "Unable to read config file"):
+            scanner.load_yaml_config("/tmp/scan-tls-missing-config.yaml")
+
+    def test_rejects_invalid_yaml_syntax(self):
+        config_path = self.write_config("scan: [unterminated\n")
+
+        try:
+            with self.assertRaisesRegex(scanner.ConfigError, "Invalid YAML config file"):
+                scanner.load_yaml_config(config_path)
+        finally:
+            Path(config_path).unlink()
+
+    def test_rejects_yaml_config_without_targets(self):
+        config_path = self.write_config(
+            """
+scan:
+  ports: 443
+"""
+        )
+
+        try:
+            with patch(
+                "Scan_nmap_TLS3.sys.argv",
+                ["Scan_nmap_TLS3.py", "--config", config_path],
+            ):
+                with self.assertRaisesRegex(scanner.ConfigError, "scan.targets is required"):
+                    scanner.build_scan_job(scanner.parse_args())
+        finally:
+            Path(config_path).unlink()
+
+    def test_rejects_invalid_yaml_export_extension(self):
+        config_path = self.write_config(
+            """
+scan:
+  targets: example.com
+export:
+  filename: results.json
+"""
+        )
+
+        try:
+            with patch(
+                "Scan_nmap_TLS3.sys.argv",
+                ["Scan_nmap_TLS3.py", "--config", config_path],
+            ):
+                with self.assertRaisesRegex(
+                    scanner.ConfigError,
+                    "export.filename must end with",
+                ):
+                    scanner.build_scan_job(scanner.parse_args())
+        finally:
+            Path(config_path).unlink()
+
+    def test_builds_report_from_target_group_and_policy(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            targets_dir = temp_path / "targets"
+            policies_dir = temp_path / "policies"
+            targets_dir.mkdir()
+            policies_dir.mkdir()
+            (targets_dir / "external.yaml").write_text(
+                """
+name: external_public_endpoints
+description: Public endpoints.
+targets:
+  fqdn:
+    - example.com
+  ip:
+    - 192.0.2.10
+  subnets:
+    - 192.0.2.0/24
+""",
+                encoding="utf-8",
+            )
+            (policies_dir / "anssi.yaml").write_text(
+                """
+name: anssi_encryption_policy
+version: "1.0"
+description: ANSSI policy.
+tls:
+  allowed_versions:
+    - TLSv1.2
+    - TLSv1.3
+  allowed_cipher_algorithms:
+    - AES-GCM
+  allowed_signature_hashes:
+    - SHA-256
+  minimum_rsa_bits: 2048
+""",
+                encoding="utf-8",
+            )
+            config = scanner.load_yaml_config(
+                self.write_config(
+                    """
+defaults:
+  scan:
+    ports: fast
+    crypto: standard
+    resolve_dns: true
+  export:
+    directory: scan_reports
+    formats:
+      - csv
+      - cbom
+      - md
+  logging:
+    level: debug
+    file: audit.log
+reports:
+  - name: external_anssi_weekly
+    frequency: weekly
+    target_groups:
+      - external_public_endpoints
+    encryption_policies:
+      mode: strict_all
+      names:
+        - anssi_encryption_policy
+"""
+                )
+            )
+
+            with patch("Scan_nmap_TLS3.DEFAULT_TARGETS_DIR", str(targets_dir)), patch(
+                "Scan_nmap_TLS3.DEFAULT_POLICIES_DIR", str(policies_dir)
+            ):
+                job = scanner.build_config_scan_job(config, "external_anssi_weekly")
+
+        self.assertEqual(job.report_name, "external_anssi_weekly")
+        self.assertEqual(job.frequency, "weekly")
+        self.assertEqual(job.targets, "example.com,192.0.2.10,192.0.2.0/24")
+        self.assertEqual(job.export_formats, ("csv", "cbom", "md"))
+        self.assertEqual(job.target_groups[0].name, "external_public_endpoints")
+        self.assertEqual(job.policies[0].name, "anssi_encryption_policy")
+        self.assertEqual(job.log_level, "debug")
+
+    def test_requires_report_name_when_multiple_reports_are_configured(self):
+        config = {
+            "reports": [
+                {"name": "external_weekly"},
+                {"name": "smtp_monthly"},
+            ]
+        }
+
+        with self.assertRaisesRegex(scanner.ConfigError, "multiple reports configured"):
+            scanner.select_config_report(config)
+
+    def test_builds_timestamped_export_paths(self):
+        job = scanner.ScanJob(
+            targets="example.com",
+            ports="443",
+            crypto="standard",
+            ip=False,
+            report_name="external_anssi_weekly",
+            export_directory="scan_reports",
+            export_formats=("csv", "cbom", "md"),
+        )
+
+        paths = scanner.build_export_paths(job, "2026-07-23-143012")
+
+        self.assertEqual(
+            str(paths["csv"]),
+            "scan_reports/2026-07-23-143012_external_anssi_weekly.csv",
+        )
+        self.assertEqual(
+            str(paths["cbom"]),
+            "scan_reports/2026-07-23-143012_external_anssi_weekly.cbom.json",
+        )
+        self.assertEqual(
+            str(paths["md"]),
+            "scan_reports/2026-07-23-143012_external_anssi_weekly.md",
+        )
+
+    def test_builds_readable_markdown_report(self):
+        job = scanner.ScanJob(
+            targets="example.com",
+            ports="443",
+            crypto="standard",
+            ip=False,
+            scan_run_id="run-123",
+            report_name="external_anssi_weekly",
+            frequency="weekly",
+            target_groups=(
+                scanner.TargetGroup(
+                    name="external_public_endpoints",
+                    targets=("example.com",),
+                    description="Public endpoints.",
+                ),
+            ),
+            policies=(
+                scanner.EncryptionPolicy(
+                    name="anssi_encryption_policy",
+                    version="1.0",
+                    description="ANSSI policy.",
+                ),
+            ),
+        )
+        results = [
+            [
+                "192.0.2.10",
+                "example.com",
+                443,
+                "C",
+                "TLSv1.1",
+                "TLS_RSA_WITH_AES_128_CBC_SHA",
+                "RSA 2048 bits",
+                "Valid",
+                "KO",
+                "TLS 1.1 detected",
+            ]
+        ]
+
+        markdown = scanner.build_markdown_report(
+            results,
+            job,
+            "2026-07-23T14:30:12+02:00",
+        )
+
+        self.assertIn("# TLS Scan Report - external_anssi_weekly", markdown)
+        self.assertIn("Scan run ID: run-123", markdown)
+        self.assertIn("external_public_endpoints", markdown)
+        self.assertIn("anssi_encryption_policy v1.0", markdown)
+        self.assertIn("## Failed Checks", markdown)
+        self.assertIn("<details>", markdown)
+
 
 class LoggingTests(unittest.TestCase):
     def test_configures_file_logging_with_run_id(self):

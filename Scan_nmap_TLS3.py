@@ -16,8 +16,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
-DEFAULT_CONFIG_FILE = "config/default.yaml"
+DEFAULT_CONFIG_FILE = "config/config.yaml"
 DEFAULT_LOG_FILE = "logs/scan.log"
+DEFAULT_EXPORT_DIR = "scan_reports"
+DEFAULT_TARGETS_DIR = "config/targets_scan"
+DEFAULT_POLICIES_DIR = "config/encryption_policy"
+ALLOWED_EXPORT_FORMATS = {"csv", "cbom", "md"}
+SAFE_CONFIG_NAME = re.compile(r"^[A-Za-z0-9_-]+$")
 MINIMUM_PQC_OPENSSL_VERSION = (3, 5, 0)
 PQC_TLS_GROUPS = (
     "X25519MLKEM768",
@@ -50,6 +55,22 @@ class ConfigError(RuntimeError):
 
 
 @dataclass
+class TargetGroup:
+    name: str
+    targets: tuple[str, ...]
+    description: str = ""
+    path: str = ""
+
+
+@dataclass
+class EncryptionPolicy:
+    name: str
+    version: str = ""
+    description: str = ""
+    path: str = ""
+
+
+@dataclass
 class ScanJob:
     targets: str
     ports: str
@@ -61,6 +82,15 @@ class ScanJob:
     log_level: str = "info"
     log_file: str | None = DEFAULT_LOG_FILE
     scan_run_id: str = ""
+    report_name: str = "manual"
+    frequency: str = "manual"
+    target_groups: tuple[TargetGroup, ...] = ()
+    policies: tuple[EncryptionPolicy, ...] = ()
+    policy_mode: str = "strict_all"
+    export_directory: str = DEFAULT_EXPORT_DIR
+    export_formats: tuple[str, ...] = ()
+    filename_template: str = "{timestamp}_{report_name}"
+    dry_run: bool = False
 
 
 def print_startup_banner():
@@ -81,6 +111,21 @@ def parse_args():
             f"load scan settings from this YAML file; if no target is provided, "
             f"{DEFAULT_CONFIG_FILE} is used"
         ),
+    )
+    parser.add_argument(
+        "--report",
+        metavar="NAME",
+        help="run this report definition from the config file",
+    )
+    parser.add_argument(
+        "--list-reports",
+        action="store_true",
+        help="list report definitions from the config file and exit",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="validate config and show the planned scan without running Nmap",
     )
     parser.add_argument(
         "-i",
@@ -110,7 +155,7 @@ def parse_args():
         "--export",
         dest="export_filename",
         metavar="FILENAME",
-        help="export results to .csv or CycloneDX .cbom.json",
+        help="export results to .csv, CycloneDX .cbom.json, or .md",
     )
     parser.add_argument(
         "--log-level",
@@ -147,6 +192,7 @@ def parse_args():
     args.export_was_explicit = has_cli_option(raw_args, "-e", "--export")
     args.log_level_was_explicit = has_cli_option(raw_args, "--log-level")
     args.log_file_was_explicit = has_cli_option(raw_args, "--log-file")
+    args.report_was_explicit = has_cli_option(raw_args, "--report")
 
     explicit_export = args.export_filename
     if explicit_export and args.csv_filename:
@@ -159,10 +205,12 @@ def parse_args():
         lower_filename = args.csv_filename.lower()
         if lower_filename.endswith(".cbom.json"):
             args.export_format = "cbom"
+        elif lower_filename.endswith(".md"):
+            args.export_format = "md"
         elif lower_filename.endswith(".csv") or not explicit_export:
             args.export_format = "csv"
         else:
-            parser.error("--export filename must end with .csv or .cbom.json")
+            parser.error("--export filename must end with .csv, .cbom.json, or .md")
     return args
 
 
@@ -181,7 +229,7 @@ def load_yaml_config(config_path):
     except ImportError as error:
         raise ConfigError(
             "PyYAML is required to read YAML config files. "
-            "Install it with: python3 -m pip install PyYAML"
+            "Install it with: python3 -m pip install -r requirements.txt"
         ) from error
 
     path = Path(config_path)
@@ -200,12 +248,158 @@ def load_yaml_config(config_path):
     return config
 
 
-def config_targets_to_cli_value(targets):
+def require_mapping(value, name):
+    if value is None:
+        return {}
+    if not isinstance(value, dict):
+        raise ConfigError(f"{name} must be a mapping")
+    return value
+
+
+def validate_config_name(name, field_name):
+    if not isinstance(name, str) or not SAFE_CONFIG_NAME.fullmatch(name):
+        raise ConfigError(f"{field_name} must contain only letters, numbers, '_' or '-'")
+    return name
+
+
+def list_config_reports(config):
+    reports = config.get("reports", [])
+    if not isinstance(reports, list):
+        raise ConfigError("reports must be a list")
+    names = []
+    for report in reports:
+        if not isinstance(report, dict):
+            raise ConfigError("each report must be a mapping")
+        names.append(validate_config_name(report.get("name"), "reports[].name"))
+    return names
+
+
+def select_config_report(config, report_name=None):
+    reports = config.get("reports")
+    if reports is None:
+        return None
+    if not isinstance(reports, list):
+        raise ConfigError("reports must be a list")
+    if not reports:
+        raise ConfigError("reports must contain at least one report")
+
+    indexed_reports = {}
+    for report in reports:
+        if not isinstance(report, dict):
+            raise ConfigError("each report must be a mapping")
+        name = validate_config_name(report.get("name"), "reports[].name")
+        if name in indexed_reports:
+            raise ConfigError(f"duplicate report name: {name}")
+        indexed_reports[name] = report
+
+    if report_name:
+        validate_config_name(report_name, "--report")
+        try:
+            return indexed_reports[report_name]
+        except KeyError as error:
+            available = ", ".join(sorted(indexed_reports))
+            raise ConfigError(f"unknown report '{report_name}'; available reports: {available}") from error
+
+    if len(indexed_reports) == 1:
+        return next(iter(indexed_reports.values()))
+
+    available = ", ".join(sorted(indexed_reports))
+    raise ConfigError(f"multiple reports configured; use --report NAME. Available reports: {available}")
+
+
+def merge_mappings(*mappings):
+    merged = {}
+    for mapping in mappings:
+        for key, value in require_mapping(mapping, "defaults/report section").items():
+            if isinstance(value, dict) and isinstance(merged.get(key), dict):
+                merged[key] = merge_mappings(merged[key], value)
+            else:
+                merged[key] = value
+    return merged
+
+
+def config_targets_to_list(targets, field_name="targets"):
+    if targets is None:
+        return []
     if isinstance(targets, str):
-        return targets
+        return [targets]
     if isinstance(targets, list) and all(isinstance(target, str) for target in targets):
-        return ",".join(targets)
-    raise ConfigError("scan.targets must be a string or a list of strings")
+        return targets
+    if isinstance(targets, dict):
+        collected = []
+        for key in ("fqdn", "ip", "subnets"):
+            values = targets.get(key, [])
+            if isinstance(values, str):
+                values = [values]
+            if not isinstance(values, list) or not all(isinstance(item, str) for item in values):
+                raise ConfigError(f"{field_name}.{key} must be a string or list of strings")
+            collected.extend(values)
+        return collected
+    raise ConfigError(f"{field_name} must be a string, list of strings, or typed mapping")
+
+
+def config_targets_to_cli_value(targets):
+    return ",".join(config_targets_to_list(targets, "scan.targets"))
+
+
+def load_target_group_file(target_file):
+    config = load_yaml_config(target_file)
+    name = validate_config_name(config.get("name", Path(target_file).stem), "target group name")
+    targets = tuple(config_targets_to_list(config.get("targets"), f"targets file {target_file}"))
+    if not targets:
+        raise ConfigError(f"target group {name} must contain at least one target")
+    description = config.get("description", "")
+    if not isinstance(description, str):
+        raise ConfigError(f"target group {name} description must be a string")
+    return TargetGroup(name=name, description=description, targets=targets, path=str(target_file))
+
+
+def load_named_target_groups(names):
+    if isinstance(names, str):
+        names = [names]
+    if names is None:
+        return []
+    if not isinstance(names, list) or not all(isinstance(name, str) for name in names):
+        raise ConfigError("target_groups must be a string or list of strings")
+
+    targets_dir = Path(DEFAULT_TARGETS_DIR)
+    index = {}
+    for target_file in sorted(targets_dir.glob("*.yaml")):
+        group = load_target_group_file(target_file)
+        if group.name in index:
+            raise ConfigError(f"duplicate target group name: {group.name}")
+        index[group.name] = group
+
+    groups = []
+    for name in names:
+        validate_config_name(name, "target_groups[]")
+        try:
+            groups.append(index[name])
+        except KeyError as error:
+            available = ", ".join(sorted(index)) or "none"
+            raise ConfigError(f"unknown target group '{name}'; available target groups: {available}") from error
+    return groups
+
+
+def load_report_targets(report_config):
+    groups = []
+    groups.extend(load_named_target_groups(report_config.get("target_groups")))
+
+    targets_config = require_mapping(report_config.get("targets", {}), "targets")
+    inline_targets = tuple(config_targets_to_list(targets_config.get("inline"), "targets.inline"))
+    if inline_targets:
+        report_name = report_config.get("name", "inline")
+        groups.append(TargetGroup(name=f"{report_name}_inline", targets=inline_targets))
+
+    target_files = targets_config.get("files", [])
+    if isinstance(target_files, str):
+        target_files = [target_files]
+    if not isinstance(target_files, list) or not all(isinstance(path, str) for path in target_files):
+        raise ConfigError("targets.files must be a string or list of strings")
+    for target_file in target_files:
+        groups.append(load_target_group_file(target_file))
+
+    return groups
 
 
 def detect_export_format(filename, explicit_export=True):
@@ -214,34 +408,103 @@ def detect_export_format(filename, explicit_export=True):
     lower_filename = filename.lower()
     if lower_filename.endswith(".cbom.json"):
         return "cbom"
+    if lower_filename.endswith(".md"):
+        return "md"
     if lower_filename.endswith(".csv") or not explicit_export:
         return "csv"
-    raise ConfigError("export.filename must end with .csv or .cbom.json")
+    raise ConfigError("export.filename must end with .csv, .cbom.json, or .md")
 
 
-def build_config_scan_job(config):
-    scan_config = config.get("scan", {})
-    export_config = config.get("export", {})
-    logging_config = config.get("logging", {})
-    if not isinstance(scan_config, dict):
-        raise ConfigError("scan must be a mapping")
-    if not isinstance(export_config, dict):
-        raise ConfigError("export must be a mapping")
-    if not isinstance(logging_config, dict):
-        raise ConfigError("logging must be a mapping")
-
-    if "targets" not in scan_config:
-        raise ConfigError("scan.targets is required")
-    targets = config_targets_to_cli_value(scan_config["targets"])
-
-    ports_value = scan_config.get("ports", "fast")
-    if not isinstance(ports_value, (str, int)):
-        raise ConfigError("scan.ports must be a string or integer")
+def parse_ports_config(value, field_name="scan.ports"):
+    if not isinstance(value, (str, int)):
+        raise ConfigError(f"{field_name} must be a string or integer")
     try:
-        ports = parse_ports(str(ports_value))
+        return parse_ports(str(value))
     except argparse.ArgumentTypeError as error:
-        raise ConfigError(f"scan.ports is invalid: {error}") from error
+        raise ConfigError(f"{field_name} is invalid: {error}") from error
 
+
+def load_policy_file(policy_file):
+    config = load_yaml_config(policy_file)
+    name = validate_config_name(config.get("name"), "policy name")
+    version = config.get("version", "")
+    description = config.get("description", "")
+    if not isinstance(version, str):
+        raise ConfigError(f"policy {name} version must be a string")
+    if not isinstance(description, str):
+        raise ConfigError(f"policy {name} description must be a string")
+
+    tls_config = require_mapping(config.get("tls"), f"policy {name}.tls")
+    for key in ("allowed_versions", "allowed_cipher_algorithms", "allowed_signature_hashes"):
+        values = tls_config.get(key)
+        if not isinstance(values, list) or not values or not all(isinstance(value, str) for value in values):
+            raise ConfigError(f"policy {name}.tls.{key} must be a non-empty list of strings")
+    minimum_rsa_bits = tls_config.get("minimum_rsa_bits")
+    if not isinstance(minimum_rsa_bits, int) or minimum_rsa_bits < 1:
+        raise ConfigError(f"policy {name}.tls.minimum_rsa_bits must be a positive integer")
+    return EncryptionPolicy(name=name, version=version, description=description, path=str(policy_file))
+
+
+def load_named_policies(names):
+    if isinstance(names, str):
+        names = [names]
+    if names is None:
+        return []
+    if not isinstance(names, list) or not all(isinstance(name, str) for name in names):
+        raise ConfigError("encryption_policies.names must be a string or list of strings")
+
+    policies_dir = Path(DEFAULT_POLICIES_DIR)
+    index = {}
+    for policy_file in sorted(policies_dir.glob("*.yaml")):
+        policy = load_policy_file(policy_file)
+        if policy.name in index:
+            raise ConfigError(f"duplicate encryption policy name: {policy.name}")
+        index[policy.name] = policy
+
+    policies = []
+    for name in names:
+        validate_config_name(name, "encryption_policies.names[]")
+        try:
+            policies.append(index[name])
+        except KeyError as error:
+            available = ", ".join(sorted(index)) or "none"
+            raise ConfigError(f"unknown encryption policy '{name}'; available policies: {available}") from error
+    return policies
+
+
+def load_report_policies(report_config):
+    policies_config = require_mapping(report_config.get("encryption_policies", {}), "encryption_policies")
+    mode = policies_config.get("mode", "strict_all")
+    if mode != "strict_all":
+        raise ConfigError("encryption_policies.mode must be strict_all")
+
+    policies = []
+    policies.extend(load_named_policies(policies_config.get("names")))
+
+    policy_files = policies_config.get("files", [])
+    if isinstance(policy_files, str):
+        policy_files = [policy_files]
+    if not isinstance(policy_files, list) or not all(isinstance(path, str) for path in policy_files):
+        raise ConfigError("encryption_policies.files must be a string or list of strings")
+    for policy_file in policy_files:
+        policies.append(load_policy_file(policy_file))
+
+    seen = set()
+    unique_policies = []
+    for policy in policies:
+        if policy.name in seen:
+            raise ConfigError(f"duplicate encryption policy in report: {policy.name}")
+        seen.add(policy.name)
+        unique_policies.append(policy)
+    return mode, unique_policies
+
+
+def build_job_from_sections(scan_config, export_config, logging_config, targets, report_config=None):
+    scan_config = require_mapping(scan_config, "scan")
+    export_config = require_mapping(export_config, "export")
+    logging_config = require_mapping(logging_config, "logging")
+
+    ports = parse_ports_config(scan_config.get("ports", "fast"))
     crypto = scan_config.get("crypto", "standard")
     if not isinstance(crypto, str) or crypto not in ["standard", "pqc"]:
         raise ConfigError("scan.crypto must be 'standard' or 'pqc'")
@@ -261,8 +524,31 @@ def build_config_scan_job(config):
     if log_file is not None and not isinstance(log_file, str):
         raise ConfigError("logging.file must be a string or null")
 
+    report_config = report_config or {}
+    report_name = report_config.get("name", "config")
+    if report_name != "config":
+        validate_config_name(report_name, "report.name")
+    frequency = report_config.get("frequency", "manual")
+    if not isinstance(frequency, str):
+        raise ConfigError("report.frequency must be a string")
+
+    export_directory = export_config.get("directory", DEFAULT_EXPORT_DIR)
+    if not isinstance(export_directory, str):
+        raise ConfigError("export.directory must be a string")
+    filename_template = export_config.get("filename_template", "{timestamp}_{report_name}")
+    if not isinstance(filename_template, str):
+        raise ConfigError("export.filename_template must be a string")
+    export_formats = export_config.get("formats", [])
+    if isinstance(export_formats, str):
+        export_formats = [export_formats]
+    if not isinstance(export_formats, list) or not all(isinstance(item, str) for item in export_formats):
+        raise ConfigError("export.formats must be a string or list of strings")
+    invalid_formats = sorted(set(export_formats) - ALLOWED_EXPORT_FORMATS)
+    if invalid_formats:
+        raise ConfigError(f"export.formats contains unsupported formats: {', '.join(invalid_formats)}")
+
     return ScanJob(
-        targets=targets,
+        targets=",".join(targets),
         ports=ports,
         crypto=crypto,
         ip=not resolve_dns,
@@ -270,6 +556,47 @@ def build_config_scan_job(config):
         export_format=detect_export_format(export_filename),
         log_level=log_level,
         log_file=log_file,
+        report_name=report_name,
+        frequency=frequency,
+        export_directory=export_directory,
+        export_formats=tuple(export_formats),
+        filename_template=filename_template,
+    )
+
+
+def build_config_scan_job(config, report_name=None):
+    if "reports" in config:
+        report = select_config_report(config, report_name)
+        defaults = require_mapping(config.get("defaults", {}), "defaults")
+        merged_scan = merge_mappings(defaults.get("scan", {}), report.get("scan", {}))
+        merged_export = merge_mappings(defaults.get("export", {}), report.get("export", {}))
+        merged_logging = merge_mappings(defaults.get("logging", {}), report.get("logging", {}))
+        target_groups = load_report_targets(report)
+        targets = [target for group in target_groups for target in group.targets]
+        if not targets:
+            raise ConfigError(f"report {report['name']} must define at least one target")
+        policy_mode, policies = load_report_policies(report)
+        job = build_job_from_sections(
+            merged_scan,
+            merged_export,
+            merged_logging,
+            targets,
+            report,
+        )
+        job.target_groups = tuple(target_groups)
+        job.policy_mode = policy_mode
+        job.policies = tuple(policies)
+        return job
+
+    scan_config = require_mapping(config.get("scan", {}), "scan")
+    if "targets" not in scan_config:
+        raise ConfigError("scan.targets is required")
+    targets = config_targets_to_list(scan_config["targets"], "scan.targets")
+    return build_job_from_sections(
+        scan_config,
+        config.get("export", {}),
+        config.get("logging", {}),
+        targets,
     )
 
 
@@ -294,28 +621,34 @@ def build_scan_job(args):
     config_path = getattr(args, "config", None)
     targets = getattr(args, "targets", None)
     if config_path is None and targets is not None:
-        return build_cli_scan_job(args)
-
-    resolved_config_path = config_path or DEFAULT_CONFIG_FILE
-    job = build_config_scan_job(load_yaml_config(resolved_config_path))
+        job = build_cli_scan_job(args)
+    else:
+        resolved_config_path = config_path or DEFAULT_CONFIG_FILE
+        job = build_config_scan_job(
+            load_yaml_config(resolved_config_path),
+            getattr(args, "report", None),
+        )
 
     if args.targets is not None:
         job.targets = args.targets
-    if args.ports_was_explicit:
+        job.target_groups = ()
+    if getattr(args, "ports_was_explicit", False):
         job.ports = args.ports
-    if args.crypto_was_explicit:
+    if getattr(args, "crypto_was_explicit", False):
         job.crypto = args.crypto
-    if args.ip_was_explicit:
+    if getattr(args, "ip_was_explicit", False):
         job.ip = args.ip
-    if args.export_was_explicit or args.csv_filename:
+    if getattr(args, "export_was_explicit", False) or getattr(args, "csv_filename", None):
         job.csv_filename = args.csv_filename
         job.export_format = args.export_format
-    if args.log_level_was_explicit:
+        job.export_formats = ()
+    if getattr(args, "log_level_was_explicit", False):
         job.log_level = args.log_level
-    if args.log_file_was_explicit:
+    if getattr(args, "log_file_was_explicit", False):
         job.log_file = args.log_file
-    if args.no_log_file:
+    if getattr(args, "no_log_file", False):
         job.log_file = None
+    job.dry_run = getattr(args, "dry_run", False)
 
     return job
 
@@ -973,6 +1306,189 @@ def build_csv_export(results, args, scan_timestamp):
     return headers, rows
 
 
+def local_report_timestamp():
+    return datetime.now().strftime("%Y-%m-%d-%H%M%S")
+
+
+def local_scan_timestamp():
+    return datetime.now().astimezone().isoformat(timespec="seconds")
+
+
+def export_extension(export_format):
+    if export_format == "cbom":
+        return ".cbom.json"
+    if export_format == "md":
+        return ".md"
+    if export_format == "csv":
+        return ".csv"
+    raise ConfigError(f"unsupported export format: {export_format}")
+
+
+def build_export_paths(job, timestamp):
+    if job.csv_filename:
+        return {job.export_format or "csv": Path(job.csv_filename)}
+    if not job.export_formats:
+        return {}
+    report_name = validate_config_name(job.report_name, "report.name")
+    basename = job.filename_template.format(
+        timestamp=timestamp,
+        report_name=report_name,
+        scan_run_id=job.scan_run_id,
+    )
+    if "/" in basename or "\\" in basename or ".." in basename:
+        raise ConfigError("export.filename_template must not create directories")
+    export_dir = Path(job.export_directory)
+    return {
+        export_format: export_dir / f"{basename}{export_extension(export_format)}"
+        for export_format in job.export_formats
+    }
+
+
+def markdown_escape(value):
+    return str(value).replace("|", "\\|").replace("\n", " ")
+
+
+def build_markdown_report(results, job, scan_timestamp):
+    ok_count = sum(1 for row in results if row[-2] == "OK")
+    ko_count = sum(1 for row in results if row[-2] == "KO")
+    policies = job.policies or ()
+    target_groups = job.target_groups or ()
+    lines = [
+        f"# TLS Scan Report - {job.report_name}",
+        "",
+        f"Generated: {scan_timestamp}",
+        f"Scan run ID: {job.scan_run_id}",
+        f"Report: {job.report_name}",
+        f"Frequency: {job.frequency}",
+        f"Policy mode: {job.policy_mode}",
+        f"Ports: {job.ports}",
+        f"Crypto profile: {job.crypto}",
+        f"DNS resolution: {'disabled' if job.ip else 'enabled'}",
+        "",
+        "## Summary",
+        "",
+        "| Status | Count |",
+        "| --- | ---: |",
+        f"| OK | {ok_count} |",
+        f"| KO | {ko_count} |",
+        "",
+        "## Target Groups",
+        "",
+    ]
+    if target_groups:
+        for group in target_groups:
+            description = f" - {group.description}" if group.description else ""
+            lines.append(f"- {group.name}: {len(group.targets)} targets{description}")
+    else:
+        lines.append(f"- manual: {len(config_targets_to_list(job.targets))} targets")
+
+    lines.extend(["", "## Policies", ""])
+    if policies:
+        for policy in policies:
+            version = f" v{policy.version}" if policy.version else ""
+            description = f" - {policy.description}" if policy.description else ""
+            lines.append(f"- {policy.name}{version}{description}")
+    else:
+        lines.append("- Legacy scanner policy")
+
+    failed_rows = [row for row in results if row[-2] == "KO"]
+    lines.extend([
+        "",
+        "## Failed Checks",
+        "",
+        "| IP | FQDN | Port | Grade | TLS Version | Compliance | Reason |",
+        "| --- | --- | ---: | --- | --- | --- | --- |",
+    ])
+    if failed_rows:
+        for row in failed_rows:
+            lines.append(
+                "| "
+                + " | ".join(
+                    markdown_escape(value)
+                    for value in [row[0], row[1], row[2], row[3], row[4], row[-2], row[-1]]
+                )
+                + " |"
+            )
+    else:
+        lines.append("| - | - | - | - | - | - | No failed checks |")
+
+    header = [
+        "IP",
+        "FQDN",
+        "Port",
+        "TLS Grade" if job.crypto == "pqc" else "Grade",
+        "TLS Version",
+        "Cipher Suite",
+        "Public Key",
+        "Certificate Validity",
+    ]
+    if job.crypto == "pqc":
+        header.append("Key Exchange")
+    header.extend(["Compliance", "Reason"])
+    lines.extend([
+        "",
+        "<details>",
+        "<summary>Full Results</summary>",
+        "",
+        "| " + " | ".join(header) + " |",
+        "| " + " | ".join("---" for _ in header) + " |",
+    ])
+    for row in results:
+        lines.append("| " + " | ".join(markdown_escape(value) for value in row) + " |")
+    lines.extend(["", "</details>", ""])
+    return "\n".join(lines)
+
+
+def write_exports(results, job, scan_timestamp, export_paths):
+    written_files = []
+    for export_format, export_path in export_paths.items():
+        if export_path.parent != Path("."):
+            export_path.parent.mkdir(parents=True, exist_ok=True)
+        if export_format == "cbom":
+            cbom = build_cbom(results, pqc=job.crypto == "pqc")
+            with export_path.open("w", encoding="utf-8") as file:
+                json.dump(cbom, file, indent=2)
+                file.write("\n")
+        elif export_format == "md":
+            export_path.write_text(
+                build_markdown_report(results, job, scan_timestamp),
+                encoding="utf-8",
+            )
+        else:
+            csv_headers, csv_rows = build_csv_export(results, job, scan_timestamp)
+            with export_path.open("w", newline="", encoding="utf-8") as file:
+                writer = csv.writer(file)
+                writer.writerow(csv_headers)
+                writer.writerows(csv_rows)
+        written_files.append(str(export_path))
+    return written_files
+
+
+def print_dry_run(job, export_paths):
+    print(f"Report: {job.report_name}")
+    print(f"Frequency: {job.frequency}")
+    print(f"Targets: {job.targets}")
+    if job.target_groups:
+        print("Target groups:")
+        for group in job.target_groups:
+            print(f"- {group.name} ({len(group.targets)} targets)")
+    print(f"Ports: {job.ports}")
+    print(f"Crypto profile: {job.crypto}")
+    print(f"DNS resolution: {'disabled' if job.ip else 'enabled'}")
+    print(f"Log level: {job.log_level}")
+    print(f"Log file: {job.log_file or 'disabled'}")
+    if job.policies:
+        print(f"Policy mode: {job.policy_mode}")
+        print("Policies:")
+        for policy in job.policies:
+            version = f" v{policy.version}" if policy.version else ""
+            print(f"- {policy.name}{version}")
+    if export_paths:
+        print("Would write:")
+        for path in export_paths.values():
+            print(f"- {path}")
+
+
 def build_cbom(results, pqc=False):
     components = []
     algorithm_refs = {}
@@ -1122,6 +1638,11 @@ def build_cbom(results, pqc=False):
 def main():
     cli_args = parse_args()
     try:
+        if getattr(cli_args, "list_reports", False):
+            config_path = cli_args.config or DEFAULT_CONFIG_FILE
+            for report_name in list_config_reports(load_yaml_config(config_path)):
+                print(report_name)
+            return 0
         job = build_scan_job(cli_args)
     except ConfigError as error:
         print(error, file=sys.stderr)
@@ -1135,10 +1656,17 @@ def main():
         print(f"Unable to configure logging: {error}", file=sys.stderr)
         return 1
 
-    scan_timestamp = (
-        datetime.now(timezone.utc).isoformat(timespec="seconds")
-        .replace("+00:00", "Z")
-    )
+    scan_timestamp = local_scan_timestamp()
+    report_timestamp = local_report_timestamp()
+    try:
+        export_paths = build_export_paths(job, report_timestamp)
+    except ConfigError as error:
+        print(error, file=sys.stderr)
+        return 1
+
+    if job.dry_run:
+        print_dry_run(job, export_paths)
+        return 0
     print_startup_banner()
     targets = normalize_targets(job.targets)
     logger.info(
@@ -1276,27 +1804,18 @@ def main():
         table.add_row(row[:-1])
     print("\n" + str(table))
 
-    if job.csv_filename:
-        if job.export_format == "cbom":
-            cbom = build_cbom(results, pqc=job.crypto == "pqc")
-            with open(job.csv_filename, "w", encoding="utf-8") as file:
-                json.dump(cbom, file, indent=2)
-                file.write("\n")
-        else:
-            csv_headers, csv_rows = build_csv_export(
-                results, job, scan_timestamp
+    if export_paths:
+        written_files = write_exports(results, job, scan_timestamp, export_paths)
+        for export_format, export_path in export_paths.items():
+            logger.info(
+                "export_written file=%s format=%s rows=%s",
+                export_path,
+                export_format,
+                len(results),
             )
-            with open(job.csv_filename, "w", newline="") as file:
-                writer = csv.writer(file)
-                writer.writerow(csv_headers)
-                writer.writerows(csv_rows)
-        logger.info(
-            "export_written file=%s format=%s rows=%s",
-            job.csv_filename,
-            job.export_format or "csv",
-            len(results),
-        )
-        print(f"\nResults have been saved to {job.csv_filename}")
+        print("\nResults have been saved to:")
+        for written_file in written_files:
+            print(f"- {written_file}")
 
     duration_seconds = time.monotonic() - scan_start
     logger.info("scan_end status=success duration_seconds=%.3f", duration_seconds)

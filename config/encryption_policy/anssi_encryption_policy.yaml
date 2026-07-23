@@ -1,0 +1,18 @@
+name: anssi_encryption_policy
+version: "1.0"
+description: ANSSI TLS encryption policy template. Algorithms not explicitly allowed are considered forbidden.
+source: ANSSI
+
+tls:
+  allowed_versions:
+    - TLSv1.2
+    - TLSv1.3
+  allowed_cipher_algorithms:
+    - AES-GCM
+    - AES-CCM
+    - CHACHA20-POLY1305
+  allowed_signature_hashes:
+    - SHA-256
+    - SHA-384
+    - SHA-512
+  minimum_rsa_bits: 2048

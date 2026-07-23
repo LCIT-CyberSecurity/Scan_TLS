@@ -1,0 +1,10 @@
+name: external_public_endpoints
+description: Public-facing endpoints. Replace examples with your own scope.
+
+targets:
+  fqdn:
+    - example.com
+  ip:
+    - 192.0.2.10
+  subnets:
+    - 192.0.2.0/24
