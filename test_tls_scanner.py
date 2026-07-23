@@ -401,8 +401,8 @@ reports:
                 )
             )
 
-            with patch("Scan_nmap_TLS3.DEFAULT_TARGETS_DIR", str(targets_dir)), patch(
-                "Scan_nmap_TLS3.DEFAULT_POLICIES_DIR", str(policies_dir)
+            with patch("tls_scanner.config.DEFAULT_TARGETS_DIR", str(targets_dir)), patch(
+                "tls_scanner.config.DEFAULT_POLICIES_DIR", str(policies_dir)
             ):
                 job = scanner.build_config_scan_job(config, "external_anssi_weekly")
 
@@ -1004,7 +1004,7 @@ class PQCPrerequisiteTests(unittest.TestCase):
             (3, 5, 2),
         )
 
-    @patch("Scan_nmap_TLS3.shutil.which", return_value=None)
+    @patch("tls_scanner.pqc.shutil.which", return_value=None)
     def test_rejects_missing_openssl(self, _which):
         with self.assertRaisesRegex(
             scanner.PQCPrerequisiteError,
@@ -1012,8 +1012,8 @@ class PQCPrerequisiteTests(unittest.TestCase):
         ):
             scanner.check_pqc_prerequisites()
 
-    @patch("Scan_nmap_TLS3.subprocess.run")
-    @patch("Scan_nmap_TLS3.shutil.which", return_value="/usr/bin/openssl")
+    @patch("tls_scanner.pqc.subprocess.run")
+    @patch("tls_scanner.pqc.shutil.which", return_value="/usr/bin/openssl")
     def test_rejects_openssl_older_than_3_5(self, _which, run):
         run.return_value = Mock(
             returncode=0,
@@ -1029,8 +1029,8 @@ class PQCPrerequisiteTests(unittest.TestCase):
 
         run.assert_called_once()
 
-    @patch("Scan_nmap_TLS3.subprocess.run")
-    @patch("Scan_nmap_TLS3.shutil.which", return_value="/usr/bin/openssl")
+    @patch("tls_scanner.pqc.subprocess.run")
+    @patch("tls_scanner.pqc.shutil.which", return_value="/usr/bin/openssl")
     def test_accepts_openssl_3_5_with_ml_kem_tls_group(self, _which, run):
         run.side_effect = [
             Mock(
@@ -1050,10 +1050,10 @@ class PQCPrerequisiteTests(unittest.TestCase):
         self.assertEqual(version, "OpenSSL 3.5.0 8 Apr 2025")
         self.assertEqual(groups, ["X25519MLKEM768"])
 
-    @patch("Scan_nmap_TLS3.load_dependencies")
-    @patch("Scan_nmap_TLS3.print_startup_banner")
-    @patch("Scan_nmap_TLS3.check_pqc_prerequisites")
-    @patch("Scan_nmap_TLS3.parse_args")
+    @patch("tls_scanner.cli.load_dependencies")
+    @patch("tls_scanner.cli.print_startup_banner")
+    @patch("tls_scanner.cli.check_pqc_prerequisites")
+    @patch("tls_scanner.cli.parse_args")
     def test_main_stops_before_loading_nmap_when_preflight_fails(
         self,
         parse_args,
@@ -1094,7 +1094,7 @@ class PQCComplianceTests(unittest.TestCase):
             ("KO", "No supported PQC group"),
         )
 
-    @patch("Scan_nmap_TLS3.subprocess.run")
+    @patch("tls_scanner.pqc.subprocess.run")
     def test_detects_negotiated_hybrid_group(self, run):
         run.return_value = Mock(
             returncode=0,
