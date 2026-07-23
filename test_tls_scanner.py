@@ -487,7 +487,19 @@ reports:
                 "Valid",
                 "KO",
                 "TLS 1.1 detected",
-            ]
+            ],
+            [
+                "192.0.2.11",
+                "secure.example.com",
+                443,
+                "A",
+                "TLSv1.3",
+                "TLS_AES_256_GCM_SHA384",
+                "RSA 3072 bits",
+                "Valid",
+                "OK",
+                "",
+            ],
         ]
 
         markdown = scanner.build_markdown_report(
@@ -496,11 +508,21 @@ reports:
             "2026-07-23T14:30:12+02:00",
         )
 
-        self.assertIn("# TLS Scan Report - external_anssi_weekly", markdown)
-        self.assertIn("Scan run ID: run-123", markdown)
+        self.assertIn("# TLS Scan Dashboard - external_anssi_weekly", markdown)
+        self.assertIn("## Dashboard", markdown)
+        self.assertIn("```mermaid", markdown)
+        self.assertIn("Hosts conformes", markdown)
+        self.assertIn("Hosts non conformes", markdown)
+        self.assertIn("### Répartition des grades", markdown)
+        self.assertIn("### Top raisons de non-conformité", markdown)
+        self.assertIn("## Conformité par host", markdown)
+        self.assertIn("port 443: TLS 1.1 detected", markdown)
+        self.assertIn("Tous les contrôles observés sont conformes.", markdown)
+        self.assertIn("Scan run ID", markdown)
+        self.assertIn("run-123", markdown)
         self.assertIn("external_public_endpoints", markdown)
         self.assertIn("anssi_encryption_policy v1.0", markdown)
-        self.assertIn("## Failed Checks", markdown)
+        self.assertIn("## Actions prioritaires", markdown)
         self.assertIn("<details>", markdown)
 
 
