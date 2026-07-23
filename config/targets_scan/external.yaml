@@ -1,10 +1,9 @@
 name: external_public_endpoints
-description: Public-facing endpoints. Replace examples with your own scope.
+description: Default targets scanned with fast port discovery.
 
 targets:
   fqdn:
-    - example.com
-  ip:
-    - 192.0.2.10
+    - smtp.free.fr
+  ip: []
   subnets:
-    - 192.0.2.0/24
+    - 192.168.1.0/24
