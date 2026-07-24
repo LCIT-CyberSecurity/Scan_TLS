@@ -146,7 +146,7 @@ def parse_args():
         "--export",
         dest="export_filename",
         metavar="FILENAME",
-        help="export results to .csv, CycloneDX .cbom.json, or .md",
+        help="export results to .csv, CycloneDX .cbom.json, .md, or .html",
     )
     parser.add_argument(
         "--policy",
@@ -214,10 +214,12 @@ def parse_args():
             args.export_format = "cbom"
         elif lower_filename.endswith(".md"):
             args.export_format = "md"
+        elif lower_filename.endswith(".html"):
+            args.export_format = "html"
         elif lower_filename.endswith(".csv") or not explicit_export:
             args.export_format = "csv"
         else:
-            parser.error("--export filename must end with .csv, .cbom.json, or .md")
+            parser.error("--export filename must end with .csv, .cbom.json, .md, or .html")
     return args
 
 

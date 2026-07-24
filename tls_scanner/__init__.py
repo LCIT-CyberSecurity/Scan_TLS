@@ -62,6 +62,7 @@ from .crypto_policy import (
 )
 from .exports.cbom import build_cbom
 from .exports.csv_export import build_csv_export
+from .exports.html_report import build_html_report
 from .exports.markdown_report import (
     append_bar_chart,
     build_host_compliance_summary,

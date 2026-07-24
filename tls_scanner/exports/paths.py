@@ -20,6 +20,7 @@ from ..config import validate_config_name
 from ..models import ConfigError
 from .cbom import build_cbom
 from .csv_export import build_csv_export
+from .html_report import build_html_report
 from .markdown_report import build_markdown_report
 
 
@@ -36,6 +37,8 @@ def export_extension(export_format):
         return ".cbom.json"
     if export_format == "md":
         return ".md"
+    if export_format == "html":
+        return ".html"
     if export_format == "csv":
         return ".csv"
     raise ConfigError(f"unsupported export format: {export_format}")
@@ -75,6 +78,11 @@ def write_exports(results, job, scan_timestamp, export_paths):
         elif export_format == "md":
             export_path.write_text(
                 build_markdown_report(results, job, scan_timestamp),
+                encoding="utf-8",
+            )
+        elif export_format == "html":
+            export_path.write_text(
+                build_html_report(results, job, scan_timestamp),
                 encoding="utf-8",
             )
         else:

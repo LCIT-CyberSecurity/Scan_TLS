@@ -165,6 +165,16 @@ class ExportArgumentTests(unittest.TestCase):
 
     @patch(
         "Scan_nmap_TLS3.sys.argv",
+        ["Scan_nmap_TLS3.py", "192.0.2.10", "-e", "results.html"],
+    )
+    def test_detects_html_export(self):
+        args = scanner.parse_args()
+
+        self.assertEqual(args.csv_filename, "results.html")
+        self.assertEqual(args.export_format, "html")
+
+    @patch(
+        "Scan_nmap_TLS3.sys.argv",
         ["Scan_nmap_TLS3.py", "192.0.2.10", "-e", "results.json"],
     )
     def test_rejects_ambiguous_export_extension(self):
@@ -422,6 +432,7 @@ defaults:
       - csv
       - cbom
       - md
+      - html
   logging:
     level: debug
     file: audit.log
@@ -446,7 +457,7 @@ reports:
         self.assertEqual(job.report_name, "external_anssi_weekly")
         self.assertEqual(job.frequency, "weekly")
         self.assertEqual(job.targets, "example.com,192.0.2.10,192.0.2.0/24")
-        self.assertEqual(job.export_formats, ("csv", "cbom", "md"))
+        self.assertEqual(job.export_formats, ("csv", "cbom", "md", "html"))
         self.assertEqual(job.target_groups[0].name, "external_public_endpoints")
         self.assertEqual(job.policies[0].name, "anssi_encryption_policy")
         self.assertEqual(job.log_level, "debug")
@@ -470,7 +481,7 @@ reports:
             ip=False,
             report_name="external_anssi_weekly",
             export_directory="scan_reports",
-            export_formats=("csv", "cbom", "md"),
+            export_formats=("csv", "cbom", "md", "html"),
         )
 
         paths = scanner.build_export_paths(job, "2026-07-23-143012")
@@ -486,6 +497,10 @@ reports:
         self.assertEqual(
             str(paths["md"]),
             "scan_reports/2026-07-23-143012_external_anssi_weekly.md",
+        )
+        self.assertEqual(
+            str(paths["html"]),
+            "scan_reports/2026-07-23-143012_external_anssi_weekly.html",
         )
 
     def test_builds_readable_markdown_report(self):
@@ -561,6 +576,44 @@ reports:
         self.assertIn("anssi_encryption_policy v1.0", markdown)
         self.assertIn("## Actions prioritaires", markdown)
         self.assertIn("<details>", markdown)
+
+    def test_builds_html_report_from_markdown(self):
+        job = scanner.ScanJob(
+            targets="example.com",
+            ports="443",
+            crypto="standard",
+            ip=False,
+            scan_run_id="run-123",
+            report_name="external_anssi_weekly",
+            frequency="weekly",
+        )
+        results = [
+            [
+                "192.0.2.10",
+                "example.com",
+                443,
+                "A",
+                "TLSv1.3",
+                "TLS_AES_256_GCM_SHA384",
+                "RSA 3072 bits",
+                "Valid",
+                "OK",
+                "",
+            ]
+        ]
+
+        html_report = scanner.build_html_report(
+            results,
+            job,
+            "2026-07-23T14:30:12+02:00",
+        )
+
+        self.assertIn("<!doctype html>", html_report)
+        self.assertIn("<h1>TLS Scan Dashboard - external_anssi_weekly</h1>", html_report)
+        self.assertIn("<table>", html_report)
+        self.assertIn("<td>example.com</td>", html_report)
+        self.assertIn("<details>", html_report)
+        self.assertNotIn("# TLS Scan Dashboard", html_report)
 
 
 class LoggingTests(unittest.TestCase):
