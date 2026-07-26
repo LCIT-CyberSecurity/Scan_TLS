@@ -45,6 +45,16 @@ def count_values(values):
     return counts
 
 
+GRADE_ORDER = {"A+": 0, "A": 1, "B": 2, "C": 3, "D": 4, "F": 5}
+
+
+def worst_grade(grades):
+    known_grades = [grade for grade in grades if grade in GRADE_ORDER]
+    if not known_grades:
+        return "-"
+    return max(known_grades, key=GRADE_ORDER.get)
+
+
 # Use plain Markdown bars so the dashboard remains readable even when Mermaid is unsupported.
 def append_bar_chart(lines, title, counts):
     lines.extend([
@@ -80,11 +90,13 @@ def build_host_compliance_summary(results):
                 "ip": row[0],
                 "fqdn": row[1] or "-",
                 "ports": set(),
+                "grades": [],
                 "failed_reasons_by_port": {},
             },
         )
         port = row[2]
         host_summary["ports"].add(port)
+        host_summary["grades"].append(row[3])
 
         if row[-2] == "KO":
             reason = row[-1] or "Contrôle non conforme"
@@ -118,6 +130,7 @@ def build_host_compliance_summary(results):
                     str(port)
                     for port in sorted(host_summary["ports"], key=sort_port)
                 ),
+                "worst_grade": worst_grade(host_summary["grades"]),
                 "reason": reason,
             }
         )
@@ -172,8 +185,8 @@ def build_markdown_report(results, job, scan_timestamp):
         "",
         "## Conformité par host",
         "",
-        "| Signal | Statut | IP | FQDN | Ports | Raison |",
-        "| --- | --- | --- | --- | --- | --- |",
+        "| Signal | Statut | IP | FQDN | Ports | Grade | Raison |",
+        "| --- | --- | --- | --- | --- | --- | --- |",
     ])
     if host_summaries:
         for summary in host_summaries:
@@ -187,13 +200,14 @@ def build_markdown_report(results, job, scan_timestamp):
                         summary["ip"],
                         summary["fqdn"],
                         summary["ports"],
+                        summary["worst_grade"],
                         summary["reason"],
                     ]
                 )
                 + " |"
             )
     else:
-        lines.append("| - | Aucun resultat | - | - | - | Aucun controle exploitable |")
+        lines.append("| - | Aucun resultat | - | - | - | - | Aucun controle exploitable |")
 
     lines.extend([
         "",
