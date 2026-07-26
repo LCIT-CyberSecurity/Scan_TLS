@@ -13,6 +13,10 @@ defaults:
       - cbom
       - md
     filename_template: "{timestamp}_{report_name}"
+  checks:
+    certificate:
+      enabled: true
+      expires_within_days: 30
 
 reports:
   - name: external_anssi_weekly

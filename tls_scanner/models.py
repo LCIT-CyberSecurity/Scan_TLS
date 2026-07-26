@@ -90,3 +90,5 @@ class ScanJob:
     filename_template: str = "{timestamp}_{report_name}"
     dry_run: bool = False
     workers: int = DEFAULT_WORKERS
+    certificate_findings_enabled: bool = True
+    certificate_expires_within_days: int = 30

@@ -212,6 +212,8 @@ class ScanJobTests(unittest.TestCase):
         self.assertEqual(job.csv_filename, "results.cbom.json")
         self.assertEqual(job.export_format, "cbom")
         self.assertEqual(job.log_level, "debug")
+        self.assertTrue(job.certificate_findings_enabled)
+        self.assertEqual(job.certificate_expires_within_days, 30)
         self.assertIsNone(job.log_file)
         self.assertEqual(job.policies[0].name, "anssi_encryption_policy")
 
@@ -244,6 +246,10 @@ export:
 logging:
   level: debug
   file: audit.log
+checks:
+  certificate:
+    enabled: true
+    expires_within_days: 45
 """
         )
 
@@ -265,6 +271,8 @@ logging:
         self.assertEqual(job.export_format, "csv")
         self.assertEqual(job.log_level, "debug")
         self.assertEqual(job.log_file, "audit.log")
+        self.assertTrue(job.certificate_findings_enabled)
+        self.assertEqual(job.certificate_expires_within_days, 45)
 
     def test_cli_explicit_values_override_yaml_config(self):
         config_path = self.write_config(
@@ -381,6 +389,31 @@ export:
         finally:
             Path(config_path).unlink()
 
+
+    def test_rejects_invalid_certificate_check_threshold(self):
+        config_path = self.write_config(
+            """
+scan:
+  targets: example.com
+checks:
+  certificate:
+    expires_within_days: soon
+"""
+        )
+
+        try:
+            with patch(
+                "Scan_nmap_TLS3.sys.argv",
+                ["Scan_nmap_TLS3.py", "--config", config_path],
+            ):
+                with self.assertRaisesRegex(
+                    scanner.ConfigError,
+                    "checks.certificate.expires_within_days",
+                ):
+                    scanner.build_scan_job(scanner.parse_args())
+        finally:
+            Path(config_path).unlink()
+
     def test_builds_report_from_target_group_and_policy(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
@@ -437,6 +470,10 @@ defaults:
   logging:
     level: debug
     file: audit.log
+  checks:
+    certificate:
+      enabled: true
+      expires_within_days: 60
 reports:
   - name: external_anssi_weekly
     frequency: weekly
@@ -661,6 +698,18 @@ reports:
         findings = scanner.build_security_findings(results)
         checks = {finding.check: finding for finding in findings}
 
+        strict_findings = scanner.build_security_findings(
+            results,
+            expires_within_days=7,
+        )
+        strict_checks = {finding.check for finding in strict_findings}
+        disabled_findings = scanner.build_security_findings(
+            results,
+            include_certificate_findings=False,
+        )
+
+        self.assertNotIn("Certificate expires soon", strict_checks)
+        self.assertEqual(disabled_findings, [])
         self.assertEqual(
             set(checks),
             {

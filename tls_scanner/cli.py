@@ -237,6 +237,8 @@ def print_dry_run(job, export_paths):
     print(f"DNS resolution: {'disabled' if job.ip else 'enabled'}")
     print(f"Log level: {job.log_level}")
     print(f"Log file: {job.log_file or 'disabled'}")
+    print(f"Certificate findings: {'enabled' if job.certificate_findings_enabled else 'disabled'}")
+    print(f"Certificate expires soon threshold: {job.certificate_expires_within_days} days")
     if job.policies:
         print(f"Policy mode: {job.policy_mode}")
         print("Policies:")

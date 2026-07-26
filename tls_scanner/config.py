@@ -244,6 +244,28 @@ def parse_ports_config(value, field_name="scan.ports"):
         raise ConfigError(f"{field_name} is invalid: {error}") from error
 
 
+def parse_checks_config(value):
+    checks_config = require_mapping(value, "checks")
+    certificate_config = require_mapping(
+        checks_config.get("certificate", {}),
+        "checks.certificate",
+    )
+
+    enabled = certificate_config.get("enabled", True)
+    if not isinstance(enabled, bool):
+        raise ConfigError("checks.certificate.enabled must be a boolean")
+
+    expires_within_days = certificate_config.get("expires_within_days", 30)
+    if (
+        not isinstance(expires_within_days, int)
+        or isinstance(expires_within_days, bool)
+        or expires_within_days < 0
+    ):
+        raise ConfigError("checks.certificate.expires_within_days must be a non-negative integer")
+
+    return enabled, expires_within_days
+
+
 def load_policy_file(policy_file):
     config = load_yaml_config(policy_file)
     name = validate_config_name(config.get("name"), "policy name")
@@ -337,7 +359,7 @@ def load_report_policies(report_config):
 
 
 # Convert merged config sections into one executable ScanJob; all schema validation happens here.
-def build_job_from_sections(scan_config, export_config, logging_config, targets, report_config=None):
+def build_job_from_sections(scan_config, export_config, logging_config, targets, report_config=None, checks_config=None):
     scan_config = require_mapping(scan_config, "scan")
     export_config = require_mapping(export_config, "export")
     logging_config = require_mapping(logging_config, "logging")
@@ -351,6 +373,7 @@ def build_job_from_sections(scan_config, export_config, logging_config, targets,
     if not isinstance(resolve_dns, bool):
         raise ConfigError("scan.resolve_dns must be a boolean")
     workers = validate_workers(scan_config.get("workers", DEFAULT_WORKERS))
+    certificate_findings_enabled, certificate_expires_within_days = parse_checks_config(checks_config)
 
     export_filename = export_config.get("filename")
     if export_filename is not None and not isinstance(export_filename, str):
@@ -401,6 +424,8 @@ def build_job_from_sections(scan_config, export_config, logging_config, targets,
         export_formats=tuple(export_formats),
         filename_template=filename_template,
         workers=workers,
+        certificate_findings_enabled=certificate_findings_enabled,
+        certificate_expires_within_days=certificate_expires_within_days,
     )
 
 
@@ -413,6 +438,7 @@ def build_config_scan_job(config, report_name=None):
         merged_scan = merge_mappings(defaults.get("scan", {}), report.get("scan", {}))
         merged_export = merge_mappings(defaults.get("export", {}), report.get("export", {}))
         merged_logging = merge_mappings(defaults.get("logging", {}), report.get("logging", {}))
+        merged_checks = merge_mappings(defaults.get("checks", {}), report.get("checks", {}))
         target_groups = load_report_targets(report)
         targets = [target for group in target_groups for target in group.targets]
         if not targets:
@@ -424,6 +450,7 @@ def build_config_scan_job(config, report_name=None):
             merged_logging,
             targets,
             report,
+            merged_checks,
         )
         job.target_groups = tuple(target_groups)
         job.policy_mode = policy_mode
@@ -439,6 +466,7 @@ def build_config_scan_job(config, report_name=None):
         config.get("export", {}),
         config.get("logging", {}),
         targets,
+        checks_config=config.get("checks", {}),
     )
     job.policies = (load_default_policy(),)
     return job

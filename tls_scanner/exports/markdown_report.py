@@ -112,7 +112,7 @@ def parse_int(value):
         return None
 
 
-def certificate_detail_findings(row):
+def certificate_detail_findings(row, expires_within_days=30):
     if not is_detailed_certificate_row(row):
         return []
 
@@ -147,7 +147,7 @@ def certificate_detail_findings(row):
                 f"Certificate expired {abs(days_left)} day(s) ago on {row[7]}",
                 "Renew and deploy a valid certificate.",
             )
-        elif days_left <= 30:
+        elif days_left <= expires_within_days:
             add(
                 "Certificate expires soon",
                 "WARNING",
@@ -222,11 +222,16 @@ def classify_security_reason(reason):
     )
 
 
-def build_security_findings(results):
+def build_security_findings(results, include_certificate_findings=True, expires_within_days=30):
     findings = []
     seen = set()
     for row in results:
-        for finding in certificate_detail_findings(row):
+        certificate_findings = (
+            certificate_detail_findings(row, expires_within_days)
+            if include_certificate_findings
+            else []
+        )
+        for finding in certificate_findings:
             finding_key = (
                 finding.ip,
                 finding.fqdn,
@@ -378,7 +383,11 @@ def build_markdown_report(results, job, scan_timestamp):
     reason_counts = count_values(row[-1] for row in results if row[-2] == "KO")
     host_summaries = build_host_compliance_summary(results)
     cert_rows = certificate_rows(results)
-    security_findings = build_security_findings(results)
+    security_findings = build_security_findings(
+        results,
+        include_certificate_findings=job.certificate_findings_enabled,
+        expires_within_days=job.certificate_expires_within_days,
+    )
     compliant_hosts = sum(1 for row in host_summaries if row["status"] == "CONFORME")
     non_compliant_hosts = sum(
         1 for row in host_summaries if row["status"] == "NON CONFORME"
