@@ -1,6 +1,8 @@
 import socket
+import tempfile
 import unittest
 from argparse import ArgumentTypeError
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -19,9 +21,31 @@ class NormalizeTargetsTests(unittest.TestCase):
 
 
 class ParsePortsTests(unittest.TestCase):
+    @patch("Scan_nmap_TLS3.sys.argv", ["Scan_nmap_TLS3.py"])
+    def test_accepts_no_arguments_for_default_config_mode(self):
+        args = scanner.parse_args()
+
+        self.assertIsNone(args.targets)
+
     @patch("Scan_nmap_TLS3.sys.argv", ["Scan_nmap_TLS3.py", "192.0.2.10"])
     def test_defaults_to_fast_port_discovery(self):
         self.assertEqual(scanner.parse_args().ports, "fast")
+
+    @patch("Scan_nmap_TLS3.sys.argv", ["Scan_nmap_TLS3.py", "192.0.2.10"])
+    def test_defaults_to_four_workers(self):
+        self.assertEqual(scanner.parse_args().workers, 4)
+
+    @patch("Scan_nmap_TLS3.sys.argv", ["Scan_nmap_TLS3.py", "--workers", "8", "192.0.2.10"])
+    def test_accepts_workers(self):
+        args = scanner.parse_args()
+
+        self.assertEqual(args.workers, 8)
+        self.assertTrue(args.workers_was_explicit)
+
+    @patch("Scan_nmap_TLS3.sys.argv", ["Scan_nmap_TLS3.py", "--workers", "0", "192.0.2.10"])
+    def test_rejects_workers_below_minimum(self):
+        with self.assertRaises(SystemExit):
+            scanner.parse_args()
 
     @patch("Scan_nmap_TLS3.sys.argv", ["Scan_nmap_TLS3.py", "192.0.2.10"])
     def test_defaults_to_standard_crypto_criterion(self):
@@ -33,6 +57,55 @@ class ParsePortsTests(unittest.TestCase):
     )
     def test_accepts_pqc_crypto_criterion(self):
         self.assertEqual(scanner.parse_args().crypto, "pqc")
+
+    @patch("Scan_nmap_TLS3.sys.argv", ["Scan_nmap_TLS3.py", "192.0.2.10"])
+    def test_defaults_to_info_file_logging(self):
+        args = scanner.parse_args()
+
+        self.assertEqual(args.log_level, "info")
+        self.assertEqual(args.log_file, scanner.DEFAULT_LOG_FILE)
+        self.assertFalse(args.no_log_file)
+
+    @patch(
+        "Scan_nmap_TLS3.sys.argv",
+        [
+            "Scan_nmap_TLS3.py",
+            "--log-level",
+            "debug",
+            "--log-file",
+            "custom.log",
+            "192.0.2.10",
+        ],
+    )
+    def test_accepts_log_level_and_file(self):
+        args = scanner.parse_args()
+
+        self.assertEqual(args.log_level, "debug")
+        self.assertEqual(args.log_file, "custom.log")
+
+    @patch(
+        "Scan_nmap_TLS3.sys.argv",
+        [
+            "Scan_nmap_TLS3.py",
+            "--policy",
+            "anssi_encryption_policy",
+            "--policy",
+            "custom_policy",
+            "192.0.2.10",
+        ],
+    )
+    def test_accepts_multiple_cli_policies(self):
+        args = scanner.parse_args()
+
+        self.assertEqual(args.policy_names, ["anssi_encryption_policy", "custom_policy"])
+        self.assertTrue(args.policy_was_explicit)
+
+    @patch(
+        "Scan_nmap_TLS3.sys.argv",
+        ["Scan_nmap_TLS3.py", "--no-log-file", "192.0.2.10"],
+    )
+    def test_accepts_disabling_file_logging(self):
+        self.assertTrue(scanner.parse_args().no_log_file)
 
     def test_uses_multiple_ports_and_ranges(self):
         self.assertEqual(
@@ -49,6 +122,600 @@ class ParsePortsTests(unittest.TestCase):
     def test_rejects_invalid_port(self):
         with self.assertRaises(ArgumentTypeError):
             scanner.parse_ports("443,70000")
+
+
+class ExportArgumentTests(unittest.TestCase):
+    @patch(
+        "Scan_nmap_TLS3.sys.argv",
+        ["Scan_nmap_TLS3.py", "192.0.2.10", "results.csv"],
+    )
+    def test_accepts_legacy_positional_csv_filename(self):
+        self.assertEqual(scanner.parse_args().csv_filename, "results.csv")
+
+    @patch(
+        "Scan_nmap_TLS3.sys.argv",
+        ["Scan_nmap_TLS3.py", "192.0.2.10", "-e", "results.csv"],
+    )
+    def test_accepts_export_option(self):
+        self.assertEqual(scanner.parse_args().csv_filename, "results.csv")
+
+    @patch(
+        "Scan_nmap_TLS3.sys.argv",
+        [
+            "Scan_nmap_TLS3.py",
+            "192.0.2.10",
+            "legacy.csv",
+            "-e",
+            "results.csv",
+        ],
+    )
+    def test_rejects_both_export_syntaxes(self):
+        with self.assertRaises(SystemExit):
+            scanner.parse_args()
+
+    @patch(
+        "Scan_nmap_TLS3.sys.argv",
+        ["Scan_nmap_TLS3.py", "192.0.2.10", "-e", "results.cbom.json"],
+    )
+    def test_detects_cbom_export(self):
+        args = scanner.parse_args()
+
+        self.assertEqual(args.csv_filename, "results.cbom.json")
+        self.assertEqual(args.export_format, "cbom")
+
+    @patch(
+        "Scan_nmap_TLS3.sys.argv",
+        ["Scan_nmap_TLS3.py", "192.0.2.10", "-e", "results.html"],
+    )
+    def test_detects_html_export(self):
+        args = scanner.parse_args()
+
+        self.assertEqual(args.csv_filename, "results.html")
+        self.assertEqual(args.export_format, "html")
+
+    @patch(
+        "Scan_nmap_TLS3.sys.argv",
+        ["Scan_nmap_TLS3.py", "192.0.2.10", "-e", "results.json"],
+    )
+    def test_rejects_ambiguous_export_extension(self):
+        with self.assertRaises(SystemExit):
+            scanner.parse_args()
+
+
+class ScanJobTests(unittest.TestCase):
+    @patch(
+        "Scan_nmap_TLS3.sys.argv",
+        [
+            "Scan_nmap_TLS3.py",
+            "-i",
+            "-c",
+            "pqc",
+            "-p",
+            "443,8443",
+            "-e",
+            "results.cbom.json",
+            "--log-level",
+            "debug",
+            "--no-log-file",
+            "192.0.2.10",
+        ],
+    )
+    def test_builds_scan_job_from_cli_arguments(self):
+        job = scanner.build_cli_scan_job(scanner.parse_args())
+
+        self.assertEqual(job.targets, "192.0.2.10")
+        self.assertEqual(job.ports, "443,8443")
+        self.assertEqual(job.workers, 4)
+        self.assertEqual(job.crypto, "pqc")
+        self.assertTrue(job.ip)
+        self.assertEqual(job.csv_filename, "results.cbom.json")
+        self.assertEqual(job.export_format, "cbom")
+        self.assertEqual(job.log_level, "debug")
+        self.assertIsNone(job.log_file)
+        self.assertEqual(job.policies[0].name, "anssi_encryption_policy")
+
+
+class ConfigTests(unittest.TestCase):
+    def write_config(self, content):
+        config_file = tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            suffix=".yaml",
+            delete=False,
+        )
+        with config_file:
+            config_file.write(content)
+        return config_file.name
+
+    def test_builds_scan_job_from_yaml_config(self):
+        config_path = self.write_config(
+            """
+scan:
+  targets:
+    - 192.0.2.10
+    - host.example
+  ports: 443,8443
+  workers: 6
+  crypto: standard
+  resolve_dns: false
+export:
+  filename: results.csv
+logging:
+  level: debug
+  file: audit.log
+"""
+        )
+
+        try:
+            with patch(
+                "Scan_nmap_TLS3.sys.argv",
+                ["Scan_nmap_TLS3.py", "--config", config_path],
+            ):
+                job = scanner.build_scan_job(scanner.parse_args())
+        finally:
+            Path(config_path).unlink()
+
+        self.assertEqual(job.targets, "192.0.2.10,host.example")
+        self.assertEqual(job.ports, "443,8443")
+        self.assertEqual(job.workers, 6)
+        self.assertEqual(job.crypto, "standard")
+        self.assertTrue(job.ip)
+        self.assertEqual(job.csv_filename, "results.csv")
+        self.assertEqual(job.export_format, "csv")
+        self.assertEqual(job.log_level, "debug")
+        self.assertEqual(job.log_file, "audit.log")
+
+    def test_cli_explicit_values_override_yaml_config(self):
+        config_path = self.write_config(
+            """
+scan:
+  targets:
+    - 192.0.2.10
+  ports: fast
+  crypto: standard
+  resolve_dns: true
+logging:
+  level: info
+  file: audit.log
+"""
+        )
+
+        try:
+            with patch(
+                "Scan_nmap_TLS3.sys.argv",
+                [
+                    "Scan_nmap_TLS3.py",
+                    "--config",
+                    config_path,
+                    "-p",
+                    "443",
+                    "-c",
+                    "pqc",
+                    "--no-log-file",
+                    "host.example",
+                ],
+            ):
+                job = scanner.build_scan_job(scanner.parse_args())
+        finally:
+            Path(config_path).unlink()
+
+        self.assertEqual(job.targets, "host.example")
+        self.assertEqual(job.ports, "443")
+        self.assertEqual(job.crypto, "pqc")
+        self.assertIsNone(job.log_file)
+
+    def test_rejects_invalid_yaml_ports_with_config_error(self):
+        config_path = self.write_config(
+            """
+scan:
+  targets: example.com
+  ports: 70000
+"""
+        )
+
+        try:
+            with patch(
+                "Scan_nmap_TLS3.sys.argv",
+                ["Scan_nmap_TLS3.py", "--config", config_path],
+            ):
+                with self.assertRaisesRegex(
+                    scanner.ConfigError,
+                    "scan.ports is invalid",
+                ):
+                    scanner.build_scan_job(scanner.parse_args())
+        finally:
+            Path(config_path).unlink()
+
+    def test_rejects_missing_yaml_config_file(self):
+        with self.assertRaisesRegex(scanner.ConfigError, "Unable to read config file"):
+            scanner.load_yaml_config("/tmp/scan-tls-missing-config.yaml")
+
+    def test_rejects_invalid_yaml_syntax(self):
+        config_path = self.write_config("scan: [unterminated\n")
+
+        try:
+            with self.assertRaisesRegex(scanner.ConfigError, "Invalid YAML config file"):
+                scanner.load_yaml_config(config_path)
+        finally:
+            Path(config_path).unlink()
+
+    def test_rejects_yaml_config_without_targets(self):
+        config_path = self.write_config(
+            """
+scan:
+  ports: 443
+"""
+        )
+
+        try:
+            with patch(
+                "Scan_nmap_TLS3.sys.argv",
+                ["Scan_nmap_TLS3.py", "--config", config_path],
+            ):
+                with self.assertRaisesRegex(scanner.ConfigError, "scan.targets is required"):
+                    scanner.build_scan_job(scanner.parse_args())
+        finally:
+            Path(config_path).unlink()
+
+    def test_rejects_invalid_yaml_export_extension(self):
+        config_path = self.write_config(
+            """
+scan:
+  targets: example.com
+export:
+  filename: results.json
+"""
+        )
+
+        try:
+            with patch(
+                "Scan_nmap_TLS3.sys.argv",
+                ["Scan_nmap_TLS3.py", "--config", config_path],
+            ):
+                with self.assertRaisesRegex(
+                    scanner.ConfigError,
+                    "export.filename must end with",
+                ):
+                    scanner.build_scan_job(scanner.parse_args())
+        finally:
+            Path(config_path).unlink()
+
+    def test_builds_report_from_target_group_and_policy(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            targets_dir = temp_path / "targets"
+            policies_dir = temp_path / "policies"
+            targets_dir.mkdir()
+            policies_dir.mkdir()
+            (targets_dir / "external.yaml").write_text(
+                """
+name: external_public_endpoints
+description: Public endpoints.
+targets:
+  fqdn:
+    - example.com
+  ip:
+    - 192.0.2.10
+  subnets:
+    - 192.0.2.0/24
+""",
+                encoding="utf-8",
+            )
+            (policies_dir / "anssi.yaml").write_text(
+                """
+name: anssi_encryption_policy
+version: "1.0"
+description: ANSSI policy.
+tls:
+  allowed_versions:
+    - TLSv1.2
+    - TLSv1.3
+  allowed_cipher_algorithms:
+    - AES-GCM
+  allowed_signature_hashes:
+    - SHA-256
+  minimum_rsa_bits: 2048
+""",
+                encoding="utf-8",
+            )
+            config = scanner.load_yaml_config(
+                self.write_config(
+                    """
+defaults:
+  scan:
+    ports: fast
+    crypto: standard
+    resolve_dns: true
+  export:
+    directory: scan_reports
+    formats:
+      - csv
+      - cbom
+      - md
+      - html
+  logging:
+    level: debug
+    file: audit.log
+reports:
+  - name: external_anssi_weekly
+    frequency: weekly
+    target_groups:
+      - external_public_endpoints
+    encryption_policies:
+      mode: strict_all
+      names:
+        - anssi_encryption_policy
+"""
+                )
+            )
+
+            with patch("tls_scanner.config.DEFAULT_TARGETS_DIR", str(targets_dir)), patch(
+                "tls_scanner.config.DEFAULT_POLICIES_DIR", str(policies_dir)
+            ):
+                job = scanner.build_config_scan_job(config, "external_anssi_weekly")
+
+        self.assertEqual(job.report_name, "external_anssi_weekly")
+        self.assertEqual(job.frequency, "weekly")
+        self.assertEqual(job.targets, "example.com,192.0.2.10,192.0.2.0/24")
+        self.assertEqual(job.export_formats, ("csv", "cbom", "md", "html"))
+        self.assertEqual(job.target_groups[0].name, "external_public_endpoints")
+        self.assertEqual(job.policies[0].name, "anssi_encryption_policy")
+        self.assertEqual(job.log_level, "debug")
+
+    def test_requires_report_name_when_multiple_reports_are_configured(self):
+        config = {
+            "reports": [
+                {"name": "external_weekly"},
+                {"name": "smtp_monthly"},
+            ]
+        }
+
+        with self.assertRaisesRegex(scanner.ConfigError, "multiple reports configured"):
+            scanner.select_config_report(config)
+
+    def test_builds_timestamped_export_paths(self):
+        job = scanner.ScanJob(
+            targets="example.com",
+            ports="443",
+            crypto="standard",
+            ip=False,
+            report_name="external_anssi_weekly",
+            export_directory="scan_reports",
+            export_formats=("csv", "cbom", "md", "html"),
+        )
+
+        paths = scanner.build_export_paths(job, "2026-07-23-143012")
+
+        self.assertEqual(
+            str(paths["csv"]),
+            "scan_reports/2026-07-23-143012_external_anssi_weekly.csv",
+        )
+        self.assertEqual(
+            str(paths["cbom"]),
+            "scan_reports/2026-07-23-143012_external_anssi_weekly.cbom.json",
+        )
+        self.assertEqual(
+            str(paths["md"]),
+            "scan_reports/2026-07-23-143012_external_anssi_weekly.md",
+        )
+        self.assertEqual(
+            str(paths["html"]),
+            "scan_reports/2026-07-23-143012_external_anssi_weekly.html",
+        )
+
+    def test_builds_readable_markdown_report(self):
+        job = scanner.ScanJob(
+            targets="example.com",
+            ports="443",
+            crypto="standard",
+            ip=False,
+            scan_run_id="run-123",
+            report_name="external_anssi_weekly",
+            frequency="weekly",
+            target_groups=(
+                scanner.TargetGroup(
+                    name="external_public_endpoints",
+                    targets=("example.com",),
+                    description="Public endpoints.",
+                ),
+            ),
+            policies=(
+                scanner.EncryptionPolicy(
+                    name="anssi_encryption_policy",
+                    version="1.0",
+                    description="ANSSI policy.",
+                ),
+            ),
+        )
+        results = [
+            [
+                "192.0.2.10",
+                "example.com",
+                443,
+                "C",
+                "TLSv1.1",
+                "TLS_RSA_WITH_AES_128_CBC_SHA",
+                "RSA 2048 bits",
+                "Valid",
+                "KO",
+                "TLS 1.1 detected",
+            ],
+            [
+                "192.0.2.11",
+                "secure.example.com",
+                443,
+                "A",
+                "TLSv1.3",
+                "TLS_AES_256_GCM_SHA384",
+                "RSA 3072 bits",
+                "Valid",
+                "OK",
+                "",
+            ],
+        ]
+
+        markdown = scanner.build_markdown_report(
+            results,
+            job,
+            "2026-07-23T14:30:12+02:00",
+        )
+
+        self.assertIn("# TLS Scan Dashboard - external_anssi_weekly", markdown)
+        self.assertIn("## Dashboard", markdown)
+        self.assertIn("```mermaid", markdown)
+        self.assertIn("Hosts conformes", markdown)
+        self.assertIn("Hosts non conformes", markdown)
+        self.assertIn("### Répartition des grades", markdown)
+        self.assertIn("### Top raisons de non-conformité", markdown)
+        self.assertIn("## Conformité par host", markdown)
+        self.assertIn("port 443: TLS 1.1 detected", markdown)
+        self.assertIn("Tous les contrôles observés sont conformes.", markdown)
+        self.assertIn("Scan run ID", markdown)
+        self.assertIn("run-123", markdown)
+        self.assertIn("external_public_endpoints", markdown)
+        self.assertIn("anssi_encryption_policy v1.0", markdown)
+        self.assertIn("## Actions prioritaires", markdown)
+        self.assertIn("<details>", markdown)
+
+    def test_builds_html_report_from_markdown(self):
+        job = scanner.ScanJob(
+            targets="example.com",
+            ports="443",
+            crypto="standard",
+            ip=False,
+            scan_run_id="run-123",
+            report_name="external_anssi_weekly",
+            frequency="weekly",
+        )
+        results = [
+            [
+                "192.0.2.10",
+                "example.com",
+                443,
+                "A",
+                "TLSv1.3",
+                "TLS_AES_256_GCM_SHA384",
+                "RSA 3072 bits",
+                "Valid",
+                "OK",
+                "",
+            ]
+        ]
+
+        html_report = scanner.build_html_report(
+            results,
+            job,
+            "2026-07-23T14:30:12+02:00",
+        )
+
+        self.assertIn("<!doctype html>", html_report)
+        self.assertIn("<h1>TLS Scan Dashboard - external_anssi_weekly</h1>", html_report)
+        self.assertIn("<table>", html_report)
+        self.assertIn("<td>example.com</td>", html_report)
+        self.assertIn("<details>", html_report)
+        self.assertNotIn("# TLS Scan Dashboard", html_report)
+
+
+class LoggingTests(unittest.TestCase):
+    def test_configures_file_logging_with_run_id(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            log_file = f"{temp_dir}/scan.log"
+            job = scanner.ScanJob(
+                targets="192.0.2.10",
+                ports="443",
+                crypto="standard",
+                ip=False,
+                log_file=log_file,
+                scan_run_id="run-123",
+            )
+
+            logger = scanner.configure_logging(job)
+            logger.info("scan_start targets=%s", job.targets)
+
+            with open(log_file, encoding="utf-8") as file:
+                log_text = file.read()
+
+        self.assertIn("INFO run_id=run-123 scan_start targets=192.0.2.10", log_text)
+
+
+class CsvExportTests(unittest.TestCase):
+    def test_appends_scan_timestamp_and_parameters(self):
+        args = SimpleNamespace(
+            crypto="standard",
+            targets="192.0.2.0/24,host.example",
+            ports="fast",
+            ip=False,
+        )
+        results = [["finding"]]
+
+        headers, rows = scanner.build_csv_export(
+            results,
+            args,
+            "2026-06-21T14:00:00Z",
+        )
+
+        self.assertEqual(
+            headers[-5:],
+            [
+                "Scan Timestamp",
+                "Scan Targets",
+                "Port Selection",
+                "Crypto Profile",
+                "DNS Resolution",
+            ],
+        )
+        self.assertEqual(
+            rows[0][-5:],
+            [
+                "2026-06-21T14:00:00Z",
+                args.targets,
+                "fast",
+                "standard",
+                "enabled",
+            ],
+        )
+class CbomExportTests(unittest.TestCase):
+    def test_builds_cyclonedx_cryptographic_assets(self):
+        results = [
+            [
+                "192.0.2.10",
+                "host.example",
+                443,
+                "A+",
+                "TLSv1.3",
+                "TLS_AES_256_GCM_SHA384",
+                "RSA 3072 bits",
+                "2099-01-01",
+                "OK",
+                "",
+            ]
+        ]
+
+        cbom = scanner.build_cbom(results)
+
+        self.assertEqual(cbom["bomFormat"], "CycloneDX")
+        self.assertEqual(cbom["specVersion"], "1.6")
+        self.assertEqual(cbom["metadata"]["lifecycles"], [{"phase": "discovery"}])
+        asset_types = {
+            component["cryptoProperties"]["assetType"]
+            for component in cbom["components"]
+        }
+        self.assertEqual(
+            asset_types,
+            {"algorithm", "related-crypto-material", "protocol"},
+        )
+        protocol = next(
+            component
+            for component in cbom["components"]
+            if component["cryptoProperties"]["assetType"] == "protocol"
+        )
+        protocol_properties = protocol["cryptoProperties"]["protocolProperties"]
+        self.assertEqual(protocol_properties["type"], "tls")
+        self.assertEqual(protocol_properties["version"], "1.3")
+        self.assertEqual(
+            protocol_properties["cipherSuites"],
+            [{"name": "TLS_AES_256_GCM_SHA384"}],
+        )
 
 
 # Nmap port-discovery behavior without performing network scans.
@@ -143,6 +810,69 @@ class FakeTqdm:
 
 
 # Progress display lifecycle and background scan error propagation.
+class ParallelScanTests(unittest.TestCase):
+    def test_parallel_tls_scan_uses_one_scanner_per_host_and_stable_order(self):
+        class FakePortScanner:
+            def __init__(self):
+                self.scan_call = None
+                self.host_data = {}
+
+            def scan(self, **kwargs):
+                self.scan_call = kwargs
+                host = kwargs["hosts"]
+                self.host_data = {
+                    host: {
+                        "tcp": {
+                            443: {
+                                "state": "open",
+                                "script": {
+                                    "ssl-cert": "Not valid after: 2099-01-01T00:00:00",
+                                    "ssl-enum-ciphers": "TLSv1.3:\n  TLS_AES_256_GCM_SHA384",
+                                },
+                            }
+                        }
+                    }
+                }
+
+            def all_hosts(self):
+                return list(self.host_data)
+
+            def __getitem__(self, host):
+                return self.host_data[host]
+
+        scanners = []
+
+        class FakeNmap:
+            @staticmethod
+            def PortScanner():
+                fake_scanner = FakePortScanner()
+                scanners.append(fake_scanner)
+                return fake_scanner
+
+        job = scanner.ScanJob(
+            targets="192.0.2.11,192.0.2.10",
+            ports="fast",
+            crypto="standard",
+            ip=True,
+            workers=2,
+        )
+        logger = Mock()
+
+        results, findings = scanner.scan_tls_hosts_parallel(
+            FakeNmap,
+            FakeTqdm,
+            {"192.0.2.11": [443], "192.0.2.10": [443]},
+            job,
+            {},
+            "-sV --script ssl-cert,ssl-enum-ciphers",
+            logger,
+        )
+
+        self.assertEqual([row[0] for row in results], ["192.0.2.10", "192.0.2.11"])
+        self.assertEqual(set(findings), {("192.0.2.10", 443), ("192.0.2.11", 443)})
+        self.assertEqual(len(scanners), 2)
+
+
 class ScanProgressTests(unittest.TestCase):
     def test_runs_scan_and_closes_progress_bar(self):
         class FakeScanner:
@@ -276,7 +1006,7 @@ SHA-1: 11:22:33
 
         self.assertEqual(result, "OK")
 
-    def test_accepts_cbc_cipher_with_sha384(self):
+    def test_rejects_cbc_cipher_with_sha384_by_default_anssi_policy(self):
         result = scanner.check_compliance(
             "TLSv1.2",
             "TLS_ECDHE_RSA_WITH_AES_256_CBC_SHA384",
@@ -286,9 +1016,9 @@ SHA-1: 11:22:33
             3072,
         )
 
-        self.assertEqual(result, "OK")
+        self.assertEqual(result, "KO")
 
-    def test_accepts_dhe_cbc_cipher_with_sha256(self):
+    def test_rejects_dhe_cbc_cipher_with_sha256_by_default_anssi_policy(self):
         result = scanner.check_compliance(
             "TLSv1.2",
             "TLS_DHE_RSA_WITH_AES_256_CBC_SHA256",
@@ -298,7 +1028,7 @@ SHA-1: 11:22:33
             3072,
         )
 
-        self.assertEqual(result, "OK")
+        self.assertEqual(result, "KO")
 
     def test_rejects_cbc_cipher_with_sha1(self):
         result = scanner.check_compliance(
@@ -324,7 +1054,7 @@ SHA-1: 11:22:33
 
         self.assertEqual(result, "OK")
 
-    def test_accepts_static_rsa_with_cbc_and_sha256(self):
+    def test_rejects_static_rsa_with_cbc_and_sha256_by_default_anssi_policy(self):
         result = scanner.check_compliance(
             "TLSv1.2",
             "TLS_RSA_WITH_AES_256_CBC_SHA256",
@@ -334,7 +1064,7 @@ SHA-1: 11:22:33
             3072,
         )
 
-        self.assertEqual(result, "OK")
+        self.assertEqual(result, "KO")
 
     def test_returns_short_csv_reason_for_ko(self):
         result = scanner.evaluate_compliance(
@@ -351,7 +1081,7 @@ SHA-1: 11:22:33
     def test_returns_empty_csv_reason_for_ok(self):
         result = scanner.evaluate_compliance(
             "TLSv1.2",
-            "TLS_RSA_WITH_AES_256_CBC_SHA256",
+            "TLS_RSA_WITH_AES_256_GCM_SHA384",
             "2099-01-01",
             "",
             "RSA",
@@ -427,7 +1157,7 @@ class PQCPrerequisiteTests(unittest.TestCase):
             (3, 5, 2),
         )
 
-    @patch("Scan_nmap_TLS3.shutil.which", return_value=None)
+    @patch("tls_scanner.pqc.shutil.which", return_value=None)
     def test_rejects_missing_openssl(self, _which):
         with self.assertRaisesRegex(
             scanner.PQCPrerequisiteError,
@@ -435,8 +1165,8 @@ class PQCPrerequisiteTests(unittest.TestCase):
         ):
             scanner.check_pqc_prerequisites()
 
-    @patch("Scan_nmap_TLS3.subprocess.run")
-    @patch("Scan_nmap_TLS3.shutil.which", return_value="/usr/bin/openssl")
+    @patch("tls_scanner.pqc.subprocess.run")
+    @patch("tls_scanner.pqc.shutil.which", return_value="/usr/bin/openssl")
     def test_rejects_openssl_older_than_3_5(self, _which, run):
         run.return_value = Mock(
             returncode=0,
@@ -452,8 +1182,8 @@ class PQCPrerequisiteTests(unittest.TestCase):
 
         run.assert_called_once()
 
-    @patch("Scan_nmap_TLS3.subprocess.run")
-    @patch("Scan_nmap_TLS3.shutil.which", return_value="/usr/bin/openssl")
+    @patch("tls_scanner.pqc.subprocess.run")
+    @patch("tls_scanner.pqc.shutil.which", return_value="/usr/bin/openssl")
     def test_accepts_openssl_3_5_with_ml_kem_tls_group(self, _which, run):
         run.side_effect = [
             Mock(
@@ -473,24 +1203,28 @@ class PQCPrerequisiteTests(unittest.TestCase):
         self.assertEqual(version, "OpenSSL 3.5.0 8 Apr 2025")
         self.assertEqual(groups, ["X25519MLKEM768"])
 
-    @patch("Scan_nmap_TLS3.load_dependencies")
-    @patch("Scan_nmap_TLS3.check_pqc_prerequisites")
-    @patch("Scan_nmap_TLS3.parse_args")
+    @patch("tls_scanner.cli.load_dependencies")
+    @patch("tls_scanner.cli.print_startup_banner")
+    @patch("tls_scanner.cli.check_pqc_prerequisites")
+    @patch("tls_scanner.cli.parse_args")
     def test_main_stops_before_loading_nmap_when_preflight_fails(
         self,
         parse_args,
         check_prerequisites,
+        print_startup_banner,
         load_dependencies,
     ):
         parse_args.return_value = SimpleNamespace(
             crypto="pqc",
             targets="192.0.2.10",
+            no_log_file=True,
         )
         check_prerequisites.side_effect = scanner.PQCPrerequisiteError(
             "PQC preflight check failed."
         )
 
         self.assertEqual(scanner.main(), 2)
+        print_startup_banner.assert_called_once_with()
         load_dependencies.assert_not_called()
 
 
@@ -513,7 +1247,7 @@ class PQCComplianceTests(unittest.TestCase):
             ("KO", "No supported PQC group"),
         )
 
-    @patch("Scan_nmap_TLS3.subprocess.run")
+    @patch("tls_scanner.pqc.subprocess.run")
     def test_detects_negotiated_hybrid_group(self, run):
         run.return_value = Mock(
             returncode=0,
