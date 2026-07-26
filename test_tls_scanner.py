@@ -631,6 +631,48 @@ reports:
         self.assertIn("TLS 1.1 detected", findings[0].evidence)
         self.assertIn("TLS 1.2 or TLS 1.3", findings[0].remediation)
 
+
+    def test_builds_certificate_derived_security_findings_without_self_signed(self):
+        results = [
+            [
+                "192.0.2.10",
+                "internal.example.com",
+                443,
+                "A",
+                "TLSv1.3",
+                "TLS_AES_256_GCM_SHA384",
+                "RSA 1024 bits",
+                "2099-01-01",
+                "RSA 1024 / SHA-1",
+                "yes",
+                12,
+                "commonName=internal.example.com",
+                "commonName=internal.example.com",
+                "internal.example.com",
+                "RSA",
+                1024,
+                "sha1WithRSAEncryption",
+                "OK",
+                "",
+            ]
+        ]
+
+        findings = scanner.build_security_findings(results)
+        checks = {finding.check: finding for finding in findings}
+
+        self.assertEqual(
+            set(checks),
+            {
+                "Certificate expires soon",
+                "Weak certificate signature",
+                "Weak certificate key",
+            },
+        )
+        self.assertEqual(checks["Certificate expires soon"].status, "WARNING")
+        self.assertEqual(checks["Weak certificate signature"].status, "KO")
+        self.assertEqual(checks["Weak certificate key"].severity, "high")
+        self.assertNotIn("Self-signed certificate", checks)
+
     def test_builds_html_report_from_markdown(self):
         job = scanner.ScanJob(
             targets="example.com",

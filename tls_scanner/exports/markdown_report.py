@@ -101,6 +101,82 @@ def certificate_rows(results):
     )
 
 
+def is_detailed_certificate_row(row):
+    return len(row) >= 19
+
+
+def parse_int(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def certificate_detail_findings(row):
+    if not is_detailed_certificate_row(row):
+        return []
+
+    findings = []
+    ip, fqdn, port = row[0], row[1] or "-", row[2]
+    days_left = parse_int(row[10])
+    key_type = str(row[14]).upper()
+    key_size = parse_int(row[15])
+    signature_algorithm = str(row[16])
+    normalized_signature = signature_algorithm.upper().replace("-", "").replace("_", "")
+
+    def add(check, status, severity, evidence, remediation):
+        findings.append(
+            SecurityFinding(
+                ip=ip,
+                fqdn=fqdn,
+                port=port,
+                check=check,
+                status=status,
+                severity=severity,
+                evidence=evidence,
+                remediation=remediation,
+            )
+        )
+
+    if days_left is not None:
+        if days_left < 0:
+            add(
+                "Expired certificate",
+                "KO",
+                "high",
+                f"Certificate expired {abs(days_left)} day(s) ago on {row[7]}",
+                "Renew and deploy a valid certificate.",
+            )
+        elif days_left <= 30:
+            add(
+                "Certificate expires soon",
+                "WARNING",
+                "medium",
+                f"Certificate expires in {days_left} day(s) on {row[7]}",
+                "Plan certificate renewal before expiration.",
+            )
+
+    if "MD5" in normalized_signature or "SHA1" in normalized_signature or normalized_signature.endswith("SHA"):
+        add(
+            "Weak certificate signature",
+            "KO",
+            "medium",
+            f"Certificate signature algorithm is {signature_algorithm}",
+            "Replace the certificate with one signed using SHA-256 or stronger.",
+        )
+
+    if key_type == "RSA" and key_size is not None and key_size < 2048:
+        add(
+            "Weak certificate key",
+            "KO",
+            "high",
+            f"Certificate uses RSA {key_size}-bit key",
+            "Replace the certificate with an RSA key of at least 2048 bits.",
+        )
+
+    return findings
+
+
 def classify_security_reason(reason):
     normalized = str(reason).casefold()
     if "tls" in normalized and ("1.0" in normalized or "1.1" in normalized or "version" in normalized):
@@ -150,6 +226,18 @@ def build_security_findings(results):
     findings = []
     seen = set()
     for row in results:
+        for finding in certificate_detail_findings(row):
+            finding_key = (
+                finding.ip,
+                finding.fqdn,
+                finding.port,
+                finding.check,
+                finding.evidence,
+            )
+            if finding_key not in seen:
+                seen.add(finding_key)
+                findings.append(finding)
+
         if len(row) < 10 or row[-2] != "KO":
             continue
         reason = row[-1] or "TLS compliance failure"
