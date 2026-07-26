@@ -10,6 +10,7 @@ Produces:
 """
 
 from ..config import config_targets_to_list
+from ..models import SecurityFinding
 
 
 def markdown_escape(value):
@@ -92,6 +93,85 @@ def certificate_rows(results):
     return sorted(
         rows_by_endpoint.values(),
         key=lambda row: (row["ip"], sort_port(row["port"])),
+    )
+
+
+def classify_security_reason(reason):
+    normalized = str(reason).casefold()
+    if "tls" in normalized and ("1.0" in normalized or "1.1" in normalized or "version" in normalized):
+        return (
+            "Deprecated TLS version",
+            "high",
+            "Disable deprecated TLS versions and allow only TLS 1.2 or TLS 1.3.",
+        )
+    if "sha-1" in normalized or "sha1" in normalized or "signature hash" in normalized:
+        return (
+            "Weak signature hash",
+            "medium",
+            "Replace certificates or cipher suites that rely on SHA-1/MD5 with SHA-256 or stronger.",
+        )
+    if "rsa key" in normalized:
+        return (
+            "Weak certificate key",
+            "medium",
+            "Replace the certificate with an RSA key of at least 2048 bits, preferably 3072 bits or stronger where required.",
+        )
+    if "certificate expired" in normalized:
+        return (
+            "Expired certificate",
+            "high",
+            "Renew and deploy a valid certificate.",
+        )
+    if "certificate date" in normalized:
+        return (
+            "Unreadable certificate validity",
+            "medium",
+            "Verify the certificate validity dates and replace malformed certificates.",
+        )
+    if "cipher" in normalized:
+        return (
+            "Weak cipher suite",
+            "medium",
+            "Disable weak cipher suites and prefer AEAD suites such as AES-GCM or ChaCha20-Poly1305.",
+        )
+    return (
+        "TLS compliance failure",
+        "medium",
+        "Review the TLS configuration and align it with the selected encryption policy.",
+    )
+
+
+def build_security_findings(results):
+    findings = []
+    seen = set()
+    for row in results:
+        if len(row) < 10 or row[-2] != "KO":
+            continue
+        reason = row[-1] or "TLS compliance failure"
+        check, severity, remediation = classify_security_reason(reason)
+        evidence_parts = [str(reason)]
+        if len(row) > 5:
+            evidence_parts.append(f"{row[4]} {row[5]}")
+        evidence = " - ".join(evidence_parts)
+        finding_key = (row[0], row[1], row[2], check, evidence)
+        if finding_key in seen:
+            continue
+        seen.add(finding_key)
+        findings.append(
+            SecurityFinding(
+                ip=row[0],
+                fqdn=row[1] or "-",
+                port=row[2],
+                check=check,
+                status="KO",
+                severity=severity,
+                evidence=evidence,
+                remediation=remediation,
+            )
+        )
+    return sorted(
+        findings,
+        key=lambda finding: (finding.severity, finding.ip, sort_port(finding.port), finding.check),
     )
 
 
@@ -200,6 +280,7 @@ def build_markdown_report(results, job, scan_timestamp):
     reason_counts = count_values(row[-1] for row in results if row[-2] == "KO")
     host_summaries = build_host_compliance_summary(results)
     cert_rows = certificate_rows(results)
+    security_findings = build_security_findings(results)
     compliant_hosts = sum(1 for row in host_summaries if row["status"] == "CONFORME")
     non_compliant_hosts = sum(
         1 for row in host_summaries if row["status"] == "NON CONFORME"
@@ -293,6 +374,36 @@ def build_markdown_report(results, job, scan_timestamp):
             )
     else:
         lines.append("| - | - | - | unknown | unknown | N/A | - | - | - |")
+
+
+    lines.extend([
+        "",
+        "## Security Findings",
+        "",
+        "| Severity | Status | IP | FQDN | Port | Check | Evidence | Remediation |",
+        "| --- | --- | --- | --- | ---: | --- | --- | --- |",
+    ])
+    if security_findings:
+        for finding in security_findings:
+            lines.append(
+                "| "
+                + " | ".join(
+                    markdown_escape(value)
+                    for value in [
+                        finding.severity,
+                        finding.status,
+                        finding.ip,
+                        finding.fqdn,
+                        finding.port,
+                        finding.check,
+                        finding.evidence,
+                        finding.remediation,
+                    ]
+                )
+                + " |"
+            )
+    else:
+        lines.append("| - | - | - | - | - | No security finding | - | - |")
 
     lines.extend([
         "",

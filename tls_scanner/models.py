@@ -57,6 +57,18 @@ class CertificateInfo:
 
 
 @dataclass
+class SecurityFinding:
+    ip: str
+    fqdn: str
+    port: int | str
+    check: str
+    status: str
+    severity: str
+    evidence: str
+    remediation: str
+
+
+@dataclass
 class ScanJob:
     targets: str
     ports: str

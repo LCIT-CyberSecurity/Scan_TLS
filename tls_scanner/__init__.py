@@ -68,6 +68,7 @@ from .exports.markdown_report import (
     append_bar_chart,
     build_host_compliance_summary,
     build_markdown_report,
+    build_security_findings,
     count_values,
     dashboard_bar,
     markdown_escape,
@@ -82,7 +83,7 @@ from .exports.paths import (
     write_exports,
 )
 from .logging_config import configure_logging
-from .models import CertificateInfo, ConfigError, EncryptionPolicy, PQCPrerequisiteError, ScanJob, TargetGroup
+from .models import CertificateInfo, ConfigError, EncryptionPolicy, PQCPrerequisiteError, ScanJob, SecurityFinding, TargetGroup
 from .network import normalize_targets, parse_ports, resolve_fqdn, resolve_target_fqdns
 from .pqc import (
     check_pqc_prerequisites,

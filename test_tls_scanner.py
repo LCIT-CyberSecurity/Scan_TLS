@@ -583,8 +583,42 @@ reports:
         self.assertIn("## Certificates", markdown)
         self.assertIn("RSA 3072 / SHA-256", markdown)
         self.assertIn("commonName=secure.example.com", markdown)
+        self.assertIn("## Security Findings", markdown)
+        self.assertIn("Deprecated TLS version", markdown)
+        self.assertIn("Disable deprecated TLS versions", markdown)
+        self.assertNotIn("Self-signed certificate", markdown)
         self.assertIn("## Actions prioritaires", markdown)
         self.assertIn("<details>", markdown)
+
+    def test_builds_security_findings_from_existing_ko_reasons(self):
+        results = [
+            [
+                "192.0.2.10",
+                "legacy.example.com",
+                443,
+                "C",
+                "TLSv1.1",
+                "TLS_RSA_WITH_AES_128_CBC_SHA",
+                "RSA 2048 bits",
+                "2099-01-01",
+                "RSA 2048 / SHA-256",
+                "yes",
+                "commonName=legacy.example.com",
+                "commonName=legacy.example.com",
+                "legacy.example.com",
+                "KO",
+                "TLS 1.1 detected",
+            ]
+        ]
+
+        findings = scanner.build_security_findings(results)
+
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].check, "Deprecated TLS version")
+        self.assertEqual(findings[0].status, "KO")
+        self.assertEqual(findings[0].severity, "high")
+        self.assertIn("TLS 1.1 detected", findings[0].evidence)
+        self.assertIn("TLS 1.2 or TLS 1.3", findings[0].remediation)
 
     def test_builds_html_report_from_markdown(self):
         job = scanner.ScanJob(
