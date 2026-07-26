@@ -55,9 +55,8 @@ def build_cbom(results, pqc=False):
         host, fqdn, port, grade, tls_version, cipher_suite = row[:6]
         public_key, cert_validity = row[6:8]
         key_exchange = row[8] if pqc else None
-        compliance_index = 9 if pqc else 8
-        compliance = row[compliance_index]
-        reason = row[compliance_index + 1]
+        compliance = row[-2]
+        reason = row[-1]
 
         crypto_refs = []
         key_match = re.fullmatch(r"(.+?)(?: (\d+) bits)?", public_key)

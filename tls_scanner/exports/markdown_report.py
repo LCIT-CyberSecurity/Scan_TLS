@@ -55,6 +55,46 @@ def worst_grade(grades):
     return max(known_grades, key=GRADE_ORDER.get)
 
 
+def unique_summary(values):
+    cleaned = sorted({str(value) for value in values if value not in {None, ""}})
+    if not cleaned:
+        return "-"
+    if len(cleaned) == 1:
+        return cleaned[0]
+    return "mixed"
+
+
+def earliest_date(values):
+    dates = sorted(str(value) for value in values if value and value != "N/A")
+    return dates[0] if dates else "N/A"
+
+
+def certificate_rows(results):
+    rows_by_endpoint = {}
+    for row in results:
+        if len(row) < 13:
+            continue
+        key = (row[0], row[1], row[2])
+        rows_by_endpoint.setdefault(
+            key,
+            {
+                "ip": row[0],
+                "fqdn": row[1] or "-",
+                "port": row[2],
+                "self_signed": row[-6],
+                "certificate_crypto": row[-7],
+                "issuer": row[-5],
+                "subject": row[-4],
+                "san": row[-3],
+                "expiry": row[7],
+            },
+        )
+    return sorted(
+        rows_by_endpoint.values(),
+        key=lambda row: (row["ip"], sort_port(row["port"])),
+    )
+
+
 # Use plain Markdown bars so the dashboard remains readable even when Mermaid is unsupported.
 def append_bar_chart(lines, title, counts):
     lines.extend([
@@ -91,12 +131,19 @@ def build_host_compliance_summary(results):
                 "fqdn": row[1] or "-",
                 "ports": set(),
                 "grades": [],
+                "self_signed": [],
+                "certificate_expiries": [],
+                "certificate_issuers": [],
                 "failed_reasons_by_port": {},
             },
         )
         port = row[2]
         host_summary["ports"].add(port)
         host_summary["grades"].append(row[3])
+        if len(row) >= 13:
+            host_summary["self_signed"].append(row[-6])
+            host_summary["certificate_expiries"].append(row[7])
+            host_summary["certificate_issuers"].append(row[-5])
 
         if row[-2] == "KO":
             reason = row[-1] or "Contrôle non conforme"
@@ -131,6 +178,9 @@ def build_host_compliance_summary(results):
                     for port in sorted(host_summary["ports"], key=sort_port)
                 ),
                 "worst_grade": worst_grade(host_summary["grades"]),
+                "self_signed": unique_summary(host_summary["self_signed"]),
+                "certificate_expiry": earliest_date(host_summary["certificate_expiries"]),
+                "certificate_issuer": unique_summary(host_summary["certificate_issuers"]),
                 "reason": reason,
             }
         )
@@ -149,6 +199,7 @@ def build_markdown_report(results, job, scan_timestamp):
     grade_counts = count_values(row[3] for row in results if len(row) > 3)
     reason_counts = count_values(row[-1] for row in results if row[-2] == "KO")
     host_summaries = build_host_compliance_summary(results)
+    cert_rows = certificate_rows(results)
     compliant_hosts = sum(1 for row in host_summaries if row["status"] == "CONFORME")
     non_compliant_hosts = sum(
         1 for row in host_summaries if row["status"] == "NON CONFORME"
@@ -185,8 +236,8 @@ def build_markdown_report(results, job, scan_timestamp):
         "",
         "## Conformité par host",
         "",
-        "| Signal | Statut | IP | FQDN | Ports | Grade | Raison |",
-        "| --- | --- | --- | --- | --- | --- | --- |",
+        "| Signal | Statut | IP | FQDN | Ports | Grade | Self-signed | Cert Expiry | Issuer | Raison |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ])
     if host_summaries:
         for summary in host_summaries:
@@ -201,13 +252,47 @@ def build_markdown_report(results, job, scan_timestamp):
                         summary["fqdn"],
                         summary["ports"],
                         summary["worst_grade"],
+                        summary["self_signed"],
+                        summary["certificate_expiry"],
+                        summary["certificate_issuer"],
                         summary["reason"],
                     ]
                 )
                 + " |"
             )
     else:
-        lines.append("| - | Aucun resultat | - | - | - | - | Aucun controle exploitable |")
+        lines.append("| - | Aucun resultat | - | - | - | - | - | - | - | Aucun controle exploitable |")
+
+
+    lines.extend([
+        "",
+        "## Certificates",
+        "",
+        "| IP | FQDN | Port | Self-signed | Certificate Crypto | Expiry | Issuer | Subject | SAN |",
+        "| --- | --- | ---: | --- | --- | --- | --- | --- | --- |",
+    ])
+    if cert_rows:
+        for cert_row in cert_rows:
+            lines.append(
+                "| "
+                + " | ".join(
+                    markdown_escape(value)
+                    for value in [
+                        cert_row["ip"],
+                        cert_row["fqdn"],
+                        cert_row["port"],
+                        cert_row["self_signed"],
+                        cert_row["certificate_crypto"],
+                        cert_row["expiry"],
+                        cert_row["issuer"],
+                        cert_row["subject"],
+                        cert_row["san"],
+                    ]
+                )
+                + " |"
+            )
+    else:
+        lines.append("| - | - | - | unknown | unknown | N/A | - | - | - |")
 
     lines.extend([
         "",
@@ -276,7 +361,17 @@ def build_markdown_report(results, job, scan_timestamp):
     ]
     if job.crypto == "pqc":
         header.append("Key Exchange")
-    header.extend(["Compliance", "Reason"])
+    header.extend(
+        [
+            "Certificate Crypto",
+            "Self-signed",
+            "Certificate Issuer",
+            "Certificate Subject",
+            "Certificate SAN",
+            "Compliance",
+            "Reason",
+        ]
+    )
     lines.extend([
         "",
         "<details>",

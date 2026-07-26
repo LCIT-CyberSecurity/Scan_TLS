@@ -548,7 +548,12 @@ reports:
                 "TLSv1.3",
                 "TLS_AES_256_GCM_SHA384",
                 "RSA 3072 bits",
-                "Valid",
+                "2099-01-01",
+                "RSA 3072 / SHA-256",
+                "yes",
+                "commonName=secure.example.com",
+                "commonName=secure.example.com",
+                "secure.example.com",
                 "OK",
                 "",
             ],
@@ -574,6 +579,10 @@ reports:
         self.assertIn("run-123", markdown)
         self.assertIn("external_public_endpoints", markdown)
         self.assertIn("anssi_encryption_policy v1.0", markdown)
+        self.assertIn("Self-signed", markdown)
+        self.assertIn("## Certificates", markdown)
+        self.assertIn("RSA 3072 / SHA-256", markdown)
+        self.assertIn("commonName=secure.example.com", markdown)
         self.assertIn("## Actions prioritaires", markdown)
         self.assertIn("<details>", markdown)
 
@@ -654,6 +663,9 @@ class CsvExportTests(unittest.TestCase):
             "2026-06-21T14:00:00Z",
         )
 
+        self.assertIn("Certificate Crypto", headers)
+        self.assertIn("Self-signed", headers)
+        self.assertIn("Certificate Issuer", headers)
         self.assertEqual(
             headers[-5:],
             [
@@ -1319,6 +1331,37 @@ SHA-1: 11:22:33
             scanner.extract_signature_algorithm(certificate_output),
             "sha256WithRSAEncryption",
         )
+
+
+class CertificateInventoryTests(unittest.TestCase):
+    def test_builds_certificate_info_without_affecting_compliance(self):
+        certificate_output = """
+Subject: commonName=app.internal
+Issuer: commonName=app.internal
+Subject Alternative Name: DNS:app.internal, DNS:app
+Not valid after: 2099-01-01T00:00:00
+Public Key type: rsa
+Public Key bits: 2048
+Signature Algorithm: sha256WithRSAEncryption
+"""
+
+        certificate_info = scanner.build_certificate_info(certificate_output)
+
+        self.assertEqual(certificate_info.subject, "commonName=app.internal")
+        self.assertEqual(certificate_info.issuer, "commonName=app.internal")
+        self.assertEqual(certificate_info.subject_alternative_names, ("app.internal", "app"))
+        self.assertEqual(certificate_info.not_after, "2099-01-01")
+        self.assertEqual(certificate_info.public_key_type, "RSA")
+        self.assertEqual(certificate_info.public_key_bits, 2048)
+        self.assertEqual(certificate_info.signature_algorithm, "sha256WithRSAEncryption")
+        self.assertEqual(certificate_info.self_signed, "yes")
+        self.assertEqual(scanner.certificate_crypto_summary(certificate_info), "RSA 2048 / SHA-256")
+
+    def test_reports_unknown_self_signed_when_identity_is_missing(self):
+        certificate_info = scanner.build_certificate_info("Public Key type: rsa")
+
+        self.assertEqual(certificate_info.self_signed, "unknown")
+        self.assertEqual(scanner.certificate_crypto_summary(certificate_info), "RSA / unknown")
 
 
 # Endpoint grades use the weakest finding for each individual host and port.

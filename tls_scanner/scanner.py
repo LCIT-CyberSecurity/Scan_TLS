@@ -15,7 +15,8 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 import time
 
-from .crypto_policy import evaluate_compliance, extract_cipher_suites, extract_public_key
+from .checks import build_certificate_info, certificate_crypto_summary
+from .crypto_policy import evaluate_compliance, extract_cipher_suites
 from .network import resolve_fqdn
 from .pqc import evaluate_pqc_compliance, probe_pqc_key_exchange
 
@@ -112,20 +113,14 @@ def collect_scan_results(scanner, args, results, findings, fqdn_cache):
                 continue
 
             certificate_output = port_info["script"].get("ssl-cert", "")
-            public_key_type, public_key_bits = extract_public_key(
-                certificate_output
-            )
+            certificate_info = build_certificate_info(certificate_output)
+            public_key_type = certificate_info.public_key_type
+            public_key_bits = certificate_info.public_key_bits
             public_key = public_key_type
             if public_key_bits is not None:
                 public_key = f"{public_key_type} {public_key_bits} bits"
-
-            cert_validity = "N/A"
-            if "Not valid after:" in certificate_output:
-                start = certificate_output.find("Not valid after:") + len(
-                    "Not valid after:"
-                )
-                end = certificate_output.find("T", start)
-                cert_validity = certificate_output[start:end].strip()
+            cert_validity = certificate_info.not_after
+            certificate_san = ", ".join(certificate_info.subject_alternative_names) or "-"
 
             cipher_output = port_info["script"].get("ssl-enum-ciphers", "")
             cipher_suites = extract_cipher_suites(cipher_output)
@@ -174,7 +169,17 @@ def collect_scan_results(scanner, args, results, findings, fqdn_cache):
                 ]
                 if args.crypto == "pqc":
                     row.append(key_exchange)
-                row.extend([compliance, reason])
+                row.extend(
+                    [
+                        certificate_crypto_summary(certificate_info),
+                        certificate_info.self_signed,
+                        certificate_info.issuer,
+                        certificate_info.subject,
+                        certificate_san,
+                        compliance,
+                        reason,
+                    ]
+                )
                 results.append(row)
 
 

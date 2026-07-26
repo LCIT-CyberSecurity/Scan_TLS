@@ -396,7 +396,16 @@ def main():
     ]
     if job.crypto == "pqc":
         headers.append("Key Exchange")
-    headers.append("Compliance")
+    headers.extend(
+        [
+            "Certificate Crypto",
+            "Self-signed",
+            "Certificate Issuer",
+            "Certificate Subject",
+            "Certificate SAN",
+            "Compliance",
+        ]
+    )
 
     table = PrettyTable(headers)
     for row in results:
