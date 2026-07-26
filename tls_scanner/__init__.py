@@ -63,6 +63,7 @@ from .crypto_policy import (
 )
 from .exports.cbom import build_cbom
 from .exports.csv_export import build_csv_export
+from .exports.findings_csv import build_findings_csv_export
 from .exports.html_report import build_html_report
 from .exports.markdown_report import (
     append_bar_chart,
@@ -78,6 +79,7 @@ from .exports.markdown_report import (
 from .exports.paths import (
     build_export_paths,
     export_extension,
+    findings_sidecar_path,
     local_report_timestamp,
     local_scan_timestamp,
     write_exports,

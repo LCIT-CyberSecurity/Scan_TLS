@@ -1,3 +1,4 @@
+import csv
 import socket
 import tempfile
 import unittest
@@ -711,6 +712,73 @@ reports:
         self.assertIn("<details>", html_report)
         self.assertNotIn("# TLS Scan Dashboard", html_report)
 
+
+
+    def test_writes_findings_sidecar_for_markdown_and_html_exports(self):
+        job = scanner.ScanJob(
+            targets="legacy.example.com",
+            ports="443",
+            crypto="standard",
+            ip=False,
+        )
+        results = [
+            [
+                "192.0.2.10",
+                "legacy.example.com",
+                443,
+                "C",
+                "TLSv1.1",
+                "TLS_RSA_WITH_AES_128_CBC_SHA",
+                "RSA 1024 bits",
+                "2099-01-01",
+                "RSA 1024 / SHA-1",
+                "no",
+                12,
+                "Example CA",
+                "legacy.example.com",
+                "legacy.example.com",
+                "RSA",
+                1024,
+                "sha1WithRSAEncryption",
+                "KO",
+                "TLS 1.1 detected",
+            ]
+        ]
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            written_files = scanner.write_exports(
+                results,
+                job,
+                "2026-07-23T14:30:12+02:00",
+                {
+                    "md": temp_path / "report.md",
+                    "html": temp_path / "report.html",
+                },
+            )
+            findings_path = temp_path / "report_findings.csv"
+            with findings_path.open(newline="", encoding="utf-8") as file:
+                rows = list(csv.reader(file))
+
+        self.assertEqual(written_files.count(str(findings_path)), 1)
+        self.assertIn(str(temp_path / "report.md"), written_files)
+        self.assertIn(str(temp_path / "report.html"), written_files)
+        self.assertEqual(
+            rows[0],
+            [
+                "Severity",
+                "Status",
+                "IP",
+                "FQDN",
+                "Port",
+                "Check",
+                "Evidence",
+                "Remediation",
+            ],
+        )
+        self.assertTrue(any(row[5] == "Deprecated TLS version" for row in rows[1:]))
+        self.assertTrue(any(row[5] == "Weak certificate key" for row in rows[1:]))
+        self.assertTrue(any(row[5] == "Weak certificate signature" for row in rows[1:]))
 
 class LoggingTests(unittest.TestCase):
     def test_configures_file_logging_with_run_id(self):
