@@ -21,8 +21,8 @@ or outdated protocols.
 - Displays an activity bar with elapsed time while Nmap is running.
 - Displays separate `IP` and `FQDN` columns in the terminal table.
 - Optionally exports results with separate `IP` and `FQDN` columns to CSV.
-- Provides an optional PQC profile that actively tests TLS 1.3 hybrid ML-KEM
-  key exchange groups.
+- Provides an optional Post-Quantum Cryptography (PQC) profile that actively
+  tests TLS 1.3 hybrid ML-KEM key exchange groups.
 
 ## Requirements
 
@@ -44,33 +44,185 @@ Install Nmap by following the instructions on the
 Install the required Python packages:
 
 ```bash
-python3 -m pip install python-nmap prettytable tqdm
+python3 -m pip install -r requirements.txt
 ```
 
 ## Usage
 
-Run the scanner with one or more comma-separated targets:
+Run an ad hoc scan with one or more comma-separated targets:
 
 ```bash
-python3 Scan_nmap_TLS3.py [-i] [-c {standard,pqc}] [-p PORTS] <targets> [csv_filename]
+python3 Scan_nmap_TLS3.py [-i] [-c {standard,pqc}] [-p PORTS] [-e FILENAME] [--log-level LEVEL] [--log-file FILENAME] [--no-log-file] <targets> [csv_filename]
+```
+
+Run a configured report:
+
+```bash
+python3 Scan_nmap_TLS3.py --config config/config.yaml --report external_anssi_weekly
 ```
 
 | Parameter | Description |
 | --- | --- |
-| `<targets>` | Comma-separated FQDNs, IP addresses, or subnets. |
-| `[csv_filename]` | Optional CSV output filename. |
+| `<targets>` | Comma-separated FQDNs, IP addresses, or subnets for ad hoc CLI scans. |
+| `[csv_filename]` | Optional CSV output filename for legacy CLI syntax. |
+| `--config` | Load scan settings from a YAML file. Default: `config/config.yaml` when no CLI target is provided. |
+| `--report` | Run a named report definition from the config file. Required when the config contains multiple reports. |
+| `--list-reports` | List configured report names and exit. |
+| `--dry-run` | Validate config, targets, policies, logging and exports without running Nmap. |
+| `-e`, `--export` | Export a CLI scan to `.csv`, CycloneDX 1.6 `.cbom.json`, or `.md`. |
+| `--policy` | Named encryption policy to enforce for CLI scans. Repeat to require multiple policies. Default: `anssi_encryption_policy`. |
+| `--policy-file` | YAML encryption policy file to enforce for CLI scans. Repeat to require multiple policy files. |
+| `--workers` | Parallel TLS host scans, from `1` to `32`. Default: `4`; use `1` for sequential scans. |
 | `-p`, `--ports` | Ports to test: one port, a list, ranges, `fast`, or `all`. Default: `fast`. |
-| `-c`, `--crypto` | Compliance profile: `standard` or `pqc`. Default: `standard`. |
+| `-c`, `--crypto` | Compliance profile: `standard` or `pqc` (Post-Quantum Cryptography). Default: `standard`. |
 | `-i`, `--ip` | Disable DNS resolution and leave the `FQDN` column empty. |
+| `--log-level` | Logging level: `debug`, `info`, `warning`, or `error`. Default: `info`. |
+| `--log-file` | Write logs to this file. Default: `logs/scan.log`. |
+| `--no-log-file` | Disable file logging. |
 | `-h`, `--help` | Display command-line help. |
 
-The terminal table and CSV export always contain separate `IP` and `FQDN`
-columns. The `FQDN` field is empty when reverse DNS resolution is disabled or
-not available.
+## YAML configuration
 
-The CSV export adds a `Reason` column after `Compliance`. It contains a short
-English cause for `KO` results and remains empty for `OK` results. This column
-is not displayed in the terminal table.
+The default config file is `config/config.yaml`. It defines reusable report
+definitions. A report combines target groups, one or more encryption policies,
+scan settings, logging and export settings.
+
+List configured reports:
+
+```bash
+python3 Scan_nmap_TLS3.py --config config/config.yaml --list-reports
+```
+
+Validate a report without running Nmap:
+
+```bash
+python3 Scan_nmap_TLS3.py --config config/config.yaml --report external_anssi_weekly --dry-run
+```
+
+Example report config:
+
+```yaml
+defaults:
+  scan:
+    ports: fast
+    workers: 4
+    crypto: standard
+    resolve_dns: true
+  logging:
+    level: info
+    file: logs/scan.log
+  export:
+    directory: scan_reports
+    formats:
+      - csv
+      - cbom
+      - md
+    filename_template: "{timestamp}_{report_name}"
+
+reports:
+  - name: external_anssi_weekly
+    description: Public-facing endpoints checked against ANSSI TLS policy.
+    frequency: weekly
+    target_groups:
+      - external_public_endpoints
+    encryption_policies:
+      mode: strict_all
+      names:
+        - anssi_encryption_policy
+```
+
+Target groups live in `config/targets_scan/` and can contain FQDNs, IP
+addresses and subnets in CIDR notation:
+
+```yaml
+name: external_public_endpoints
+description: Public-facing endpoints.
+
+targets:
+  fqdn:
+    - example.com
+  ip:
+    - 192.0.2.10
+  subnets:
+    - 192.0.2.0/24
+```
+
+Encryption policies live in `config/encryption_policy/`. Custom policies use
+the same schema as `anssi_encryption_policy.yaml`. With `strict_all`, a TLS
+finding must satisfy every configured policy. Algorithms not explicitly allowed
+by a policy are considered forbidden when policy enforcement is applied. CLI
+scans without a config file use `anssi_encryption_policy` by default; use
+repeatable `--policy` or `--policy-file` options to enforce one or more custom
+policies. Increasing `--workers` can reduce scan time, but it also increases
+concurrent TLS connections against targets; keep `--workers 1` for sensitive or
+fragile environments.
+
+Command-line values override YAML settings when they are explicitly provided.
+For example, this command keeps the configured report but scans only port
+`443` with debug logging:
+
+```bash
+python3 Scan_nmap_TLS3.py --config config/config.yaml --report external_anssi_weekly -p 443 --log-level debug
+```
+
+Configured report exports are written under `scan_reports/` by default. Output
+filenames start with the local machine time:
+
+```text
+scan_reports/2026-07-23-143012_external_anssi_weekly.csv
+scan_reports/2026-07-23-143012_external_anssi_weekly.cbom.json
+scan_reports/2026-07-23-143012_external_anssi_weekly.md
+```
+
+## Exports
+
+Use `-e` to select the export format from the filename:
+
+```bash
+python3 Scan_nmap_TLS3.py example.com -e results.csv
+python3 Scan_nmap_TLS3.py example.com -e results.cbom.json
+python3 Scan_nmap_TLS3.py example.com -e results.md
+```
+
+The legacy positional syntax remains available for CSV exports:
+
+```bash
+python3 Scan_nmap_TLS3.py example.com results.csv
+```
+
+The terminal table and CSV export contain separate `IP` and `FQDN` columns.
+The `FQDN` field is empty when reverse DNS resolution is disabled or
+unavailable. The CSV export adds a `Reason` column after `Compliance` with a
+short cause for `KO` results. This column is not displayed in the terminal.
+Each CSV row also records the UTC scan timestamp, requested targets, port
+selection, cryptographic profile, and whether DNS resolution was enabled.
+
+CBOM means **Cryptography Bill of Materials**. The `.cbom.json` export uses
+CycloneDX JSON 1.6, standardized as
+[ECMA-424](https://ecma-international.org/publications-and-standards/standards/ecma-424/).
+It identifies the document with `bomFormat: "CycloneDX"` and
+`specVersion: "1.6"`, then represents the discovered cryptographic assets as
+`cryptographic-asset` components with `cryptoProperties`.
+
+The CBOM includes:
+
+- discovered TLS protocol versions and cipher suites;
+- certificate public-key types and sizes;
+- certificate expiration dates;
+- observed hybrid ML-KEM key-exchange groups when the PQC profile is used;
+- endpoint information, grades, compliance verdicts, and failure reasons.
+
+This first CBOM version does not model the complete X.509 certificate as a
+CycloneDX `certificate` asset. The scan also does not perform full PKI
+validation such as trust-chain, hostname, SAN, or revocation checks.
+
+The document is validated against the official
+[CycloneDX 1.6 JSON schema](https://cyclonedx.org/schema/bom-1.6.schema.json).
+It is an external, network-discovery CBOM: it does not inventory cryptography
+used only inside applications, source code, databases, HSMs, or unexposed
+services.
+
+## Port discovery
 
 With `-p fast`, the scanner uses Nmap `-F` to discover approximately the 100
 most common TCP ports. With `-p all`, it discovers open TCP ports from `1` to
@@ -102,10 +254,10 @@ RSA 2048 is accepted by the scanner. See the
 [ANSSI cryptographic mechanisms guide, version 3.00](https://messervices.cyber.gouv.fr/documents-guides/anssi-guide-mecanismes-crypto-3.00.pdf)
 for the broader recommendations around key sizes.
 
-## Post-Quantum Compliance Policy
+## Post-Quantum Cryptography (PQC) Compliance Policy
 
-Select the post-quantum profile with `-c pqc`. The standard profile remains
-the default and its behavior and output are unchanged.
+PQC means **Post-Quantum Cryptography**. Select this profile with `-c pqc`.
+The standard profile remains the default and its behavior is unchanged.
 
 The PQC profile requires OpenSSL 3.5 or later. Before loading Nmap or starting
 any network scan, the scanner checks both the OpenSSL version and the actual

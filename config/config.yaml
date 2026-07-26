@@ -1,0 +1,26 @@
+defaults:
+  scan:
+    ports: fast
+    crypto: standard
+    resolve_dns: true
+  logging:
+    level: info
+    file: logs/scan.log
+  export:
+    directory: scan_reports
+    formats:
+      - csv
+      - cbom
+      - md
+    filename_template: "{timestamp}_{report_name}"
+
+reports:
+  - name: external_anssi_weekly
+    description: Public-facing endpoints checked against ANSSI TLS policy.
+    frequency: weekly
+    target_groups:
+      - external_public_endpoints
+    encryption_policies:
+      mode: strict_all
+      names:
+        - anssi_encryption_policy

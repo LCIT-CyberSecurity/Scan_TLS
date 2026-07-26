@@ -1,0 +1,9 @@
+name: external_public_endpoints
+description: Default targets scanned with fast port discovery.
+
+targets:
+  fqdn:
+    - smtp.free.fr
+  ip: []
+  subnets:
+    - 192.168.1.0/24
