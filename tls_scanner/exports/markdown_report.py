@@ -75,6 +75,7 @@ def certificate_rows(results):
     for row in results:
         if len(row) < 13:
             continue
+        has_detailed_certificate = len(row) >= 19
         key = (row[0], row[1], row[2])
         rows_by_endpoint.setdefault(
             key,
@@ -82,11 +83,15 @@ def certificate_rows(results):
                 "ip": row[0],
                 "fqdn": row[1] or "-",
                 "port": row[2],
-                "self_signed": row[-6],
-                "certificate_crypto": row[-7],
-                "issuer": row[-5],
-                "subject": row[-4],
-                "san": row[-3],
+                "self_signed": row[9] if has_detailed_certificate else row[-6],
+                "certificate_crypto": row[8] if has_detailed_certificate else row[-7],
+                "days_left": row[10] if has_detailed_certificate else "unknown",
+                "issuer": row[11] if has_detailed_certificate else row[-5],
+                "subject": row[12] if has_detailed_certificate else row[-4],
+                "san": row[13] if has_detailed_certificate else row[-3],
+                "key_type": row[14] if has_detailed_certificate else "unknown",
+                "key_size": row[15] if has_detailed_certificate else "unknown",
+                "signature_algorithm": row[16] if has_detailed_certificate else "unknown",
                 "expiry": row[7],
             },
         )
@@ -221,9 +226,14 @@ def build_host_compliance_summary(results):
         host_summary["ports"].add(port)
         host_summary["grades"].append(row[3])
         if len(row) >= 13:
-            host_summary["self_signed"].append(row[-6])
+            has_detailed_certificate = len(row) >= 19
+            host_summary["self_signed"].append(
+                row[9] if has_detailed_certificate else row[-6]
+            )
             host_summary["certificate_expiries"].append(row[7])
-            host_summary["certificate_issuers"].append(row[-5])
+            host_summary["certificate_issuers"].append(
+                row[11] if has_detailed_certificate else row[-5]
+            )
 
         if row[-2] == "KO":
             reason = row[-1] or "Contrôle non conforme"
@@ -349,8 +359,8 @@ def build_markdown_report(results, job, scan_timestamp):
         "",
         "## Certificates",
         "",
-        "| IP | FQDN | Port | Self-signed | Certificate Crypto | Expiry | Issuer | Subject | SAN |",
-        "| --- | --- | ---: | --- | --- | --- | --- | --- | --- |",
+        "| IP | FQDN | Port | Self-signed | Certificate Crypto | Expiry | Days Left | Issuer | Subject | SAN | Key Type | Key Size | Signature Algorithm |",
+        "| --- | --- | ---: | --- | --- | --- | ---: | --- | --- | --- | --- | ---: | --- |",
     ])
     if cert_rows:
         for cert_row in cert_rows:
@@ -365,15 +375,19 @@ def build_markdown_report(results, job, scan_timestamp):
                         cert_row["self_signed"],
                         cert_row["certificate_crypto"],
                         cert_row["expiry"],
+                        cert_row["days_left"],
                         cert_row["issuer"],
                         cert_row["subject"],
                         cert_row["san"],
+                        cert_row["key_type"],
+                        cert_row["key_size"],
+                        cert_row["signature_algorithm"],
                     ]
                 )
                 + " |"
             )
     else:
-        lines.append("| - | - | - | unknown | unknown | N/A | - | - | - |")
+        lines.append("| - | - | - | unknown | unknown | N/A | unknown | - | - | - | unknown | unknown | unknown |")
 
 
     lines.extend([
@@ -476,9 +490,13 @@ def build_markdown_report(results, job, scan_timestamp):
         [
             "Certificate Crypto",
             "Self-signed",
+            "Certificate Days Left",
             "Certificate Issuer",
             "Certificate Subject",
             "Certificate SAN",
+            "Certificate Key Type",
+            "Certificate Key Size",
+            "Certificate Signature Algorithm",
             "Compliance",
             "Reason",
         ]

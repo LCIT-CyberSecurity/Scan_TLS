@@ -551,9 +551,13 @@ reports:
                 "2099-01-01",
                 "RSA 3072 / SHA-256",
                 "yes",
+                26418,
                 "commonName=secure.example.com",
                 "commonName=secure.example.com",
                 "secure.example.com",
+                "RSA",
+                3072,
+                "sha256WithRSAEncryption",
                 "OK",
                 "",
             ],
@@ -582,6 +586,9 @@ reports:
         self.assertIn("Self-signed", markdown)
         self.assertIn("## Certificates", markdown)
         self.assertIn("RSA 3072 / SHA-256", markdown)
+        self.assertIn("Days Left", markdown)
+        self.assertIn("Signature Algorithm", markdown)
+        self.assertIn("sha256WithRSAEncryption", markdown)
         self.assertIn("commonName=secure.example.com", markdown)
         self.assertIn("## Security Findings", markdown)
         self.assertIn("Deprecated TLS version", markdown)
@@ -603,9 +610,13 @@ reports:
                 "2099-01-01",
                 "RSA 2048 / SHA-256",
                 "yes",
+                26418,
                 "commonName=legacy.example.com",
                 "commonName=legacy.example.com",
                 "legacy.example.com",
+                "RSA",
+                2048,
+                "sha256WithRSAEncryption",
                 "KO",
                 "TLS 1.1 detected",
             ]
@@ -700,6 +711,10 @@ class CsvExportTests(unittest.TestCase):
         self.assertIn("Certificate Crypto", headers)
         self.assertIn("Self-signed", headers)
         self.assertIn("Certificate Issuer", headers)
+        self.assertIn("Certificate Days Left", headers)
+        self.assertIn("Certificate Key Type", headers)
+        self.assertIn("Certificate Key Size", headers)
+        self.assertIn("Certificate Signature Algorithm", headers)
         self.assertEqual(
             headers[-5:],
             [

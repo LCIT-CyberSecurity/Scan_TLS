@@ -400,9 +400,13 @@ def main():
         [
             "Certificate Crypto",
             "Self-signed",
+            "Certificate Days Left",
             "Certificate Issuer",
             "Certificate Subject",
             "Certificate SAN",
+            "Certificate Key Type",
+            "Certificate Key Size",
+            "Certificate Signature Algorithm",
             "Compliance",
         ]
     )

@@ -173,9 +173,17 @@ def collect_scan_results(scanner, args, results, findings, fqdn_cache):
                     [
                         certificate_crypto_summary(certificate_info),
                         certificate_info.self_signed,
+                        certificate_info.days_remaining
+                        if certificate_info.days_remaining is not None
+                        else "unknown",
                         certificate_info.issuer,
                         certificate_info.subject,
                         certificate_san,
+                        certificate_info.public_key_type,
+                        certificate_info.public_key_bits
+                        if certificate_info.public_key_bits is not None
+                        else "unknown",
+                        certificate_info.signature_algorithm or "unknown",
                         compliance,
                         reason,
                     ]
