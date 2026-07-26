@@ -44,6 +44,19 @@ class EncryptionPolicy:
 
 
 @dataclass
+class CertificateInfo:
+    subject: str = "-"
+    issuer: str = "-"
+    subject_alternative_names: tuple[str, ...] = ()
+    not_after: str = "N/A"
+    days_remaining: int | None = None
+    public_key_type: str = "Unknown"
+    public_key_bits: int | None = None
+    signature_algorithm: str = ""
+    self_signed: str = "unknown"
+
+
+@dataclass
 class ScanJob:
     targets: str
     ports: str
