@@ -10,6 +10,7 @@ Produces:
 """
 
 from ..config import config_targets_to_list
+from ..models import SecurityFinding
 
 
 def markdown_escape(value):
@@ -55,6 +56,223 @@ def worst_grade(grades):
     return max(known_grades, key=GRADE_ORDER.get)
 
 
+def unique_summary(values):
+    cleaned = sorted({str(value) for value in values if value not in {None, ""}})
+    if not cleaned:
+        return "-"
+    if len(cleaned) == 1:
+        return cleaned[0]
+    return "mixed"
+
+
+def earliest_date(values):
+    dates = sorted(str(value) for value in values if value and value != "N/A")
+    return dates[0] if dates else "N/A"
+
+
+def certificate_rows(results):
+    rows_by_endpoint = {}
+    for row in results:
+        if len(row) < 13:
+            continue
+        has_detailed_certificate = len(row) >= 19
+        key = (row[0], row[1], row[2])
+        rows_by_endpoint.setdefault(
+            key,
+            {
+                "ip": row[0],
+                "fqdn": row[1] or "-",
+                "port": row[2],
+                "self_signed": row[9] if has_detailed_certificate else row[-6],
+                "certificate_crypto": row[8] if has_detailed_certificate else row[-7],
+                "days_left": row[10] if has_detailed_certificate else "unknown",
+                "issuer": row[11] if has_detailed_certificate else row[-5],
+                "subject": row[12] if has_detailed_certificate else row[-4],
+                "san": row[13] if has_detailed_certificate else row[-3],
+                "key_type": row[14] if has_detailed_certificate else "unknown",
+                "key_size": row[15] if has_detailed_certificate else "unknown",
+                "signature_algorithm": row[16] if has_detailed_certificate else "unknown",
+                "expiry": row[7],
+            },
+        )
+    return sorted(
+        rows_by_endpoint.values(),
+        key=lambda row: (row["ip"], sort_port(row["port"])),
+    )
+
+
+def is_detailed_certificate_row(row):
+    return len(row) >= 19
+
+
+def parse_int(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def certificate_detail_findings(row, expires_within_days=30):
+    if not is_detailed_certificate_row(row):
+        return []
+
+    findings = []
+    ip, fqdn, port = row[0], row[1] or "-", row[2]
+    days_left = parse_int(row[10])
+    key_type = str(row[14]).upper()
+    key_size = parse_int(row[15])
+    signature_algorithm = str(row[16])
+    normalized_signature = signature_algorithm.upper().replace("-", "").replace("_", "")
+
+    def add(check, status, severity, evidence, remediation):
+        findings.append(
+            SecurityFinding(
+                ip=ip,
+                fqdn=fqdn,
+                port=port,
+                check=check,
+                status=status,
+                severity=severity,
+                evidence=evidence,
+                remediation=remediation,
+            )
+        )
+
+    if days_left is not None:
+        if days_left < 0:
+            add(
+                "Expired certificate",
+                "KO",
+                "high",
+                f"Certificate expired {abs(days_left)} day(s) ago on {row[7]}",
+                "Renew and deploy a valid certificate.",
+            )
+        elif days_left <= expires_within_days:
+            add(
+                "Certificate expires soon",
+                "WARNING",
+                "medium",
+                f"Certificate expires in {days_left} day(s) on {row[7]}",
+                "Plan certificate renewal before expiration.",
+            )
+
+    if "MD5" in normalized_signature or "SHA1" in normalized_signature or normalized_signature.endswith("SHA"):
+        add(
+            "Weak certificate signature",
+            "KO",
+            "medium",
+            f"Certificate signature algorithm is {signature_algorithm}",
+            "Replace the certificate with one signed using SHA-256 or stronger.",
+        )
+
+    if key_type == "RSA" and key_size is not None and key_size < 2048:
+        add(
+            "Weak certificate key",
+            "KO",
+            "high",
+            f"Certificate uses RSA {key_size}-bit key",
+            "Replace the certificate with an RSA key of at least 2048 bits.",
+        )
+
+    return findings
+
+
+def classify_security_reason(reason):
+    normalized = str(reason).casefold()
+    if "tls" in normalized and ("1.0" in normalized or "1.1" in normalized or "version" in normalized):
+        return (
+            "Deprecated TLS version",
+            "high",
+            "Disable deprecated TLS versions and allow only TLS 1.2 or TLS 1.3.",
+        )
+    if "sha-1" in normalized or "sha1" in normalized or "signature hash" in normalized:
+        return (
+            "Weak signature hash",
+            "medium",
+            "Replace certificates or cipher suites that rely on SHA-1/MD5 with SHA-256 or stronger.",
+        )
+    if "rsa key" in normalized:
+        return (
+            "Weak certificate key",
+            "medium",
+            "Replace the certificate with an RSA key of at least 2048 bits, preferably 3072 bits or stronger where required.",
+        )
+    if "certificate expired" in normalized:
+        return (
+            "Expired certificate",
+            "high",
+            "Renew and deploy a valid certificate.",
+        )
+    if "certificate date" in normalized:
+        return (
+            "Unreadable certificate validity",
+            "medium",
+            "Verify the certificate validity dates and replace malformed certificates.",
+        )
+    if "cipher" in normalized:
+        return (
+            "Weak cipher suite",
+            "medium",
+            "Disable weak cipher suites and prefer AEAD suites such as AES-GCM or ChaCha20-Poly1305.",
+        )
+    return (
+        "TLS compliance failure",
+        "medium",
+        "Review the TLS configuration and align it with the selected encryption policy.",
+    )
+
+
+def build_security_findings(results, include_certificate_findings=True, expires_within_days=30):
+    findings = []
+    seen = set()
+    for row in results:
+        certificate_findings = (
+            certificate_detail_findings(row, expires_within_days)
+            if include_certificate_findings
+            else []
+        )
+        for finding in certificate_findings:
+            finding_key = (
+                finding.ip,
+                finding.fqdn,
+                finding.port,
+                finding.check,
+                finding.evidence,
+            )
+            if finding_key not in seen:
+                seen.add(finding_key)
+                findings.append(finding)
+
+        if len(row) < 10 or row[-2] != "KO":
+            continue
+        reason = row[-1] or "TLS compliance failure"
+        check, severity, remediation = classify_security_reason(reason)
+        evidence_parts = [str(reason)]
+        if len(row) > 5:
+            evidence_parts.append(f"{row[4]} {row[5]}")
+        evidence = " - ".join(evidence_parts)
+        finding_key = (row[0], row[1], row[2], check, evidence)
+        if finding_key in seen:
+            continue
+        seen.add(finding_key)
+        findings.append(
+            SecurityFinding(
+                ip=row[0],
+                fqdn=row[1] or "-",
+                port=row[2],
+                check=check,
+                status="KO",
+                severity=severity,
+                evidence=evidence,
+                remediation=remediation,
+            )
+        )
+    return sorted(
+        findings,
+        key=lambda finding: (finding.severity, finding.ip, sort_port(finding.port), finding.check),
+    )
+
+
 # Use plain Markdown bars so the dashboard remains readable even when Mermaid is unsupported.
 def append_bar_chart(lines, title, counts):
     lines.extend([
@@ -91,12 +309,24 @@ def build_host_compliance_summary(results):
                 "fqdn": row[1] or "-",
                 "ports": set(),
                 "grades": [],
+                "self_signed": [],
+                "certificate_expiries": [],
+                "certificate_issuers": [],
                 "failed_reasons_by_port": {},
             },
         )
         port = row[2]
         host_summary["ports"].add(port)
         host_summary["grades"].append(row[3])
+        if len(row) >= 13:
+            has_detailed_certificate = len(row) >= 19
+            host_summary["self_signed"].append(
+                row[9] if has_detailed_certificate else row[-6]
+            )
+            host_summary["certificate_expiries"].append(row[7])
+            host_summary["certificate_issuers"].append(
+                row[11] if has_detailed_certificate else row[-5]
+            )
 
         if row[-2] == "KO":
             reason = row[-1] or "Contrôle non conforme"
@@ -131,6 +361,9 @@ def build_host_compliance_summary(results):
                     for port in sorted(host_summary["ports"], key=sort_port)
                 ),
                 "worst_grade": worst_grade(host_summary["grades"]),
+                "self_signed": unique_summary(host_summary["self_signed"]),
+                "certificate_expiry": earliest_date(host_summary["certificate_expiries"]),
+                "certificate_issuer": unique_summary(host_summary["certificate_issuers"]),
                 "reason": reason,
             }
         )
@@ -149,6 +382,12 @@ def build_markdown_report(results, job, scan_timestamp):
     grade_counts = count_values(row[3] for row in results if len(row) > 3)
     reason_counts = count_values(row[-1] for row in results if row[-2] == "KO")
     host_summaries = build_host_compliance_summary(results)
+    cert_rows = certificate_rows(results)
+    security_findings = build_security_findings(
+        results,
+        include_certificate_findings=job.certificate_findings_enabled,
+        expires_within_days=job.certificate_expires_within_days,
+    )
     compliant_hosts = sum(1 for row in host_summaries if row["status"] == "CONFORME")
     non_compliant_hosts = sum(
         1 for row in host_summaries if row["status"] == "NON CONFORME"
@@ -185,8 +424,8 @@ def build_markdown_report(results, job, scan_timestamp):
         "",
         "## Conformité par host",
         "",
-        "| Signal | Statut | IP | FQDN | Ports | Grade | Raison |",
-        "| --- | --- | --- | --- | --- | --- | --- |",
+        "| Signal | Statut | IP | FQDN | Ports | Grade | Self-signed | Cert Expiry | Issuer | Raison |",
+        "| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ])
     if host_summaries:
         for summary in host_summaries:
@@ -201,13 +440,81 @@ def build_markdown_report(results, job, scan_timestamp):
                         summary["fqdn"],
                         summary["ports"],
                         summary["worst_grade"],
+                        summary["self_signed"],
+                        summary["certificate_expiry"],
+                        summary["certificate_issuer"],
                         summary["reason"],
                     ]
                 )
                 + " |"
             )
     else:
-        lines.append("| - | Aucun resultat | - | - | - | - | Aucun controle exploitable |")
+        lines.append("| - | Aucun resultat | - | - | - | - | - | - | - | Aucun controle exploitable |")
+
+
+    lines.extend([
+        "",
+        "## Certificates",
+        "",
+        "| IP | FQDN | Port | Self-signed | Certificate Crypto | Expiry | Days Left | Issuer | Subject | SAN | Key Type | Key Size | Signature Algorithm |",
+        "| --- | --- | ---: | --- | --- | --- | ---: | --- | --- | --- | --- | ---: | --- |",
+    ])
+    if cert_rows:
+        for cert_row in cert_rows:
+            lines.append(
+                "| "
+                + " | ".join(
+                    markdown_escape(value)
+                    for value in [
+                        cert_row["ip"],
+                        cert_row["fqdn"],
+                        cert_row["port"],
+                        cert_row["self_signed"],
+                        cert_row["certificate_crypto"],
+                        cert_row["expiry"],
+                        cert_row["days_left"],
+                        cert_row["issuer"],
+                        cert_row["subject"],
+                        cert_row["san"],
+                        cert_row["key_type"],
+                        cert_row["key_size"],
+                        cert_row["signature_algorithm"],
+                    ]
+                )
+                + " |"
+            )
+    else:
+        lines.append("| - | - | - | unknown | unknown | N/A | unknown | - | - | - | unknown | unknown | unknown |")
+
+
+    lines.extend([
+        "",
+        "## Security Findings",
+        "",
+        "| Severity | Status | IP | FQDN | Port | Check | Evidence | Remediation |",
+        "| --- | --- | --- | --- | ---: | --- | --- | --- |",
+    ])
+    if security_findings:
+        for finding in security_findings:
+            lines.append(
+                "| "
+                + " | ".join(
+                    markdown_escape(value)
+                    for value in [
+                        finding.severity,
+                        finding.status,
+                        finding.ip,
+                        finding.fqdn,
+                        finding.port,
+                        finding.check,
+                        finding.evidence,
+                        finding.remediation,
+                    ]
+                )
+                + " |"
+            )
+    else:
+        lines.append("| - | - | - | - | - | No security finding | - | - |")
 
     lines.extend([
         "",
@@ -276,7 +583,21 @@ def build_markdown_report(results, job, scan_timestamp):
     ]
     if job.crypto == "pqc":
         header.append("Key Exchange")
-    header.extend(["Compliance", "Reason"])
+    header.extend(
+        [
+            "Certificate Crypto",
+            "Self-signed",
+            "Certificate Days Left",
+            "Certificate Issuer",
+            "Certificate Subject",
+            "Certificate SAN",
+            "Certificate Key Type",
+            "Certificate Key Size",
+            "Certificate Signature Algorithm",
+            "Compliance",
+            "Reason",
+        ]
+    )
     lines.extend([
         "",
         "<details>",

@@ -9,6 +9,7 @@ Produces:
 - a centralized API that re-exports the useful functions, models, and constants.
 """
 
+from .checks import build_certificate_info, certificate_crypto_summary
 from .cli import has_cli_option, main, parse_args, print_dry_run, print_startup_banner
 from .config import (
     build_cli_scan_job,
@@ -62,11 +63,13 @@ from .crypto_policy import (
 )
 from .exports.cbom import build_cbom
 from .exports.csv_export import build_csv_export
+from .exports.findings_csv import build_findings_csv_export
 from .exports.html_report import build_html_report
 from .exports.markdown_report import (
     append_bar_chart,
     build_host_compliance_summary,
     build_markdown_report,
+    build_security_findings,
     count_values,
     dashboard_bar,
     markdown_escape,
@@ -76,12 +79,13 @@ from .exports.markdown_report import (
 from .exports.paths import (
     build_export_paths,
     export_extension,
+    findings_sidecar_path,
     local_report_timestamp,
     local_scan_timestamp,
     write_exports,
 )
 from .logging_config import configure_logging
-from .models import ConfigError, EncryptionPolicy, PQCPrerequisiteError, ScanJob, TargetGroup
+from .models import CertificateInfo, ConfigError, EncryptionPolicy, PQCPrerequisiteError, ScanJob, SecurityFinding, TargetGroup
 from .network import normalize_targets, parse_ports, resolve_fqdn, resolve_target_fqdns
 from .pqc import (
     check_pqc_prerequisites,

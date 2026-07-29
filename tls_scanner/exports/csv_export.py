@@ -26,6 +26,15 @@ def build_csv_export(results, args, scan_timestamp):
         headers.append("Key Exchange")
     headers.extend(
         [
+            "Certificate Crypto",
+            "Self-signed",
+            "Certificate Days Left",
+            "Certificate Issuer",
+            "Certificate Subject",
+            "Certificate SAN",
+            "Certificate Key Type",
+            "Certificate Key Size",
+            "Certificate Signature Algorithm",
             "Compliance",
             "Reason",
             "Scan Timestamp",

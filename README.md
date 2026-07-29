@@ -118,6 +118,10 @@ defaults:
       - cbom
       - md
     filename_template: "{timestamp}_{report_name}"
+  checks:
+    certificate:
+      enabled: true
+      expires_within_days: 30
 
 reports:
   - name: external_anssi_weekly
@@ -164,6 +168,13 @@ For example, this command keeps the configured report but scans only port
 ```bash
 python3 Scan_nmap_TLS3.py --config config/config.yaml --report external_anssi_weekly -p 443 --log-level debug
 ```
+
+Certificate inventory is always exposed in the reports for filtering and triage.
+The `checks.certificate.expires_within_days` setting controls when the
+`Certificate expires soon` security finding is emitted. Setting
+`checks.certificate.enabled` to `false` disables certificate-derived security
+findings, but it does not hide certificate inventory columns such as
+`Self-signed`.
 
 Configured report exports are written under `scan_reports/` by default. Output
 filenames start with the local machine time:

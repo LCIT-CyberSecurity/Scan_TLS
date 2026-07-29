@@ -44,6 +44,31 @@ class EncryptionPolicy:
 
 
 @dataclass
+class CertificateInfo:
+    subject: str = "-"
+    issuer: str = "-"
+    subject_alternative_names: tuple[str, ...] = ()
+    not_after: str = "N/A"
+    days_remaining: int | None = None
+    public_key_type: str = "Unknown"
+    public_key_bits: int | None = None
+    signature_algorithm: str = ""
+    self_signed: str = "unknown"
+
+
+@dataclass
+class SecurityFinding:
+    ip: str
+    fqdn: str
+    port: int | str
+    check: str
+    status: str
+    severity: str
+    evidence: str
+    remediation: str
+
+
+@dataclass
 class ScanJob:
     targets: str
     ports: str
@@ -65,3 +90,5 @@ class ScanJob:
     filename_template: str = "{timestamp}_{report_name}"
     dry_run: bool = False
     workers: int = DEFAULT_WORKERS
+    certificate_findings_enabled: bool = True
+    certificate_expires_within_days: int = 30

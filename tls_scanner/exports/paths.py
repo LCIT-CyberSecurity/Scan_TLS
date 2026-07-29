@@ -20,6 +20,7 @@ from ..config import validate_config_name
 from ..models import ConfigError
 from .cbom import build_cbom
 from .csv_export import build_csv_export
+from .findings_csv import build_findings_csv_export
 from .html_report import build_html_report
 from .markdown_report import build_markdown_report
 
@@ -65,9 +66,29 @@ def build_export_paths(job, timestamp):
     }
 
 
+def findings_sidecar_path(export_path):
+    return export_path.with_name(f"{export_path.stem}_findings.csv")
+
+
+def write_findings_sidecar(results, job, export_path):
+    findings_path = findings_sidecar_path(export_path)
+    headers, rows = build_findings_csv_export(
+        results,
+        include_certificate_findings=job.certificate_findings_enabled,
+        expires_within_days=job.certificate_expires_within_days,
+    )
+    with findings_path.open("w", newline="", encoding="utf-8") as file:
+        writer = csv.writer(file)
+        writer.writerow(headers)
+        writer.writerows(rows)
+    return findings_path
+
+
 def write_exports(results, job, scan_timestamp, export_paths):
     written_files = []
+    written_sidecars = set()
     for export_format, export_path in export_paths.items():
+        sidecar_path = None
         if export_path.parent != Path("."):
             export_path.parent.mkdir(parents=True, exist_ok=True)
         if export_format == "cbom":
@@ -80,11 +101,13 @@ def write_exports(results, job, scan_timestamp, export_paths):
                 build_markdown_report(results, job, scan_timestamp),
                 encoding="utf-8",
             )
+            sidecar_path = write_findings_sidecar(results, job, export_path)
         elif export_format == "html":
             export_path.write_text(
                 build_html_report(results, job, scan_timestamp),
                 encoding="utf-8",
             )
+            sidecar_path = write_findings_sidecar(results, job, export_path)
         else:
             csv_headers, csv_rows = build_csv_export(results, job, scan_timestamp)
             with export_path.open("w", newline="", encoding="utf-8") as file:
@@ -92,4 +115,7 @@ def write_exports(results, job, scan_timestamp, export_paths):
                 writer.writerow(csv_headers)
                 writer.writerows(csv_rows)
         written_files.append(str(export_path))
+        if sidecar_path is not None and sidecar_path not in written_sidecars:
+            written_files.append(str(sidecar_path))
+            written_sidecars.add(sidecar_path)
     return written_files

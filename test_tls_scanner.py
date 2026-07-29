@@ -1,3 +1,4 @@
+import csv
 import socket
 import tempfile
 import unittest
@@ -211,6 +212,8 @@ class ScanJobTests(unittest.TestCase):
         self.assertEqual(job.csv_filename, "results.cbom.json")
         self.assertEqual(job.export_format, "cbom")
         self.assertEqual(job.log_level, "debug")
+        self.assertTrue(job.certificate_findings_enabled)
+        self.assertEqual(job.certificate_expires_within_days, 30)
         self.assertIsNone(job.log_file)
         self.assertEqual(job.policies[0].name, "anssi_encryption_policy")
 
@@ -243,6 +246,10 @@ export:
 logging:
   level: debug
   file: audit.log
+checks:
+  certificate:
+    enabled: true
+    expires_within_days: 45
 """
         )
 
@@ -264,6 +271,8 @@ logging:
         self.assertEqual(job.export_format, "csv")
         self.assertEqual(job.log_level, "debug")
         self.assertEqual(job.log_file, "audit.log")
+        self.assertTrue(job.certificate_findings_enabled)
+        self.assertEqual(job.certificate_expires_within_days, 45)
 
     def test_cli_explicit_values_override_yaml_config(self):
         config_path = self.write_config(
@@ -380,6 +389,31 @@ export:
         finally:
             Path(config_path).unlink()
 
+
+    def test_rejects_invalid_certificate_check_threshold(self):
+        config_path = self.write_config(
+            """
+scan:
+  targets: example.com
+checks:
+  certificate:
+    expires_within_days: soon
+"""
+        )
+
+        try:
+            with patch(
+                "Scan_nmap_TLS3.sys.argv",
+                ["Scan_nmap_TLS3.py", "--config", config_path],
+            ):
+                with self.assertRaisesRegex(
+                    scanner.ConfigError,
+                    "checks.certificate.expires_within_days",
+                ):
+                    scanner.build_scan_job(scanner.parse_args())
+        finally:
+            Path(config_path).unlink()
+
     def test_builds_report_from_target_group_and_policy(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
@@ -436,6 +470,10 @@ defaults:
   logging:
     level: debug
     file: audit.log
+  checks:
+    certificate:
+      enabled: true
+      expires_within_days: 60
 reports:
   - name: external_anssi_weekly
     frequency: weekly
@@ -548,7 +586,16 @@ reports:
                 "TLSv1.3",
                 "TLS_AES_256_GCM_SHA384",
                 "RSA 3072 bits",
-                "Valid",
+                "2099-01-01",
+                "RSA 3072 / SHA-256",
+                "yes",
+                26418,
+                "commonName=secure.example.com",
+                "commonName=secure.example.com",
+                "secure.example.com",
+                "RSA",
+                3072,
+                "sha256WithRSAEncryption",
                 "OK",
                 "",
             ],
@@ -574,8 +621,107 @@ reports:
         self.assertIn("run-123", markdown)
         self.assertIn("external_public_endpoints", markdown)
         self.assertIn("anssi_encryption_policy v1.0", markdown)
+        self.assertIn("Self-signed", markdown)
+        self.assertIn("## Certificates", markdown)
+        self.assertIn("RSA 3072 / SHA-256", markdown)
+        self.assertIn("Days Left", markdown)
+        self.assertIn("Signature Algorithm", markdown)
+        self.assertIn("sha256WithRSAEncryption", markdown)
+        self.assertIn("commonName=secure.example.com", markdown)
+        self.assertIn("## Security Findings", markdown)
+        self.assertIn("Deprecated TLS version", markdown)
+        self.assertIn("Disable deprecated TLS versions", markdown)
+        self.assertNotIn("Self-signed certificate", markdown)
         self.assertIn("## Actions prioritaires", markdown)
         self.assertIn("<details>", markdown)
+
+    def test_builds_security_findings_from_existing_ko_reasons(self):
+        results = [
+            [
+                "192.0.2.10",
+                "legacy.example.com",
+                443,
+                "C",
+                "TLSv1.1",
+                "TLS_RSA_WITH_AES_128_CBC_SHA",
+                "RSA 2048 bits",
+                "2099-01-01",
+                "RSA 2048 / SHA-256",
+                "yes",
+                26418,
+                "commonName=legacy.example.com",
+                "commonName=legacy.example.com",
+                "legacy.example.com",
+                "RSA",
+                2048,
+                "sha256WithRSAEncryption",
+                "KO",
+                "TLS 1.1 detected",
+            ]
+        ]
+
+        findings = scanner.build_security_findings(results)
+
+        self.assertEqual(len(findings), 1)
+        self.assertEqual(findings[0].check, "Deprecated TLS version")
+        self.assertEqual(findings[0].status, "KO")
+        self.assertEqual(findings[0].severity, "high")
+        self.assertIn("TLS 1.1 detected", findings[0].evidence)
+        self.assertIn("TLS 1.2 or TLS 1.3", findings[0].remediation)
+
+
+    def test_builds_certificate_derived_security_findings_without_self_signed(self):
+        results = [
+            [
+                "192.0.2.10",
+                "internal.example.com",
+                443,
+                "A",
+                "TLSv1.3",
+                "TLS_AES_256_GCM_SHA384",
+                "RSA 1024 bits",
+                "2099-01-01",
+                "RSA 1024 / SHA-1",
+                "yes",
+                12,
+                "commonName=internal.example.com",
+                "commonName=internal.example.com",
+                "internal.example.com",
+                "RSA",
+                1024,
+                "sha1WithRSAEncryption",
+                "OK",
+                "",
+            ]
+        ]
+
+        findings = scanner.build_security_findings(results)
+        checks = {finding.check: finding for finding in findings}
+
+        strict_findings = scanner.build_security_findings(
+            results,
+            expires_within_days=7,
+        )
+        strict_checks = {finding.check for finding in strict_findings}
+        disabled_findings = scanner.build_security_findings(
+            results,
+            include_certificate_findings=False,
+        )
+
+        self.assertNotIn("Certificate expires soon", strict_checks)
+        self.assertEqual(disabled_findings, [])
+        self.assertEqual(
+            set(checks),
+            {
+                "Certificate expires soon",
+                "Weak certificate signature",
+                "Weak certificate key",
+            },
+        )
+        self.assertEqual(checks["Certificate expires soon"].status, "WARNING")
+        self.assertEqual(checks["Weak certificate signature"].status, "KO")
+        self.assertEqual(checks["Weak certificate key"].severity, "high")
+        self.assertNotIn("Self-signed certificate", checks)
 
     def test_builds_html_report_from_markdown(self):
         job = scanner.ScanJob(
@@ -616,6 +762,73 @@ reports:
         self.assertNotIn("# TLS Scan Dashboard", html_report)
 
 
+
+    def test_writes_findings_sidecar_for_markdown_and_html_exports(self):
+        job = scanner.ScanJob(
+            targets="legacy.example.com",
+            ports="443",
+            crypto="standard",
+            ip=False,
+        )
+        results = [
+            [
+                "192.0.2.10",
+                "legacy.example.com",
+                443,
+                "C",
+                "TLSv1.1",
+                "TLS_RSA_WITH_AES_128_CBC_SHA",
+                "RSA 1024 bits",
+                "2099-01-01",
+                "RSA 1024 / SHA-1",
+                "no",
+                12,
+                "Example CA",
+                "legacy.example.com",
+                "legacy.example.com",
+                "RSA",
+                1024,
+                "sha1WithRSAEncryption",
+                "KO",
+                "TLS 1.1 detected",
+            ]
+        ]
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            written_files = scanner.write_exports(
+                results,
+                job,
+                "2026-07-23T14:30:12+02:00",
+                {
+                    "md": temp_path / "report.md",
+                    "html": temp_path / "report.html",
+                },
+            )
+            findings_path = temp_path / "report_findings.csv"
+            with findings_path.open(newline="", encoding="utf-8") as file:
+                rows = list(csv.reader(file))
+
+        self.assertEqual(written_files.count(str(findings_path)), 1)
+        self.assertIn(str(temp_path / "report.md"), written_files)
+        self.assertIn(str(temp_path / "report.html"), written_files)
+        self.assertEqual(
+            rows[0],
+            [
+                "Severity",
+                "Status",
+                "IP",
+                "FQDN",
+                "Port",
+                "Check",
+                "Evidence",
+                "Remediation",
+            ],
+        )
+        self.assertTrue(any(row[5] == "Deprecated TLS version" for row in rows[1:]))
+        self.assertTrue(any(row[5] == "Weak certificate key" for row in rows[1:]))
+        self.assertTrue(any(row[5] == "Weak certificate signature" for row in rows[1:]))
+
 class LoggingTests(unittest.TestCase):
     def test_configures_file_logging_with_run_id(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -654,6 +867,13 @@ class CsvExportTests(unittest.TestCase):
             "2026-06-21T14:00:00Z",
         )
 
+        self.assertIn("Certificate Crypto", headers)
+        self.assertIn("Self-signed", headers)
+        self.assertIn("Certificate Issuer", headers)
+        self.assertIn("Certificate Days Left", headers)
+        self.assertIn("Certificate Key Type", headers)
+        self.assertIn("Certificate Key Size", headers)
+        self.assertIn("Certificate Signature Algorithm", headers)
         self.assertEqual(
             headers[-5:],
             [
@@ -1319,6 +1539,37 @@ SHA-1: 11:22:33
             scanner.extract_signature_algorithm(certificate_output),
             "sha256WithRSAEncryption",
         )
+
+
+class CertificateInventoryTests(unittest.TestCase):
+    def test_builds_certificate_info_without_affecting_compliance(self):
+        certificate_output = """
+Subject: commonName=app.internal
+Issuer: commonName=app.internal
+Subject Alternative Name: DNS:app.internal, DNS:app
+Not valid after: 2099-01-01T00:00:00
+Public Key type: rsa
+Public Key bits: 2048
+Signature Algorithm: sha256WithRSAEncryption
+"""
+
+        certificate_info = scanner.build_certificate_info(certificate_output)
+
+        self.assertEqual(certificate_info.subject, "commonName=app.internal")
+        self.assertEqual(certificate_info.issuer, "commonName=app.internal")
+        self.assertEqual(certificate_info.subject_alternative_names, ("app.internal", "app"))
+        self.assertEqual(certificate_info.not_after, "2099-01-01")
+        self.assertEqual(certificate_info.public_key_type, "RSA")
+        self.assertEqual(certificate_info.public_key_bits, 2048)
+        self.assertEqual(certificate_info.signature_algorithm, "sha256WithRSAEncryption")
+        self.assertEqual(certificate_info.self_signed, "yes")
+        self.assertEqual(scanner.certificate_crypto_summary(certificate_info), "RSA 2048 / SHA-256")
+
+    def test_reports_unknown_self_signed_when_identity_is_missing(self):
+        certificate_info = scanner.build_certificate_info("Public Key type: rsa")
+
+        self.assertEqual(certificate_info.self_signed, "unknown")
+        self.assertEqual(scanner.certificate_crypto_summary(certificate_info), "RSA / unknown")
 
 
 # Endpoint grades use the weakest finding for each individual host and port.
