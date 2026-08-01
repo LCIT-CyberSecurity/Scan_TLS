@@ -12,6 +12,7 @@ defaults:
       - csv
       - cbom
       - md
+      - html
     filename_template: "{timestamp}_{report_name}"
   checks:
     certificate:
