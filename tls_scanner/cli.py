@@ -420,7 +420,7 @@ def main():
     print("\n" + str(table))
 
     if export_paths:
-        written_files = write_exports(results, job, scan_timestamp, export_paths)
+        written_files = write_exports(results, job, scan_timestamp, export_paths, round(time.monotonic() - scan_start, 2))
         for export_format, export_path in export_paths.items():
             logger.info(
                 "export_written file=%s format=%s rows=%s",

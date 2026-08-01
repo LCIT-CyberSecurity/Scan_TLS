@@ -279,7 +279,7 @@ def append_bar_chart(lines, title, counts):
         "",
         f"### {title}",
         "",
-        "| Element | Count | Graphique |",
+        "| Element | Count | Chart |",
         "| --- | ---: | --- |",
     ])
     if not counts:
@@ -610,3 +610,102 @@ def build_markdown_report(results, job, scan_timestamp):
         lines.append("| " + " | ".join(markdown_escape(value) for value in row) + " |")
     lines.extend(["", "</details>", ""])
     return "\n".join(lines)
+
+
+
+def build_markdown_report_from_model(model):
+    stats = model.statistics
+    lines = [
+        f"# TLS Security Report - {model.metadata.report_name}",
+        "",
+        "## Executive Summary",
+        "",
+        f"Overall Grade: **{stats.overall_grade}**",
+        "",
+        f"Compliance Status: **{stats.compliance_status}**",
+        "",
+        f"Scan Date: {markdown_escape(model.metadata.scan_timestamp)}  ",
+        f"Scan Run ID: {markdown_escape(model.metadata.scan_run_id)}  ",
+        f"Scanner Version: {markdown_escape(model.metadata.scanner_version)}  ",
+        f"Selected Policies: {markdown_escape(', '.join(policy.name + (' v' + policy.version if policy.version else '') for policy in model.policies) or 'Legacy scanner policy')}",
+        f"Target Groups: {markdown_escape(', '.join(model.metadata.target_groups) or 'manual')}",
+        "",
+        "Overall TLS security posture "
+        + ("is strong." if stats.compliance_status == "Compliant" else "requires improvement."),
+        "",
+        "## Endpoint Statistics",
+        "",
+        "| Metric | Value |",
+        "| --- | ---: |",
+        f"| Total Hosts | {stats.total_hosts} |",
+        f"| Total Endpoints | {stats.total_endpoints} |",
+        f"| Compliant Endpoints | {stats.compliant_endpoints} |",
+        f"| Non-Compliant Endpoints | {stats.non_compliant_endpoints} |",
+        f"| Endpoints with Errors | {stats.endpoints_with_errors} |",
+        f"| Unique Findings | {stats.unique_findings} |",
+        f"| Finding Occurrences | {stats.finding_occurrences} |",
+        f"| Checks Not Tested | {stats.checks_not_tested} |",
+    ]
+    append_bar_chart(lines, "Grade Distribution", stats.grade_distribution)
+    append_bar_chart(lines, "Top Findings by Affected Endpoint", {item["title"]: item["affected_endpoints"] for item in stats.top_findings})
+    append_bar_chart(lines, "TLS Version Distribution", stats.tls_version_distribution)
+    lines.extend([
+        "",
+        "## Endpoint Summary",
+        "",
+        "| Endpoint | Grade | Compliance | Findings | Highest Severity | Certificate Expiration | TLS Versions | PQC Readiness |",
+        "| --- | --- | --- | ---: | --- | --- | --- | --- |",
+    ])
+    for endpoint in model.endpoints:
+        lines.append("| " + " | ".join(markdown_escape(value) for value in [endpoint.endpoint_id, endpoint.overall_grade, endpoint.compliance_status, endpoint.finding_count, endpoint.highest_severity, endpoint.certificate.valid_until, ', '.join(endpoint.supported_tls_versions), endpoint.pqc.get('readiness')]) + " |")
+    lines.extend([
+        "",
+        "## Certificate Inventory",
+        "",
+        "| Endpoint | Subject | Issuer | SAN | Expiration | Remaining Days | Status | Key | Signature | Trust | Hostname Validation | Chain Validation | Revocation |",
+        "| --- | --- | --- | --- | --- | ---: | --- | --- | --- | --- | --- | --- | --- |",
+    ])
+    for endpoint in model.endpoints:
+        cert = endpoint.certificate
+        key = f"{cert.key_type} {cert.key_size or ''}".strip()
+        lines.append("| " + " | ".join(markdown_escape(value) for value in [endpoint.endpoint_id, cert.subject, cert.issuer, ', '.join(cert.san), cert.valid_until, cert.remaining_days if cert.remaining_days is not None else 'unknown', cert.status, key, cert.signature_algorithm, cert.trust_status, cert.hostname_validation_status, cert.chain_validation_status, cert.revocation_status]) + " |")
+    lines.extend(["", "## Security Findings", ""])
+    if model.findings:
+        for finding in model.findings:
+            lines.extend([
+                f"### {markdown_escape(finding.title)}",
+                "",
+                f"- Identifier: `{markdown_escape(finding.finding_id)}`",
+                f"- Severity: {markdown_escape(finding.severity.title())}",
+                f"- Category: {markdown_escape(finding.category)}",
+                f"- Affected Endpoints: {len(finding.affected_endpoint_ids)}",
+                f"- Description: {markdown_escape(finding.description)}",
+                f"- Technical Impact: {markdown_escape(finding.technical_impact)}",
+                f"- Evidence: {markdown_escape(finding.evidence)}",
+                f"- Remediation: {markdown_escape(finding.remediation)}",
+                f"- Policies: {markdown_escape(', '.join(finding.policy_ids) or 'None')}",
+                "",
+            ])
+    else:
+        lines.append("No security findings were generated.")
+    lines.extend([
+        "",
+        "## Technical Details",
+        "",
+        "<details>",
+        "<summary>Complete endpoint observations</summary>",
+        "",
+    ])
+    for endpoint in model.endpoints:
+        lines.extend([f"### {markdown_escape(endpoint.endpoint_id)}", "", "| TLS Version | Cipher Suite | Compliance | Reason |", "| --- | --- | --- | --- |"])
+        for suite in endpoint.cipher_suites:
+            lines.append("| " + " | ".join(markdown_escape(value) for value in [suite.tls_version, suite.name, suite.compliance_status, suite.policy_reason]) + " |")
+        lines.append("")
+    lines.extend(["</details>", ""])
+    return "\n".join(lines)
+
+
+def build_markdown_report(results, job, scan_timestamp):
+    from .report_model import build_report_model
+
+    return build_markdown_report_from_model(build_report_model(results, job, scan_timestamp))

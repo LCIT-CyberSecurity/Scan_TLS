@@ -526,19 +526,19 @@ reports:
 
         self.assertEqual(
             str(paths["csv"]),
-            "scan_reports/2026-07-23-143012_external_anssi_weekly.csv",
+            "scan_reports/2026-07-23-143012_external_anssi_weekly/csv/2026-07-23-143012_external_anssi_weekly.csv",
         )
         self.assertEqual(
             str(paths["cbom"]),
-            "scan_reports/2026-07-23-143012_external_anssi_weekly.cbom.json",
+            "scan_reports/2026-07-23-143012_external_anssi_weekly/cbom/2026-07-23-143012_external_anssi_weekly.cbom.json",
         )
         self.assertEqual(
             str(paths["md"]),
-            "scan_reports/2026-07-23-143012_external_anssi_weekly.md",
+            "scan_reports/2026-07-23-143012_external_anssi_weekly/markdown/2026-07-23-143012_external_anssi_weekly.md",
         )
         self.assertEqual(
             str(paths["html"]),
-            "scan_reports/2026-07-23-143012_external_anssi_weekly.html",
+            "scan_reports/2026-07-23-143012_external_anssi_weekly/html/2026-07-23-143012_external_anssi_weekly.html",
         )
 
     def test_builds_readable_markdown_report(self):
@@ -607,32 +607,29 @@ reports:
             "2026-07-23T14:30:12+02:00",
         )
 
-        self.assertIn("# TLS Scan Dashboard - external_anssi_weekly", markdown)
-        self.assertIn("## Dashboard", markdown)
-        self.assertIn("```mermaid", markdown)
-        self.assertIn("Hosts conformes", markdown)
-        self.assertIn("Hosts non conformes", markdown)
-        self.assertIn("### Répartition des grades", markdown)
-        self.assertIn("### Top raisons de non-conformité", markdown)
-        self.assertIn("## Conformité par host", markdown)
-        self.assertIn("port 443: TLS 1.1 detected", markdown)
-        self.assertIn("Tous les contrôles observés sont conformes.", markdown)
-        self.assertIn("Scan run ID", markdown)
+        self.assertIn("# TLS Security Report - external_anssi_weekly", markdown)
+        self.assertIn("## Executive Summary", markdown)
+        self.assertIn("### Grade Distribution", markdown)
+        self.assertIn("### Top Findings by Affected Endpoint", markdown)
+        self.assertIn("## Endpoint Summary", markdown)
+        self.assertIn("TLS 1.1 detected", markdown)
+        self.assertIn("Not Tested", markdown)
+        self.assertIn("Scan Run ID", markdown)
         self.assertIn("run-123", markdown)
         self.assertIn("external_public_endpoints", markdown)
         self.assertIn("anssi_encryption_policy v1.0", markdown)
         self.assertIn("Self-signed", markdown)
-        self.assertIn("## Certificates", markdown)
-        self.assertIn("RSA 3072 / SHA-256", markdown)
-        self.assertIn("Days Left", markdown)
-        self.assertIn("Signature Algorithm", markdown)
+        self.assertIn("## Certificate Inventory", markdown)
+        self.assertIn("RSA 3072", markdown)
+        self.assertIn("Remaining Days", markdown)
+        self.assertIn("Signature", markdown)
         self.assertIn("sha256WithRSAEncryption", markdown)
         self.assertIn("commonName=secure.example.com", markdown)
         self.assertIn("## Security Findings", markdown)
         self.assertIn("Deprecated TLS version", markdown)
-        self.assertIn("Disable deprecated TLS versions", markdown)
-        self.assertNotIn("Self-signed certificate", markdown)
-        self.assertIn("## Actions prioritaires", markdown)
+        self.assertIn("Disable TLS 1.0 and TLS 1.1", markdown)
+        self.assertIn("Self-Signed Certificate", markdown)
+        self.assertIn("## Technical Details", markdown)
         self.assertIn("<details>", markdown)
 
     def test_builds_security_findings_from_existing_ko_reasons(self):
@@ -755,10 +752,12 @@ reports:
         )
 
         self.assertIn("<!doctype html>", html_report)
-        self.assertIn("<h1>TLS Scan Dashboard - external_anssi_weekly</h1>", html_report)
-        self.assertIn("<table>", html_report)
-        self.assertIn("<td>example.com</td>", html_report)
-        self.assertIn("<details>", html_report)
+        self.assertIn("<html lang=\"en\">", html_report)
+        self.assertIn("TLS Security Report - external_anssi_weekly", html_report)
+        self.assertIn("assets/css/report.css", html_report)
+        self.assertIn("application/json", html_report)
+        self.assertIn("example.com", html_report)
+        self.assertIn("Print / Save as PDF", html_report)
         self.assertNotIn("# TLS Scan Dashboard", html_report)
 
 
@@ -815,19 +814,84 @@ reports:
         self.assertEqual(
             rows[0],
             [
+                "Finding ID",
                 "Severity",
                 "Status",
-                "IP",
-                "FQDN",
-                "Port",
-                "Check",
+                "Category",
+                "Title",
+                "Affected Endpoint Count",
+                "Affected Endpoints",
                 "Evidence",
+                "Technical Impact",
                 "Remediation",
+                "Policies",
+                "References",
             ],
         )
-        self.assertTrue(any(row[5] == "Deprecated TLS version" for row in rows[1:]))
-        self.assertTrue(any(row[5] == "Weak certificate key" for row in rows[1:]))
-        self.assertTrue(any(row[5] == "Weak certificate signature" for row in rows[1:]))
+        self.assertTrue(any(row[0] == "TLS_DEPRECATED_VERSION" for row in rows[1:]))
+        self.assertTrue(any(row[0] == "CERTIFICATE_RSA_KEY_TOO_SMALL" for row in rows[1:]))
+        self.assertTrue(any(row[0] == "CERTIFICATE_WEAK_SIGNATURE" for row in rows[1:]))
+
+
+class ProfessionalReportTests(unittest.TestCase):
+    def sample_results(self):
+        return [
+            ["192.0.2.10", "safe.example", 443, "A+", "TLSv1.3", "TLS_AES_256_GCM_SHA384", "RSA 3072 bits", "2099-01-01", "RSA 3072 / SHA-256", "no", 30000, "Example CA", "CN=safe.example", "safe.example", "RSA", 3072, "sha256WithRSAEncryption", "OK", ""],
+            ["192.0.2.11", "legacy.example", 443, "C", "TLSv1.1", "TLS_RSA_WITH_AES_128_CBC_SHA", "RSA 2048 bits", "2099-01-01", "RSA 2048 / SHA-256", "no", 30000, "Example CA", "CN=legacy.example", "legacy.example", "RSA", 2048, "sha256WithRSAEncryption", "KO", "TLS 1.1 detected"],
+            ["192.0.2.11", "legacy.example", 443, "C", "TLSv1.2", "TLS_RSA_WITH_AES_128_CBC_SHA", "RSA 2048 bits", "2099-01-01", "RSA 2048 / SHA-256", "no", 30000, "Example CA", "CN=legacy.example", "legacy.example", "RSA", 2048, "sha256WithRSAEncryption", "KO", "Cipher suite"],
+        ]
+
+    def sample_job(self, temp_dir=None):
+        return scanner.ScanJob(
+            targets="safe.example,legacy.example",
+            ports="443",
+            crypto="standard",
+            ip=False,
+            report_name="external_anssi_weekly",
+            scan_run_id="run-structured",
+            export_directory=temp_dir or "scan_reports",
+            export_formats=("csv", "cbom", "md", "html"),
+        )
+
+    def test_report_model_counts_endpoints_once_for_grade_and_compliance(self):
+        model = scanner.build_report_model(self.sample_results(), self.sample_job(), "2026-08-01T12:00:00+02:00")
+
+        self.assertEqual(model.statistics.total_endpoints, 2)
+        self.assertEqual(model.statistics.grade_distribution["C"], 1)
+        self.assertEqual(model.statistics.non_compliant_endpoints, 1)
+        self.assertGreater(model.statistics.finding_occurrences, model.statistics.unique_findings)
+        self.assertEqual(model.endpoints[1].compliance_status, "non_compliant")
+
+    def test_html_escapes_scan_data_and_uses_no_external_urls(self):
+        job = self.sample_job()
+        results = [["192.0.2.50", "<script>alert(1)</script>", 443, "F", "TLSv1.2", "TLS_RSA_WITH_AES_128_CBC_SHA", "RSA 1024 bits", "2099-01-01", "RSA 1024 / SHA-1", "yes", 10, "<img src=x onerror=alert(1)>", "quotes & ampersands unicode", "evil.example", "RSA", 1024, "sha1WithRSAEncryption", "KO", "Cipher suite <script>alert(1)</script>"]]
+
+        html = scanner.build_html_report(results, job, "2026-08-01T12:00:00+02:00")
+
+        self.assertIn("\\u003cscript", html)
+        self.assertNotIn("<script>alert(1)</script>", html)
+        self.assertNotIn("https://", html)
+        self.assertNotIn("http://", html)
+        self.assertNotIn("fetch(", html)
+        self.assertIn("assets/js/report.js", html)
+
+    def test_multi_format_exports_create_scan_folder_resources_and_metadata(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            job = self.sample_job(temp_dir)
+            paths = scanner.build_export_paths(job, "2026-08-01-151245")
+            written = scanner.write_exports(self.sample_results(), job, "2026-08-01T15:12:45+02:00", paths, 12.5)
+            root = Path(temp_dir) / "2026-08-01-151245_external_anssi_weekly"
+
+            self.assertTrue((root / "csv" / "2026-08-01-151245_external_anssi_weekly.csv").exists())
+            self.assertTrue((root / "csv" / "2026-08-01-151245_external_anssi_weekly_findings.csv").exists())
+            self.assertTrue((root / "markdown" / "2026-08-01-151245_external_anssi_weekly.md").exists())
+            self.assertTrue((root / "markdown" / "assets" / "images").exists())
+            self.assertTrue((root / "html" / "2026-08-01-151245_external_anssi_weekly.html").exists())
+            self.assertTrue((root / "html" / "assets" / "css" / "report.css").exists())
+            self.assertTrue((root / "html" / "assets" / "js" / "report.js").exists())
+            self.assertTrue((root / "cbom" / "2026-08-01-151245_external_anssi_weekly.cbom.json").exists())
+            self.assertTrue((root / "metadata" / "2026-08-01-151245_external_anssi_weekly.metadata.json").exists())
+            self.assertTrue(any(path.endswith(".metadata.json") for path in written))
 
 class LoggingTests(unittest.TestCase):
     def test_configures_file_logging_with_run_id(self):
