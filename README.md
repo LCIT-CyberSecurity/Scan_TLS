@@ -20,7 +20,7 @@ or outdated protocols.
   finding for that endpoint.
 - Displays an activity bar with elapsed time while Nmap is running.
 - Displays separate `IP` and `FQDN` columns in the terminal table.
-- Exports professional client-ready reports to HTML, PDF, Markdown, CSV, CycloneDX CBOM, and metadata JSON.
+- Exports professional client-ready reports to HTML, Markdown, CSV, CycloneDX CBOM, and metadata JSON.
 - Provides an optional Post-Quantum Cryptography (PQC) profile that actively
   tests TLS 1.3 hybrid ML-KEM key exchange groups.
 
@@ -29,7 +29,6 @@ or outdated protocols.
 - Python 3
 - Nmap
 - The Python packages listed below
-- Google Chrome or Chromium in `PATH` when automatic PDF export is enabled
 - OpenSSL 3.5 or later with TLS ML-KEM support, only when using the `pqc`
   profile
 
@@ -70,7 +69,7 @@ python3 Scan_nmap_TLS3.py --config config/config.yaml --report external_anssi_we
 | `--report` | Run a named report definition from the config file. Required when the config contains multiple reports. |
 | `--list-reports` | List configured report names and exit. |
 | `--dry-run` | Validate config, targets, policies, logging and exports without running Nmap. |
-| `-e`, `--export` | Export a CLI scan to `.csv`, CycloneDX 1.6 `.cbom.json`, `.md`, `.html`, or `.pdf`. |
+| `-e`, `--export` | Export a CLI scan to `.csv`, CycloneDX 1.6 `.cbom.json`, or `.md`. |
 | `--policy` | Named encryption policy to enforce for CLI scans. Repeat to require multiple policies. Default: `anssi_encryption_policy`. |
 | `--policy-file` | YAML encryption policy file to enforce for CLI scans. Repeat to require multiple policy files. |
 | `--workers` | Parallel TLS host scans, from `1` to `32`. Default: `4`; use `1` for sequential scans. |
@@ -119,7 +118,6 @@ defaults:
       - cbom
       - md
       - html
-      - pdf
     filename_template: "{timestamp}_{report_name}"
   checks:
     certificate:
@@ -199,8 +197,6 @@ scan_reports/
     │       └── icons/
     ├── cbom/
     │   └── 2026-08-01-151245_external_anssi_weekly.cbom.json
-    ├── pdf/
-    │   └── 2026-08-01-151245_external_anssi_weekly.pdf
     └── metadata/
         └── 2026-08-01-151245_external_anssi_weekly.metadata.json
 ```
@@ -208,15 +204,15 @@ scan_reports/
 
 ## Professional reports
 
-The HTML report is the primary interactive presentation format. A PDF report is also generated automatically when `pdf` is present in `export.formats`. PDF generation uses a local Google Chrome or Chromium executable in headless print mode. Open the HTML directly from disk with a browser, for example:
+The HTML report is the primary presentation format. Open it directly from disk with a browser, for example:
 
 ```bash
 xdg-open scan_reports/2026-08-01-151245_tls_scan_demo/html/2026-08-01-151245_tls_scan_demo.html
 ```
 
-The HTML report works offline and with `file://`. It uses only local CSS and JavaScript copied into the scan folder. It does not use CDNs, remote fonts, analytics, tracking, `fetch()`, or API calls. The report includes an executive overview, KPI cards, accessible SVG/CSS-style charts, grouped findings, endpoint search/filter/sort, endpoint detail drawer, certificate inventory, compliance by policy, PQC readiness, technical details, and a `Print / Save as PDF` button. The generated PDF is a static printable version of the same report.
+The HTML report works offline and with `file://`. It uses only local CSS and JavaScript copied into the scan folder. It does not use CDNs, remote fonts, analytics, tracking, `fetch()`, or API calls. The report includes an executive overview, KPI cards, accessible SVG/CSS-style charts, grouped findings, endpoint search/filter/sort, endpoint detail drawer, certificate inventory, compliance by policy, PQC readiness, technical details, and a `Print / Save as PDF` button.
 
-Markdown remains suitable for source control, tickets, and text-only review. PDF is suitable for client delivery and archiving. CSV keeps the row-level technical export and adds a structured findings sidecar. CBOM remains the CycloneDX 1.6 cryptographic bill of materials. Metadata JSON records the scan context and report statistics for automation.
+Markdown remains suitable for source control, tickets, and text-only review. CSV keeps the row-level technical export and adds a structured findings sidecar. CBOM remains the CycloneDX 1.6 cryptographic bill of materials. Metadata JSON records the scan context and report statistics for automation.
 
 PKI validation controls that are not currently executed are reported as `Not Tested`: trust chain validation, hostname validation, SAN validation, certificate chain status, revocation status, OCSP status, and CRL status. `Not Tested` is not treated as compliant.
 
@@ -232,16 +228,10 @@ Demo HTML report:
 scan_reports/2026-08-01-151245_tls_scan_demo/html/2026-08-01-151245_tls_scan_demo.html
 ```
 
-Demo PDF report:
-
-```text
-scan_reports/2026-08-01-151245_tls_scan_demo/pdf/2026-08-01-151245_tls_scan_demo.pdf
-```
-
 
 The demonstration dataset covers compliant TLS, deprecated TLS 1.0/1.1, weak cipher suites, expired and expiring certificates, self-signed certificates, small RSA keys, SHA-1 signatures, ML-KEM support, classical-only PQC, PKI not tested, inaccessible endpoints, scan errors, and repeated finding occurrences.
 
-Limitations: the scanner still depends on Nmap output for observed TLS/certificate data; full PKI trust-chain and revocation validation are represented as `Not Tested` until dedicated checks are implemented; PDF export requires a local Chrome/Chromium executable; the HTML charts are intentionally simple offline visuals rather than a heavy charting library.
+Limitations: the scanner still depends on Nmap output for observed TLS/certificate data; full PKI trust-chain and revocation validation are represented as `Not Tested` until dedicated checks are implemented; the HTML charts are intentionally simple offline visuals rather than a heavy charting library.
 
 ## Exports
 
@@ -251,8 +241,6 @@ Use `-e` to select the export format from the filename:
 python3 Scan_nmap_TLS3.py example.com -e results.csv
 python3 Scan_nmap_TLS3.py example.com -e results.cbom.json
 python3 Scan_nmap_TLS3.py example.com -e results.md
-python3 Scan_nmap_TLS3.py example.com -e results.html
-python3 Scan_nmap_TLS3.py example.com -e results.pdf
 ```
 
 The legacy positional syntax remains available for CSV exports:

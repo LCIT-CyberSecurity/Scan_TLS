@@ -37,7 +37,6 @@ Add the data to the report model first. Then update the relevant renderer: `html
 ## Renderers
 
 - HTML: product-style, offline, file:// compatible, local CSS/JS only, data embedded in JSON and inserted into the DOM with `textContent`.
-- PDF: generated from the local HTML renderer with Google Chrome or Chromium headless print mode; no network access is required.
 - Markdown: executive and technical summary using the common model.
 - CSV: row-level scan export remains compatible; findings CSV is structured and grouped.
 - CBOM: CycloneDX 1.6 cryptographic assets generated from scan rows for compatibility.

@@ -13,7 +13,6 @@ defaults:
       - cbom
       - md
       - html
-      - pdf
     filename_template: "{timestamp}_{report_name}"
   checks:
     certificate:

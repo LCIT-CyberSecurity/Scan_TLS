@@ -216,12 +216,10 @@ def parse_args():
             args.export_format = "md"
         elif lower_filename.endswith(".html"):
             args.export_format = "html"
-        elif lower_filename.endswith(".pdf"):
-            args.export_format = "pdf"
         elif lower_filename.endswith(".csv") or not explicit_export:
             args.export_format = "csv"
         else:
-            parser.error("--export filename must end with .csv, .cbom.json, .md, .html, or .pdf")
+            parser.error("--export filename must end with .csv, .cbom.json, .md, or .html")
     return args
 
 
