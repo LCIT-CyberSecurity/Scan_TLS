@@ -176,6 +176,16 @@ class ExportArgumentTests(unittest.TestCase):
 
     @patch(
         "Scan_nmap_TLS3.sys.argv",
+        ["Scan_nmap_TLS3.py", "192.0.2.10", "-e", "results.pdf"],
+    )
+    def test_detects_pdf_export(self):
+        args = scanner.parse_args()
+
+        self.assertEqual(args.csv_filename, "results.pdf")
+        self.assertEqual(args.export_format, "pdf")
+
+    @patch(
+        "Scan_nmap_TLS3.sys.argv",
         ["Scan_nmap_TLS3.py", "192.0.2.10", "-e", "results.json"],
     )
     def test_rejects_ambiguous_export_extension(self):
@@ -467,6 +477,7 @@ defaults:
       - cbom
       - md
       - html
+      - pdf
   logging:
     level: debug
     file: audit.log
@@ -495,7 +506,7 @@ reports:
         self.assertEqual(job.report_name, "external_anssi_weekly")
         self.assertEqual(job.frequency, "weekly")
         self.assertEqual(job.targets, "example.com,192.0.2.10,192.0.2.0/24")
-        self.assertEqual(job.export_formats, ("csv", "cbom", "md", "html"))
+        self.assertEqual(job.export_formats, ("csv", "cbom", "md", "html", "pdf"))
         self.assertEqual(job.target_groups[0].name, "external_public_endpoints")
         self.assertEqual(job.policies[0].name, "anssi_encryption_policy")
         self.assertEqual(job.log_level, "debug")
@@ -519,7 +530,7 @@ reports:
             ip=False,
             report_name="external_anssi_weekly",
             export_directory="scan_reports",
-            export_formats=("csv", "cbom", "md", "html"),
+            export_formats=("csv", "cbom", "md", "html", "pdf"),
         )
 
         paths = scanner.build_export_paths(job, "2026-07-23-143012")
@@ -539,6 +550,10 @@ reports:
         self.assertEqual(
             str(paths["html"]),
             "scan_reports/2026-07-23-143012_external_anssi_weekly/html/2026-07-23-143012_external_anssi_weekly.html",
+        )
+        self.assertEqual(
+            str(paths["pdf"]),
+            "scan_reports/2026-07-23-143012_external_anssi_weekly/pdf/2026-07-23-143012_external_anssi_weekly.pdf",
         )
 
     def test_builds_readable_markdown_report(self):
@@ -850,7 +865,7 @@ class ProfessionalReportTests(unittest.TestCase):
             report_name="external_anssi_weekly",
             scan_run_id="run-structured",
             export_directory=temp_dir or "scan_reports",
-            export_formats=("csv", "cbom", "md", "html"),
+            export_formats=("csv", "cbom", "md", "html", "pdf"),
         )
 
     def test_report_model_counts_endpoints_once_for_grade_and_compliance(self):
@@ -879,7 +894,9 @@ class ProfessionalReportTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             job = self.sample_job(temp_dir)
             paths = scanner.build_export_paths(job, "2026-08-01-151245")
-            written = scanner.write_exports(self.sample_results(), job, "2026-08-01T15:12:45+02:00", paths, 12.5)
+            with patch("tls_scanner.exports.paths.render_pdf_from_html") as render_pdf:
+                render_pdf.side_effect = lambda _html, pdf: Path(pdf).write_bytes(b"%PDF-1.4\n")
+                written = scanner.write_exports(self.sample_results(), job, "2026-08-01T15:12:45+02:00", paths, 12.5)
             root = Path(temp_dir) / "2026-08-01-151245_external_anssi_weekly"
 
             self.assertTrue((root / "csv" / "2026-08-01-151245_external_anssi_weekly.csv").exists())
@@ -889,6 +906,7 @@ class ProfessionalReportTests(unittest.TestCase):
             self.assertTrue((root / "html" / "2026-08-01-151245_external_anssi_weekly.html").exists())
             self.assertTrue((root / "html" / "assets" / "css" / "report.css").exists())
             self.assertTrue((root / "html" / "assets" / "js" / "report.js").exists())
+            self.assertTrue((root / "pdf" / "2026-08-01-151245_external_anssi_weekly.pdf").exists())
             self.assertTrue((root / "cbom" / "2026-08-01-151245_external_anssi_weekly.cbom.json").exists())
             self.assertTrue((root / "metadata" / "2026-08-01-151245_external_anssi_weekly.metadata.json").exists())
             self.assertTrue(any(path.endswith(".metadata.json") for path in written))

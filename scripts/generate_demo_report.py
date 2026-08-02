@@ -44,7 +44,7 @@ def main():
         frequency="demo",
         scan_run_id="demo-run-2026-08-01",
         export_directory="scan_reports",
-        export_formats=("csv", "cbom", "md", "html"),
+        export_formats=("csv", "cbom", "md", "html", "pdf"),
         policies=(EncryptionPolicy(name="anssi_encryption_policy", version="1.0", description="Demo ANSSI-compatible policy."),),
     )
     paths = build_export_paths(job, "2026-08-01-151245")

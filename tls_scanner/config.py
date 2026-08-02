@@ -222,9 +222,11 @@ def detect_export_format(filename, explicit_export=True):
         return "md"
     if lower_filename.endswith(".html"):
         return "html"
+    if lower_filename.endswith(".pdf"):
+        return "pdf"
     if lower_filename.endswith(".csv") or not explicit_export:
         return "csv"
-    raise ConfigError("export.filename must end with .csv, .cbom.json, .md, or .html")
+    raise ConfigError("export.filename must end with .csv, .cbom.json, .md, .html, or .pdf")
 
 
 def validate_workers(value, field_name="scan.workers"):
