@@ -20,7 +20,7 @@ or outdated protocols.
   finding for that endpoint.
 - Displays an activity bar with elapsed time while Nmap is running.
 - Displays separate `IP` and `FQDN` columns in the terminal table.
-- Optionally exports results with separate `IP` and `FQDN` columns to CSV.
+- Exports professional client-ready reports to HTML, Markdown, CSV, CycloneDX CBOM, and metadata JSON.
 - Provides an optional Post-Quantum Cryptography (PQC) profile that actively
   tests TLS 1.3 hybrid ML-KEM key exchange groups.
 
@@ -117,6 +117,7 @@ defaults:
       - csv
       - cbom
       - md
+      - html
     filename_template: "{timestamp}_{report_name}"
   checks:
     certificate:
@@ -169,6 +170,53 @@ For example, this command keeps the configured report but scans only port
 python3 Scan_nmap_TLS3.py --config config/config.yaml --report external_anssi_weekly -p 443 --log-level debug
 ```
 
+### Periodic scans with cron
+
+TLS Scanner can be scheduled with `crontab` for periodic controls. This is useful
+for daily external checks, weekly PQC readiness scans, monthly internal reviews,
+or separate scans for critical assets. Prefer one YAML config or one named report
+per scan scope so each scheduled job stays explicit and auditable.
+
+You can keep several configuration files, for example:
+
+```text
+config/scans/external-standard.yaml
+config/scans/external-pqc.yaml
+config/scans/internal-standard.yaml
+config/scans/critical-assets.yaml
+```
+
+Each file can define its own targets, ports, crypto profile, export formats,
+report name, policies and logging. Run them independently from the command line:
+
+```bash
+python3 Scan_nmap_TLS3.py --config config/scans/external-standard.yaml
+python3 Scan_nmap_TLS3.py --config config/scans/external-pqc.yaml
+python3 Scan_nmap_TLS3.py --config config/scans/internal-standard.yaml
+```
+
+Example `crontab` entries:
+
+```cron
+# Daily external TLS scan at 02:00
+0 2 * * * cd /home/cdev/Git/Scan_TLS && .venv/bin/python Scan_nmap_TLS3.py --config config/scans/external-standard.yaml >> logs/cron-external-standard.log 2>&1
+
+# Weekly PQC scan every Monday at 03:00
+0 3 * * 1 cd /home/cdev/Git/Scan_TLS && .venv/bin/python Scan_nmap_TLS3.py --config config/scans/external-pqc.yaml >> logs/cron-external-pqc.log 2>&1
+
+# Monthly internal scan on the first day of the month at 04:00
+0 4 1 * * cd /home/cdev/Git/Scan_TLS && .venv/bin/python Scan_nmap_TLS3.py --config config/scans/internal-standard.yaml >> logs/cron-internal-standard.log 2>&1
+```
+
+Operational recommendations for cron jobs:
+
+- Use absolute paths and `cd` into the project directory before running the scanner.
+- Use the virtualenv Python path, for example `.venv/bin/python`, when dependencies are installed in a venv.
+- Redirect stdout and stderr to dedicated log files under `logs/`.
+- Stagger scan schedules to avoid overlapping Nmap runs against the same targets.
+- Keep report names unique per scheduled scan so exported folders are easy to identify.
+- Use `--dry-run` after creating or changing a scheduled config before enabling it in cron.
+
 Certificate inventory is always exposed in the reports for filtering and triage.
 The `checks.certificate.expires_within_days` setting controls when the
 `Certificate expires soon` security finding is emitted. Setting
@@ -176,14 +224,61 @@ The `checks.certificate.expires_within_days` setting controls when the
 findings, but it does not hide certificate inventory columns such as
 `Self-signed`.
 
-Configured report exports are written under `scan_reports/` by default. Output
-filenames start with the local machine time:
+Configured report exports are written under `scan_reports/` by default. Each scan creates one folder named with the existing `{timestamp}_{report_name}` convention. The timestamp is computed once per scan and reused by every exporter:
 
 ```text
-scan_reports/2026-07-23-143012_external_anssi_weekly.csv
-scan_reports/2026-07-23-143012_external_anssi_weekly.cbom.json
-scan_reports/2026-07-23-143012_external_anssi_weekly.md
+scan_reports/
+└── 2026-08-01-151245_external_anssi_weekly/
+    ├── csv/
+    │   ├── 2026-08-01-151245_external_anssi_weekly.csv
+    │   └── 2026-08-01-151245_external_anssi_weekly_findings.csv
+    ├── markdown/
+    │   ├── 2026-08-01-151245_external_anssi_weekly.md
+    │   └── assets/images/
+    ├── html/
+    │   ├── 2026-08-01-151245_external_anssi_weekly.html
+    │   └── assets/
+    │       ├── css/
+    │       ├── js/
+    │       ├── images/
+    │       └── icons/
+    ├── cbom/
+    │   └── 2026-08-01-151245_external_anssi_weekly.cbom.json
+    └── metadata/
+        └── 2026-08-01-151245_external_anssi_weekly.metadata.json
 ```
+
+
+## Professional reports
+
+The HTML report is the primary presentation format. Open it directly from disk with a browser, for example:
+
+```bash
+xdg-open scan_reports/2026-08-01-151245_tls_scan_demo/html/2026-08-01-151245_tls_scan_demo.html
+```
+
+The HTML report works offline and with `file://`. It uses only local CSS and JavaScript copied into the scan folder. It does not use CDNs, remote fonts, analytics, tracking, `fetch()`, or API calls. The report includes an executive overview, KPI cards, accessible SVG/CSS-style charts, grouped findings, endpoint search/filter/sort, endpoint detail drawer, certificate inventory, compliance by policy, PQC readiness, technical details, and a `Print / Save as PDF` button.
+
+Markdown remains suitable for source control, tickets, and text-only review. CSV keeps the row-level technical export and adds a structured findings sidecar. CBOM remains the CycloneDX 1.6 cryptographic bill of materials. Metadata JSON records the scan context and report statistics for automation.
+
+PKI validation controls that are not currently executed are reported as `Not Tested`: trust chain validation, hostname validation, SAN validation, certificate chain status, revocation status, OCSP status, and CRL status. `Not Tested` is not treated as compliant.
+
+A non-sensitive demonstration report is generated by:
+
+```bash
+python3 scripts/generate_demo_report.py
+```
+
+Demo HTML report:
+
+```text
+scan_reports/2026-08-01-151245_tls_scan_demo/html/2026-08-01-151245_tls_scan_demo.html
+```
+
+
+The demonstration dataset covers compliant TLS, deprecated TLS 1.0/1.1, weak cipher suites, expired and expiring certificates, self-signed certificates, small RSA keys, SHA-1 signatures, ML-KEM support, classical-only PQC, PKI not tested, inaccessible endpoints, scan errors, and repeated finding occurrences.
+
+Limitations: the scanner still depends on Nmap output for observed TLS/certificate data; full PKI trust-chain and revocation validation are represented as `Not Tested` until dedicated checks are implemented; the HTML charts are intentionally simple offline visuals rather than a heavy charting library.
 
 ## Exports
 

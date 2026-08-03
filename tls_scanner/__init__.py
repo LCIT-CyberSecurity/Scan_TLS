@@ -102,3 +102,7 @@ from .scanner import (
     scan_tls_host,
     scan_tls_hosts_parallel,
 )
+
+from .exports.report_model import build_report_model, report_model_to_dict
+from .exports.markdown_report import build_markdown_report_from_model
+from .exports.html_report import build_html_report_from_model

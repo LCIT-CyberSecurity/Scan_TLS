@@ -1,176 +1,87 @@
 """
-HTML report builder derived from the Markdown dashboard.
+Professional HTML report renderer.
 
-Called by:
-- `tls_scanner.exports.paths.write_exports`, when the `html` format is requested;
-- HTML export tests.
-
-Produces:
-- a standalone HTML report generated from the existing Markdown dashboard.
+The report is file:// compatible: data is embedded in the document and all
+presentation/runtime assets are copied next to the HTML file by the export layer.
 """
 
+from __future__ import annotations
+
 import html
-import re
+import json
 
-from .markdown_report import build_markdown_report
-
-
-def inline_markdown_to_html(value):
-    escaped = html.escape(value)
-    return re.sub(r"\*\*(.+?)\*\*", r"<strong>\1</strong>", escaped)
+from .report_model import ReportModel, build_report_model, report_model_to_dict
 
 
-def split_markdown_table_row(line):
-    cells = line.strip().strip("|").split("|")
-    return [cell.strip().replace("\\|", "|") for cell in cells]
+HTML_ASSET_MANIFEST = {
+    "css/report.css": "tls_scanner/exports/assets/html/css/report.css",
+    "css/print.css": "tls_scanner/exports/assets/html/css/print.css",
+    "js/report.js": "tls_scanner/exports/assets/html/js/report.js",
+}
 
 
-def is_table_separator(line):
-    cells = split_markdown_table_row(line)
-    return bool(cells) and all(
-        re.fullmatch(r":?-{3,}:?", cell.strip()) for cell in cells
+def _json_for_html(value):
+    payload = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+    return payload.replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
+
+
+def build_executive_summary(model: ReportModel):
+    stats = model.statistics
+    if stats.compliance_status == "Compliant":
+        posture = "strong"
+        compliance = "all tested endpoints met the selected policy"
+    elif stats.non_compliant_endpoints:
+        posture = "exposed and requires focused remediation"
+        compliance = f"{stats.non_compliant_endpoints} endpoint(s) failed the selected policy"
+    else:
+        posture = "partially assessed"
+        compliance = "some endpoints could not be fully evaluated"
+    top = ", ".join(item["title"].lower() for item in stats.top_findings[:3]) or "no recurring weaknesses"
+    priority = (
+        f"Priority should be given to {top}."
+        if stats.top_findings
+        else "No major recurring remediation theme was identified in this scan."
+    )
+    return (
+        f"The overall TLS security posture is {posture}. "
+        f"The scan covered {stats.total_hosts} host(s) and {stats.total_endpoints} endpoint(s); {compliance}. "
+        f"It identified {stats.critical_findings} critical and {stats.high_findings} high-risk finding(s), "
+        f"with {stats.finding_occurrences} total finding occurrence(s). {priority}"
     )
 
 
-def render_markdown_table(lines, start_index):
-    header = split_markdown_table_row(lines[start_index])
-    index = start_index + 2
-    rows = []
-    while index < len(lines) and lines[index].startswith("|"):
-        rows.append(split_markdown_table_row(lines[index]))
-        index += 1
-
-    html_lines = ["<table>", "<thead>", "<tr>"]
-    html_lines.extend(f"<th>{inline_markdown_to_html(cell)}</th>" for cell in header)
-    html_lines.extend(["</tr>", "</thead>", "<tbody>"])
-    for row in rows:
-        html_lines.append("<tr>")
-        html_lines.extend(f"<td>{inline_markdown_to_html(cell)}</td>" for cell in row)
-        html_lines.append("</tr>")
-    html_lines.extend(["</tbody>", "</table>"])
-    return html_lines, index
-
-
-def markdown_to_html_body(markdown):
-    lines = markdown.splitlines()
-    html_lines = []
-    index = 0
-    in_list = False
-    in_code = False
-    code_language = ""
-    code_lines = []
-
-    def close_list():
-        nonlocal in_list
-        if in_list:
-            html_lines.append("</ul>")
-            in_list = False
-
-    while index < len(lines):
-        line = lines[index]
-
-        if in_code:
-            if line.startswith("```"):
-                html_lines.append(
-                    f'<pre class="language-{html.escape(code_language)}"><code>'
-                    + html.escape("\n".join(code_lines))
-                    + "</code></pre>"
-                )
-                in_code = False
-                code_language = ""
-                code_lines = []
-            else:
-                code_lines.append(line)
-            index += 1
-            continue
-
-        if not line.strip():
-            close_list()
-            index += 1
-            continue
-
-        if line.startswith("```"):
-            close_list()
-            in_code = True
-            code_language = line.removeprefix("```").strip()
-            index += 1
-            continue
-
-        if (
-            line.startswith("|")
-            and index + 1 < len(lines)
-            and lines[index + 1].startswith("|")
-            and is_table_separator(lines[index + 1])
-        ):
-            close_list()
-            table_html, index = render_markdown_table(lines, index)
-            html_lines.extend(table_html)
-            continue
-
-        if line == "---":
-            close_list()
-            html_lines.append("<hr>")
-        elif line.startswith("### "):
-            close_list()
-            html_lines.append(f"<h3>{inline_markdown_to_html(line[4:])}</h3>")
-        elif line.startswith("## "):
-            close_list()
-            html_lines.append(f"<h2>{inline_markdown_to_html(line[3:])}</h2>")
-        elif line.startswith("# "):
-            close_list()
-            html_lines.append(f"<h1>{inline_markdown_to_html(line[2:])}</h1>")
-        elif line.startswith("- "):
-            if not in_list:
-                html_lines.append("<ul>")
-                in_list = True
-            html_lines.append(f"<li>{inline_markdown_to_html(line[2:])}</li>")
-        elif line in {"<details>", "</details>"} or line.startswith("<summary>"):
-            close_list()
-            html_lines.append(line)
-        else:
-            close_list()
-            html_lines.append(f"<p>{inline_markdown_to_html(line)}</p>")
-        index += 1
-
-    close_list()
-    return "\n".join(html_lines)
+def build_html_report_from_model(model: ReportModel):
+    title = html.escape(f"TLS Security Report - {model.metadata.report_name}")
+    data = _json_for_html(report_model_to_dict(model))
+    summary = html.escape(build_executive_summary(model))
+    parts = [
+        "<!doctype html>", '<html lang="en">', "<head>",
+        '  <meta charset="utf-8">', '  <meta name="viewport" content="width=device-width, initial-scale=1">',
+        '  <meta name="referrer" content="no-referrer">', f"  <title>{title}</title>",
+        '  <link rel="stylesheet" href="assets/css/report.css">',
+        '  <link rel="stylesheet" href="assets/css/print.css" media="print">', "</head>", "<body>",
+        '  <a class="skip-link" href="#main">Skip to main content</a>',
+        '  <header class="app-shell no-print"><div class="brand-block"><div class="brand-mark" aria-hidden="true">TS</div><div><strong>TLS Scan</strong><span>Security Report</span></div></div><nav aria-label="Report sections"><a href="#overview">Overview</a><a href="#findings">Findings</a><a href="#endpoints">Endpoints</a><a href="#communication">Communication Security</a><a href="#certificates">Certificates</a><a href="#compliance">Compliance</a><a href="#pqc">PQC</a></nav><div class="header-actions"><button class="button" type="button" id="downloadCsv">Download CSV</button><button class="button button-primary" type="button" id="printReport">Print / Save as PDF</button></div></header>',
+        '  <main id="main" class="report-root">',
+        '    <section class="hero" id="overview"><div class="hero-copy"><p class="eyebrow">Executive TLS Posture</p>',
+        f'    <h1>{title}</h1><p class="summary-text" id="executiveSummary">{summary}</p><div id="priorityActions" class="priority-strip" aria-label="Priority actions"></div></div>',
+        '    <aside class="hero-score" aria-label="Overall grade and compliance status"><span class="score-label">Overall Grade</span><strong id="overallGrade">-</strong><span id="overallCompliance">Not Tested</span><div class="score-meta" id="scoreMeta"></div></aside></section>',
+        '    <section id="kpis" class="kpi-grid" aria-label="Executive key performance indicators"></section>',
+        '    <section class="scan-info card" aria-labelledby="scanInfoTitle"><div class="section-heading compact"><div><p class="eyebrow">Context</p><h2 id="scanInfoTitle">Scan Information</h2></div></div><div id="scanContext" class="scan-info-grid" aria-label="Scan context"></div></section>',
+        '    <section class="section-grid charts-grid" id="charts" aria-label="Security statistics"></section>',
+        '    <section class="panel" id="findings"><div class="section-heading"><div><p class="eyebrow">Grouped Risk</p><h2>Security Findings</h2></div><span id="findingCount" class="section-count"></span></div><div id="findingFilters" class="filters no-print"></div><div id="findingsList" class="stack"></div></section>',
+        '    <section class="panel" id="endpoints"><div class="section-heading"><div><p class="eyebrow">Technical Scope</p><h2>Endpoints</h2></div><span id="endpointCount" class="section-count"></span></div><div id="endpointFilters" class="filters no-print"></div><div id="endpointTable"></div></section>',
+        '    <section class="panel" id="communication"><div class="section-heading"><div><p class="eyebrow">Encryption Inventory</p><h2>Communication Security</h2></div><span id="communicationCount" class="section-count"></span></div><div id="communicationTable"></div></section>',
+        '    <section class="panel" id="certificates"><div class="section-heading"><div><p class="eyebrow">PKI Inventory</p><h2>Certificates</h2></div></div><div id="certificateFilters" class="filters no-print"></div><div id="certificateTable"></div></section>',
+        '    <section class="panel" id="compliance"><div class="section-heading"><div><p class="eyebrow">Policy Results</p><h2>Compliance</h2></div></div><div id="policyCompliance" class="stack"></div></section>',
+        '    <section class="panel" id="pqc"><div class="section-heading"><div><p class="eyebrow">Internal Readiness Indicator</p><h2>PQC Readiness</h2></div></div><div id="pqcReadiness" class="section-grid"></div></section>',
+        '    <section class="panel"><details><summary>Complete Technical Details</summary><div id="technicalDetails"></div></details></section>',
+        '  </main><aside class="drawer" id="endpointDrawer" aria-hidden="true" aria-labelledby="drawerTitle"><button class="icon-button no-print" type="button" id="closeDrawer" aria-label="Close endpoint details">x</button><div id="drawerContent"></div></aside><div class="drawer-backdrop no-print" id="drawerBackdrop"></div>',
+        f'  <script id="report-data" type="application/json">{data}</script>',
+        '  <script src="assets/js/report.js"></script>', "</body>", "</html>",
+    ]
+    return "\n".join(parts) + "\n"
 
 
 def build_html_report(results, job, scan_timestamp):
-    markdown = build_markdown_report(results, job, scan_timestamp)
-    body = markdown_to_html_body(markdown)
-    title = html.escape(f"TLS Scan Dashboard - {job.report_name}")
-    return "".join(
-        [
-            "<!doctype html>\n",
-            "<html lang=\"fr\">\n",
-            "<head>\n",
-            "  <meta charset=\"utf-8\">\n",
-            "  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n",
-            f"  <title>{title}</title>\n",
-            "  <style>\n",
-            "    :root { color-scheme: light; --border: #d0d7de; --bg: #f6f8fa; --text: #1f2328; }\n",
-            "    body { margin: 0; font-family: Arial, sans-serif; color: var(--text); background: white; }\n",
-            "    main { max-width: 1180px; margin: 0 auto; padding: 32px 20px 48px; }\n",
-            "    h1, h2, h3 { margin: 28px 0 12px; line-height: 1.25; }\n",
-            "    h1 { margin-top: 0; font-size: 30px; }\n",
-            "    h2 { border-bottom: 1px solid var(--border); padding-bottom: 6px; }\n",
-            "    p, li { line-height: 1.55; }\n",
-            "    table { width: 100%; border-collapse: collapse; margin: 12px 0 24px; font-size: 14px; }\n",
-            "    th, td { border: 1px solid var(--border); padding: 8px 10px; text-align: left; vertical-align: top; }\n",
-            "    th { background: var(--bg); font-weight: 700; }\n",
-            "    tr:nth-child(even) td { background: #fbfbfb; }\n",
-            "    pre { overflow-x: auto; padding: 12px; background: var(--bg); border: 1px solid var(--border); }\n",
-            "    details { margin-top: 18px; }\n",
-            "    summary { cursor: pointer; font-weight: 700; }\n",
-            "    hr { border: 0; border-top: 1px solid var(--border); margin: 24px 0; }\n",
-            "  </style>\n",
-            "</head>\n",
-            "<body>\n",
-            "<main>\n",
-            body,
-            "\n</main>\n",
-            "</body>\n",
-            "</html>\n",
-        ]
-    )
+    return build_html_report_from_model(build_report_model(results, job, scan_timestamp))
