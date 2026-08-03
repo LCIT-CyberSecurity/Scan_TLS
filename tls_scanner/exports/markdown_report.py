@@ -717,6 +717,27 @@ def build_markdown_report_from_model(model):
         cert = endpoint.certificate
         key = f"{cert.key_type} {cert.key_size or ''}".strip()
         lines.append("| " + " | ".join(markdown_escape(value) for value in [endpoint.endpoint_id, cert.subject, cert.issuer, ', '.join(cert.san), cert.valid_until, cert.remaining_days if cert.remaining_days is not None else 'unknown', cert.status, key, cert.signature_algorithm, cert.trust_status, cert.hostname_validation_status, cert.chain_validation_status, cert.revocation_status]) + " |")
+    lines.extend([
+        "",
+        "## Compliance",
+        "",
+        "| Policy | Version | Compliance | Compliant Endpoints | Non-Compliant Endpoints | Failed Controls |",
+        "| --- | --- | ---: | ---: | ---: | ---: |",
+    ])
+    if model.policies:
+        for policy in model.policies:
+            lines.append("| " + " | ".join(markdown_escape(value) for value in [policy.name, policy.version or '-', f"{policy.compliance_percentage}%", policy.compliant_endpoints, policy.non_compliant_endpoints, policy.failed_controls]) + " |")
+    else:
+        lines.append("| Legacy scanner policy | - | 0% | 0 | 0 | 0 |")
+    lines.extend([
+        "",
+        "## PQC Readiness",
+        "",
+        "| Indicator | Value |",
+        "| --- | ---: |",
+    ])
+    for label, value in stats.pqc_readiness.items():
+        lines.append(f"| {markdown_escape(label)} | {markdown_escape(value)} |")
     lines.extend(["", "## Security Findings", ""])
     if model.findings:
         for finding in model.findings:

@@ -58,6 +58,39 @@
     input.remove();
   }
 
+  function csvHeaders(){
+    const headers = ['IP','FQDN','Port', data.metadata.crypto_profile === 'pqc' ? 'TLS Grade' : 'Grade', 'TLS Version', 'Cipher Suite', 'Public Key', 'Certificate Validity'];
+    if(data.metadata.crypto_profile === 'pqc') headers.push('Key Exchange');
+    headers.push('Certificate Crypto','Self-signed','Certificate Days Left','Certificate Issuer','Certificate Subject','Certificate SAN','Certificate Key Type','Certificate Key Size','Certificate Signature Algorithm','Compliance','Reason');
+    return headers;
+  }
+
+  function csvCell(value){
+    const normalized = normalize(value);
+    return /[",\n\r]/.test(normalized) ? `"${normalized.replace(/"/g, '""')}"` : normalized;
+  }
+
+  function csvContent(){
+    const rows = [csvHeaders(), ...(data.raw_results || [])];
+    return rows.map((row) => row.map(csvCell).join(',')).join('\n') + '\n';
+  }
+
+  function safeFilename(value){
+    return String(value || 'tls_scan_report').replace(/[^a-z0-9._-]+/gi, '_').replace(/^_+|_+$/g, '') || 'tls_scan_report';
+  }
+
+  function downloadCsv(){
+    const blob = new Blob([csvContent()], {type:'text/csv;charset=utf-8'});
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${safeFilename(data.metadata.report_name)}.csv`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
   function badge(value, cls){ return el('span', `badge ${cls || ''}`, value); }
   function severityClass(value){ return `severity-${String(value || 'informational').toLowerCase()}`; }
   function statusClass(value){ return `status-${String(value || 'not_tested').toLowerCase().replace(/[\s-]+/g,'_')}`; }
@@ -340,71 +373,28 @@
     render();
   }
 
+  function endpointScore(endpoint){
+    const gradeScores = {'A+':100, A:95, B:80, C:65, D:50, F:0, 'Not Tested':0};
+    const gradeScore = gradeScores[endpoint.overall_grade] ?? 0;
+    const suites = endpoint.cipher_suites || [];
+    if(!suites.length) return gradeScore;
+    const compliantSuites = suites.filter((suite) => suite.compliance_status === 'compliant').length;
+    const communicationScore = Math.round(compliantSuites * 100 / suites.length);
+    return Math.round((gradeScore + communicationScore) / 2);
+  }
+
+  function scoreTone(score){
+    if(score >= 90) return 'score-good';
+    if(score >= 70) return 'score-info';
+    if(score >= 50) return 'score-warning';
+    return 'score-bad';
+  }
+
   function hostKey(endpoint){
     return endpoint.hostname || endpoint.ip_address || endpoint.host_id || endpoint.endpoint_id;
   }
 
-  function summarizeHost(endpoints){
-    return {
-      grade: endpoints.reduce((worst, endpoint) => (gradeOrder[endpoint.overall_grade] ?? 99) > (gradeOrder[worst] ?? 99) ? endpoint.overall_grade : worst, endpoints[0].overall_grade),
-      severity: endpoints.reduce((worst, endpoint) => (severityOrder[endpoint.highest_severity] ?? 9) < (severityOrder[worst] ?? 9) ? endpoint.highest_severity : worst, endpoints[0].highest_severity),
-      findings: endpoints.reduce((total, endpoint) => total + Number(endpoint.finding_count || 0), 0),
-      failed: endpoints.filter((endpoint) => endpoint.compliance_status !== 'compliant').length,
-      certificates: Array.from(new Set(endpoints.map((endpoint) => endpoint.certificate.valid_until || endpoint.certificate.status).filter(Boolean))),
-      protocols: Array.from(new Set(endpoints.flatMap((endpoint) => endpoint.supported_tls_versions || []))),
-    };
-  }
-
-  function endpointPortRow(endpoint){
-    const row = el('div','endpoint-port-row');
-    const port = el('div','endpoint-port-main');
-    port.append(valueNode(`${endpoint.port}/${endpoint.protocol}`, 'endpoint-port'), valueNode(endpoint.ip_address, 'endpoint-address'));
-    const tls = (endpoint.supported_tls_versions || []).join(', ') || 'Not Tested';
-    const cert = endpoint.certificate.valid_until || endpoint.certificate.status;
-    [
-      port,
-      badge(endpoint.overall_grade, `grade-badge ${gradeClass(endpoint.overall_grade)}`),
-      valueNode(endpoint.compliance_status, statusClass(endpoint.compliance_status)),
-      valueNode(tls),
-      valueNode(cert),
-      valueNode(`${endpoint.finding_count} finding(s)`, severityClass(endpoint.highest_severity)),
-      button('Open details', () => openEndpoint(endpoint.endpoint_id), 'button'),
-    ].forEach((item) => row.append(item));
-    return row;
-  }
-
-  function hostEndpointCard(group){
-    const summary = summarizeHost(group.endpoints);
-    const card = el('article','endpoint-card host-card card');
-    const head = el('div','endpoint-head');
-    const identity = el('div','endpoint-identity');
-    identity.append(valueNode(group.host, 'endpoint-host'), valueNode(`${group.endpoints.length} endpoint(s) across ${new Set(group.endpoints.map((endpoint) => endpoint.port)).size} port(s)`, 'endpoint-address'));
-    const headBadges = el('div','host-badges');
-    headBadges.append(badge(summary.grade, `grade-badge ${gradeClass(summary.grade)}`), badge(`${summary.findings} finding(s)`, severityClass(summary.severity)));
-    head.append(identity, headBadges);
-    const grid = el('div','endpoint-grid host-summary-grid');
-    [
-      ['Failed Endpoints', `${summary.failed}/${group.endpoints.length}`, summary.failed ? 'status-non_compliant' : 'status-compliant'],
-      ['Protocols', summary.protocols.join(', ') || 'Not Tested', ''],
-      ['Certificates', summary.certificates.join(', ') || 'Not Tested', ''],
-    ].forEach(([label,value,cls]) => {
-      const item = el('div','endpoint-field');
-      item.append(el('span','field-label',label), valueNode(value, cls));
-      grid.append(item);
-    });
-    const portList = el('div','endpoint-port-list');
-    const header = el('div','endpoint-port-row endpoint-port-header');
-    ['Port','Grade','Compliance','Protocols','Certificate','Findings','Details'].forEach((label) => header.append(el('span','',label)));
-    portList.append(header, ...group.endpoints.map(endpointPortRow));
-    card.append(head, grid, portList);
-    return card;
-  }
-
-  function endpointMatches(endpoint, q){
-    return JSON.stringify(endpoint).toLowerCase().includes(q);
-  }
-
-  function groupEndpoints(endpoints){
+  function groupEndpointsByHost(endpoints){
     const grouped = new Map();
     endpoints.forEach((endpoint) => {
       const key = hostKey(endpoint);
@@ -417,6 +407,45 @@
     }));
   }
 
+  function hostSummary(group){
+    const endpoints = group.endpoints;
+    const scores = endpoints.map(endpointScore);
+    const score = scores.length ? Math.round(scores.reduce((total, item) => total + item, 0) / scores.length) : 0;
+    const worstGrade = endpoints.reduce((worst, endpoint) => (gradeOrder[endpoint.overall_grade] ?? 99) > (gradeOrder[worst] ?? 99) ? endpoint.overall_grade : worst, endpoints[0].overall_grade);
+    const highestSeverity = endpoints.reduce((worst, endpoint) => (severityOrder[endpoint.highest_severity] ?? 9) < (severityOrder[worst] ?? 9) ? endpoint.highest_severity : worst, endpoints[0].highest_severity);
+    const findings = endpoints.reduce((total, endpoint) => total + Number(endpoint.finding_count || 0), 0);
+    const failed = endpoints.filter((endpoint) => endpoint.compliance_status !== 'compliant').length;
+    const ports = Array.from(new Set(endpoints.map((endpoint) => `${endpoint.port}/${endpoint.protocol}`)));
+    const protocols = Array.from(new Set(endpoints.flatMap((endpoint) => endpoint.supported_tls_versions || [])));
+    return {score, worstGrade, highestSeverity, findings, failed, ports, protocols};
+  }
+
+  function hostEndpointCard(group){
+    const summary = hostSummary(group);
+    const card = el('article','endpoint-card host-card card');
+    const head = el('div','endpoint-head');
+    const identity = el('div','endpoint-identity');
+    identity.append(valueNode(group.host, 'endpoint-host'), valueNode(`${group.endpoints.length} endpoint(s) - ${summary.ports.join(', ')}`, 'endpoint-address'));
+    const badges = el('div','endpoint-badges');
+    badges.append(badge(summary.worstGrade, `grade-badge ${gradeClass(summary.worstGrade)}`), badge(`${summary.score}/100`, `score-badge ${scoreTone(summary.score)}`));
+    head.append(identity, badges);
+    const grid = el('div','endpoint-grid endpoint-compact-grid');
+    [
+      ['Average Score', `${summary.score}/100`, scoreTone(summary.score)],
+      ['Failed Endpoints', `${summary.failed}/${group.endpoints.length}`, summary.failed ? 'status-non_compliant' : 'status-compliant'],
+      ['Protocols', summary.protocols.join(', ') || 'Not Tested', ''],
+      ['Findings', `${summary.findings} finding(s)`, severityClass(summary.highestSeverity)],
+    ].forEach(([label,value,cls]) => {
+      const item = el('div','endpoint-field');
+      item.append(el('span','field-label',label), valueNode(value, cls));
+      grid.append(item);
+    });
+    const actions = el('div','endpoint-actions');
+    actions.append(copyButton(group.host), button('Open details', () => openHostEndpoints(group), 'button'));
+    card.append(head, grid, actions);
+    return card;
+  }
+
   function initEndpoints(){
     const filters = $('endpointFilters');
     const search = document.createElement('input');
@@ -426,25 +455,26 @@
     compliance.setAttribute('aria-label','Filter by compliance');
     ['all','compliant','non_compliant','error','not_tested'].forEach((value) => compliance.add(new Option(value === 'all' ? 'All compliance states' : value, value)));
     const sort = document.createElement('select');
-    sort.setAttribute('aria-label','Sort endpoint groups');
-    [['severity','Severity'],['hostname','Hostname'],['grade','Grade'],['findings','Finding count'],['ports','Port count'],['expiration','Certificate expiration']].forEach(([value,label]) => sort.add(new Option(`Sort by ${label}`, value)));
+    sort.setAttribute('aria-label','Sort endpoint hosts');
+    [['severity','Severity'],['score','Average score'],['hostname','Hostname'],['grade','Worst grade'],['findings','Finding count'],['ports','Port count'],['expiration','Certificate expiration']].forEach(([value,label]) => sort.add(new Option(`Sort by ${label}`, value)));
     filters.append(search, compliance, sort);
     const render = () => {
       const q = search.value.toLowerCase();
-      const rows = data.endpoints.filter((endpoint) => (compliance.value === 'all' || endpoint.compliance_status === compliance.value) && endpointMatches(endpoint, q));
-      const groups = groupEndpoints(rows);
+      const endpoints = data.endpoints.filter((endpoint) => (compliance.value === 'all' || endpoint.compliance_status === compliance.value) && JSON.stringify(endpoint).toLowerCase().includes(q));
+      const groups = groupEndpointsByHost(endpoints);
       groups.sort((a,b) => {
-        const sa = summarizeHost(a.endpoints);
-        const sb = summarizeHost(b.endpoints);
+        const sa = hostSummary(a);
+        const sb = hostSummary(b);
+        if(sort.value === 'score') return sb.score - sa.score;
         if(sort.value === 'findings') return sb.findings - sa.findings;
         if(sort.value === 'ports') return b.endpoints.length - a.endpoints.length;
-        if(sort.value === 'expiration') return String(sa.certificates[0] || '').localeCompare(String(sb.certificates[0] || ''));
-        if(sort.value === 'grade') return (gradeOrder[sa.grade] ?? 99) - (gradeOrder[sb.grade] ?? 99);
-        if(sort.value === 'severity') return (severityOrder[sa.severity] ?? 9) - (severityOrder[sb.severity] ?? 9) || sb.findings - sa.findings;
+        if(sort.value === 'expiration') return String(a.endpoints[0].certificate.valid_until).localeCompare(String(b.endpoints[0].certificate.valid_until));
+        if(sort.value === 'grade') return (gradeOrder[sa.worstGrade] ?? 99) - (gradeOrder[sb.worstGrade] ?? 99);
+        if(sort.value === 'severity') return (severityOrder[sa.highestSeverity] ?? 9) - (severityOrder[sb.highestSeverity] ?? 9) || sb.findings - sa.findings;
         return a.host.localeCompare(b.host);
       });
       const shownEndpoints = groups.reduce((total, group) => total + group.endpoints.length, 0);
-      $('endpointCount').textContent = `${groups.length} host(s) / ${shownEndpoints} endpoint(s) shown${shownEndpoints > 500 ? ' - first 500 endpoints rendered' : ''}`;
+      $('endpointCount').textContent = `${groups.length} host(s) / ${shownEndpoints} endpoint(s) shown${shownEndpoints > 500 ? ' - first 500 endpoints included' : ''}`;
       let rendered = 0;
       const cards = [];
       for(const group of groups){
@@ -459,6 +489,36 @@
     };
     [search, compliance, sort].forEach((node) => node.addEventListener('input', render));
     render();
+  }
+
+  function openHostEndpoints(group){
+    const summary = hostSummary(group);
+    const root = $('drawerContent');
+    root.textContent = '';
+    root.append(el('h2','',group.host));
+    root.append(table(['Metric','Value'], [
+      ['Average Score', `${summary.score}/100`],
+      ['Worst Grade', summary.worstGrade],
+      ['Endpoints', group.endpoints.length],
+      ['Failed Endpoints', `${summary.failed}/${group.endpoints.length}`],
+      ['Ports', summary.ports.join(', ')],
+      ['Findings', summary.findings],
+    ]));
+    root.append(el('h3','','Endpoints'));
+    root.append(table(['Endpoint','IP','Port','Grade','Score','Compliance','Protocols','Findings','Details'], group.endpoints.map((endpoint) => [
+      endpoint.endpoint_id,
+      endpoint.ip_address,
+      `${endpoint.port}/${endpoint.protocol}`,
+      endpoint.overall_grade,
+      `${endpointScore(endpoint)}/100`,
+      endpoint.compliance_status,
+      (endpoint.supported_tls_versions || []).join(', ') || 'Not Tested',
+      endpoint.finding_count,
+      button('Open', () => openEndpoint(endpoint.endpoint_id), 'button'),
+    ])));
+    $('endpointDrawer').classList.add('open');
+    $('endpointDrawer').setAttribute('aria-hidden','false');
+    $('drawerBackdrop').classList.add('open');
   }
 
   function initCertificates(){
@@ -481,7 +541,7 @@
         return String(a.certificate.valid_until).localeCompare(String(b.certificate.valid_until));
       });
       const rows = endpoints.map((endpoint) => [endpoint.endpoint_id, endpoint.certificate.subject, endpoint.certificate.issuer, (endpoint.certificate.san || []).join(', '), endpoint.certificate.valid_until, endpoint.certificate.remaining_days, endpoint.certificate.self_signed, endpoint.certificate.key_type, endpoint.certificate.key_size, endpoint.certificate.signature_algorithm, endpoint.certificate.trust_status, endpoint.certificate.hostname_validation_status, endpoint.certificate.chain_validation_status, endpoint.certificate.revocation_status]);
-      $('certificateTable').replaceChildren(table(['Endpoint','Subject','Issuer','SAN','Expiration','Remaining days','Self-signed','Key type','Key size','Signature','Trust','Hostname validation','Chain validation','Revocation'], rows));
+      $('certificateTable').replaceChildren(table(['Endpoint','Subject','Issuer','SAN','Expiration','Remaining days','Self-signed','Key type','Key size','Signature','Trust','Hostname validation','Chain validation','Revocation'], rows, {filterable:true}));
     };
     [status, sort].forEach((node) => node.addEventListener('change', render));
     render();
@@ -573,6 +633,7 @@
   }
 
   $('printReport').addEventListener('click', () => window.print());
+  $('downloadCsv').addEventListener('click', downloadCsv);
   $('closeDrawer').addEventListener('click', closeDrawer);
   $('drawerBackdrop').addEventListener('click', closeDrawer);
   document.addEventListener('keydown', (event) => { if(event.key === 'Escape') closeDrawer(); });

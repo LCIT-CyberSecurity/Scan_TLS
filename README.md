@@ -170,6 +170,53 @@ For example, this command keeps the configured report but scans only port
 python3 Scan_nmap_TLS3.py --config config/config.yaml --report external_anssi_weekly -p 443 --log-level debug
 ```
 
+### Periodic scans with cron
+
+TLS Scanner can be scheduled with `crontab` for periodic controls. This is useful
+for daily external checks, weekly PQC readiness scans, monthly internal reviews,
+or separate scans for critical assets. Prefer one YAML config or one named report
+per scan scope so each scheduled job stays explicit and auditable.
+
+You can keep several configuration files, for example:
+
+```text
+config/scans/external-standard.yaml
+config/scans/external-pqc.yaml
+config/scans/internal-standard.yaml
+config/scans/critical-assets.yaml
+```
+
+Each file can define its own targets, ports, crypto profile, export formats,
+report name, policies and logging. Run them independently from the command line:
+
+```bash
+python3 Scan_nmap_TLS3.py --config config/scans/external-standard.yaml
+python3 Scan_nmap_TLS3.py --config config/scans/external-pqc.yaml
+python3 Scan_nmap_TLS3.py --config config/scans/internal-standard.yaml
+```
+
+Example `crontab` entries:
+
+```cron
+# Daily external TLS scan at 02:00
+0 2 * * * cd /home/cdev/Git/Scan_TLS && .venv/bin/python Scan_nmap_TLS3.py --config config/scans/external-standard.yaml >> logs/cron-external-standard.log 2>&1
+
+# Weekly PQC scan every Monday at 03:00
+0 3 * * 1 cd /home/cdev/Git/Scan_TLS && .venv/bin/python Scan_nmap_TLS3.py --config config/scans/external-pqc.yaml >> logs/cron-external-pqc.log 2>&1
+
+# Monthly internal scan on the first day of the month at 04:00
+0 4 1 * * cd /home/cdev/Git/Scan_TLS && .venv/bin/python Scan_nmap_TLS3.py --config config/scans/internal-standard.yaml >> logs/cron-internal-standard.log 2>&1
+```
+
+Operational recommendations for cron jobs:
+
+- Use absolute paths and `cd` into the project directory before running the scanner.
+- Use the virtualenv Python path, for example `.venv/bin/python`, when dependencies are installed in a venv.
+- Redirect stdout and stderr to dedicated log files under `logs/`.
+- Stagger scan schedules to avoid overlapping Nmap runs against the same targets.
+- Keep report names unique per scheduled scan so exported folders are easy to identify.
+- Use `--dry-run` after creating or changing a scheduled config before enabling it in cron.
+
 Certificate inventory is always exposed in the reports for filtering and triage.
 The `checks.certificate.expires_within_days` setting controls when the
 `Certificate expires soon` security finding is emitted. Setting
