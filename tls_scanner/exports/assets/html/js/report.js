@@ -94,7 +94,7 @@
     return left.localeCompare(right, undefined, {numeric:true, sensitivity:'base'});
   }
 
-  function renderRows(tbody, rows){
+  function renderRows(tbody, rows, emptyColspan){
     tbody.textContent = '';
     rows.forEach((cells) => {
       const row = document.createElement('tr');
@@ -105,26 +105,44 @@
       });
       tbody.append(row);
     });
+    if(!rows.length){
+      const row = document.createElement('tr');
+      const td = el('td','empty-cell','No rows match the current filters.');
+      td.colSpan = emptyColspan;
+      row.append(td);
+      tbody.append(row);
+    }
   }
 
   function table(headers, rows, options){
     const sortable = !options || options.sortable !== false;
-    const wrap = el('div','table-wrap');
+    const filterable = Boolean(options && options.filterable);
+    const onRender = options && options.onRender;
+    const wrap = el('div', filterable ? 'table-wrap filterable-table-wrap' : 'table-wrap');
     const t = document.createElement('table');
     const thead = document.createElement('thead');
     const tr = document.createElement('tr');
     const tbody = document.createElement('tbody');
-    const state = {index:-1, direction:1};
+    const state = {index:-1, direction:1, filters:headers.map(() => '')};
+
+    const applyState = () => {
+      let visible = rows.filter((cells) => state.filters.every((filter, index) => !filter || cellText(cells[index]).toLowerCase().includes(filter)));
+      if(state.index >= 0){
+        visible = [...visible].sort((a,b) => compareValues(cellText(a[state.index]), cellText(b[state.index])) * state.direction);
+      }
+      renderRows(tbody, visible, headers.length);
+      if(onRender) onRender(visible.length, rows.length);
+    };
+
     headers.forEach((h, index) => {
       const th = el('th','',h);
       if(sortable){
         const sortButton = button(h, () => {
           state.direction = state.index === index ? state.direction * -1 : 1;
           state.index = index;
-          const sorted = [...rows].sort((a,b) => compareValues(cellText(a[index]), cellText(b[index])) * state.direction);
-          renderRows(tbody, sorted);
           Array.from(tr.children).forEach((item) => item.removeAttribute('aria-sort'));
           th.setAttribute('aria-sort', state.direction === 1 ? 'ascending' : 'descending');
+          applyState();
         }, 'table-sort');
         sortButton.title = `Sort by ${h}`;
         th.append(sortButton);
@@ -134,7 +152,27 @@
       tr.append(th);
     });
     thead.append(tr);
-    renderRows(tbody, rows);
+
+    if(filterable){
+      const filterRow = document.createElement('tr');
+      filterRow.className = 'column-filter-row no-print';
+      headers.forEach((h, index) => {
+        const th = document.createElement('th');
+        const input = document.createElement('input');
+        input.className = 'column-filter';
+        input.placeholder = `Filter ${h}`;
+        input.setAttribute('aria-label', `Filter ${h}`);
+        input.addEventListener('input', () => {
+          state.filters[index] = input.value.trim().toLowerCase();
+          applyState();
+        });
+        th.append(input);
+        filterRow.append(th);
+      });
+      thead.append(filterRow);
+    }
+
+    applyState();
     t.append(thead, tbody);
     wrap.append(t);
     return wrap;
@@ -302,31 +340,81 @@
     render();
   }
 
-  function endpointCard(endpoint){
-    const card = el('article','endpoint-card card');
-    const head = el('div','endpoint-head');
-    const identity = el('div','endpoint-identity');
-    identity.append(valueNode(endpoint.hostname, 'endpoint-host'), valueNode(`${endpoint.ip_address}:${endpoint.port}/${endpoint.protocol}`, 'endpoint-address'));
-    head.append(identity, badge(endpoint.overall_grade, `grade-badge ${gradeClass(endpoint.overall_grade)}`));
-    const grid = el('div','endpoint-grid');
+  function hostKey(endpoint){
+    return endpoint.hostname || endpoint.ip_address || endpoint.host_id || endpoint.endpoint_id;
+  }
+
+  function summarizeHost(endpoints){
+    return {
+      grade: endpoints.reduce((worst, endpoint) => (gradeOrder[endpoint.overall_grade] ?? 99) > (gradeOrder[worst] ?? 99) ? endpoint.overall_grade : worst, endpoints[0].overall_grade),
+      severity: endpoints.reduce((worst, endpoint) => (severityOrder[endpoint.highest_severity] ?? 9) < (severityOrder[worst] ?? 9) ? endpoint.highest_severity : worst, endpoints[0].highest_severity),
+      findings: endpoints.reduce((total, endpoint) => total + Number(endpoint.finding_count || 0), 0),
+      failed: endpoints.filter((endpoint) => endpoint.compliance_status !== 'compliant').length,
+      certificates: Array.from(new Set(endpoints.map((endpoint) => endpoint.certificate.valid_until || endpoint.certificate.status).filter(Boolean))),
+      protocols: Array.from(new Set(endpoints.flatMap((endpoint) => endpoint.supported_tls_versions || []))),
+    };
+  }
+
+  function endpointPortRow(endpoint){
+    const row = el('div','endpoint-port-row');
+    const port = el('div','endpoint-port-main');
+    port.append(valueNode(`${endpoint.port}/${endpoint.protocol}`, 'endpoint-port'), valueNode(endpoint.ip_address, 'endpoint-address'));
     const tls = (endpoint.supported_tls_versions || []).join(', ') || 'Not Tested';
     const cert = endpoint.certificate.valid_until || endpoint.certificate.status;
     [
-      ['Compliance', endpoint.compliance_status, statusClass(endpoint.compliance_status)],
-      ['Protocols', tls, ''],
-      ['Certificate', cert, ''],
-      ['Findings', endpoint.finding_count, severityClass(endpoint.highest_severity)],
-      ['Highest Severity', endpoint.highest_severity, severityClass(endpoint.highest_severity)],
-      ['PQC', endpoint.pqc.readiness, ''],
+      port,
+      badge(endpoint.overall_grade, `grade-badge ${gradeClass(endpoint.overall_grade)}`),
+      valueNode(endpoint.compliance_status, statusClass(endpoint.compliance_status)),
+      valueNode(tls),
+      valueNode(cert),
+      valueNode(`${endpoint.finding_count} finding(s)`, severityClass(endpoint.highest_severity)),
+      button('Open details', () => openEndpoint(endpoint.endpoint_id), 'button'),
+    ].forEach((item) => row.append(item));
+    return row;
+  }
+
+  function hostEndpointCard(group){
+    const summary = summarizeHost(group.endpoints);
+    const card = el('article','endpoint-card host-card card');
+    const head = el('div','endpoint-head');
+    const identity = el('div','endpoint-identity');
+    identity.append(valueNode(group.host, 'endpoint-host'), valueNode(`${group.endpoints.length} endpoint(s) across ${new Set(group.endpoints.map((endpoint) => endpoint.port)).size} port(s)`, 'endpoint-address'));
+    const headBadges = el('div','host-badges');
+    headBadges.append(badge(summary.grade, `grade-badge ${gradeClass(summary.grade)}`), badge(`${summary.findings} finding(s)`, severityClass(summary.severity)));
+    head.append(identity, headBadges);
+    const grid = el('div','endpoint-grid host-summary-grid');
+    [
+      ['Failed Endpoints', `${summary.failed}/${group.endpoints.length}`, summary.failed ? 'status-non_compliant' : 'status-compliant'],
+      ['Protocols', summary.protocols.join(', ') || 'Not Tested', ''],
+      ['Certificates', summary.certificates.join(', ') || 'Not Tested', ''],
     ].forEach(([label,value,cls]) => {
       const item = el('div','endpoint-field');
       item.append(el('span','field-label',label), valueNode(value, cls));
       grid.append(item);
     });
-    const actions = el('div','endpoint-actions');
-    actions.append(copyButton(endpoint.endpoint_id), button('Open details', () => openEndpoint(endpoint.endpoint_id), 'button'));
-    card.append(head, grid, actions);
+    const portList = el('div','endpoint-port-list');
+    const header = el('div','endpoint-port-row endpoint-port-header');
+    ['Port','Grade','Compliance','Protocols','Certificate','Findings','Details'].forEach((label) => header.append(el('span','',label)));
+    portList.append(header, ...group.endpoints.map(endpointPortRow));
+    card.append(head, grid, portList);
     return card;
+  }
+
+  function endpointMatches(endpoint, q){
+    return JSON.stringify(endpoint).toLowerCase().includes(q);
+  }
+
+  function groupEndpoints(endpoints){
+    const grouped = new Map();
+    endpoints.forEach((endpoint) => {
+      const key = hostKey(endpoint);
+      if(!grouped.has(key)) grouped.set(key, {host:key, endpoints:[]});
+      grouped.get(key).endpoints.push(endpoint);
+    });
+    return Array.from(grouped.values()).map((group) => ({
+      ...group,
+      endpoints: group.endpoints.sort((a,b) => Number(a.port) - Number(b.port) || a.endpoint_id.localeCompare(b.endpoint_id)),
+    }));
   }
 
   function initEndpoints(){
@@ -338,21 +426,36 @@
     compliance.setAttribute('aria-label','Filter by compliance');
     ['all','compliant','non_compliant','error','not_tested'].forEach((value) => compliance.add(new Option(value === 'all' ? 'All compliance states' : value, value)));
     const sort = document.createElement('select');
-    sort.setAttribute('aria-label','Sort endpoints');
-    [['severity','Severity'],['hostname','Hostname'],['grade','Grade'],['findings','Finding count'],['expiration','Certificate expiration']].forEach(([value,label]) => sort.add(new Option(`Sort by ${label}`, value)));
+    sort.setAttribute('aria-label','Sort endpoint groups');
+    [['severity','Severity'],['hostname','Hostname'],['grade','Grade'],['findings','Finding count'],['ports','Port count'],['expiration','Certificate expiration']].forEach(([value,label]) => sort.add(new Option(`Sort by ${label}`, value)));
     filters.append(search, compliance, sort);
     const render = () => {
-      let rows = data.endpoints.filter((endpoint) => (compliance.value === 'all' || endpoint.compliance_status === compliance.value) && JSON.stringify(endpoint).toLowerCase().includes(search.value.toLowerCase()));
-      rows.sort((a,b) => {
-        if(sort.value === 'findings') return b.finding_count - a.finding_count;
-        if(sort.value === 'expiration') return String(a.certificate.valid_until).localeCompare(String(b.certificate.valid_until));
-        if(sort.value === 'grade') return (gradeOrder[a.overall_grade] ?? 99) - (gradeOrder[b.overall_grade] ?? 99);
-        if(sort.value === 'severity') return (severityOrder[a.highest_severity] ?? 9) - (severityOrder[b.highest_severity] ?? 9) || b.finding_count - a.finding_count;
-        return a.hostname.localeCompare(b.hostname);
+      const q = search.value.toLowerCase();
+      const rows = data.endpoints.filter((endpoint) => (compliance.value === 'all' || endpoint.compliance_status === compliance.value) && endpointMatches(endpoint, q));
+      const groups = groupEndpoints(rows);
+      groups.sort((a,b) => {
+        const sa = summarizeHost(a.endpoints);
+        const sb = summarizeHost(b.endpoints);
+        if(sort.value === 'findings') return sb.findings - sa.findings;
+        if(sort.value === 'ports') return b.endpoints.length - a.endpoints.length;
+        if(sort.value === 'expiration') return String(sa.certificates[0] || '').localeCompare(String(sb.certificates[0] || ''));
+        if(sort.value === 'grade') return (gradeOrder[sa.grade] ?? 99) - (gradeOrder[sb.grade] ?? 99);
+        if(sort.value === 'severity') return (severityOrder[sa.severity] ?? 9) - (severityOrder[sb.severity] ?? 9) || sb.findings - sa.findings;
+        return a.host.localeCompare(b.host);
       });
-      $('endpointCount').textContent = `${rows.length} shown${rows.length > 500 ? ' - first 500 rendered' : ''}`;
-      $('endpointTable').replaceChildren(...rows.slice(0,500).map(endpointCard));
-      if(!rows.length) $('endpointTable').append(el('div','empty','No endpoints match the current filters.'));
+      const shownEndpoints = groups.reduce((total, group) => total + group.endpoints.length, 0);
+      $('endpointCount').textContent = `${groups.length} host(s) / ${shownEndpoints} endpoint(s) shown${shownEndpoints > 500 ? ' - first 500 endpoints rendered' : ''}`;
+      let rendered = 0;
+      const cards = [];
+      for(const group of groups){
+        if(rendered >= 500) break;
+        const remaining = 500 - rendered;
+        const visibleGroup = {...group, endpoints: group.endpoints.slice(0, remaining)};
+        rendered += visibleGroup.endpoints.length;
+        cards.push(hostEndpointCard(visibleGroup));
+      }
+      $('endpointTable').replaceChildren(...cards);
+      if(!groups.length) $('endpointTable').append(el('div','empty','No endpoints match the current filters.'));
     };
     [search, compliance, sort].forEach((node) => node.addEventListener('input', render));
     render();
@@ -363,15 +466,49 @@
     const status = document.createElement('select');
     status.setAttribute('aria-label','Filter certificates by status');
     ['all','Valid','Expiring soon','Expired','Self-signed','Weak key','Weak signature','Validation not tested'].forEach((value) => status.add(new Option(value === 'all' ? 'All certificate states' : value, value)));
-    filters.append(status);
+    const sort = document.createElement('select');
+    sort.setAttribute('aria-label','Sort certificates');
+    [['expiration','Expiration'],['remaining','Remaining days'],['status','Status'],['endpoint','Endpoint'],['issuer','Issuer'],['key_size','Key size']].forEach(([value,label]) => sort.add(new Option(`Sort by ${label}`, value)));
+    filters.append(status, sort);
     const render = () => {
-      const rows = data.endpoints
-        .filter((endpoint) => status.value === 'all' || endpoint.certificate.status === status.value)
-        .map((endpoint) => [endpoint.endpoint_id, endpoint.certificate.subject, endpoint.certificate.issuer, (endpoint.certificate.san || []).join(', '), endpoint.certificate.valid_until, endpoint.certificate.remaining_days, endpoint.certificate.self_signed, endpoint.certificate.key_type, endpoint.certificate.key_size, endpoint.certificate.signature_algorithm, endpoint.certificate.trust_status, endpoint.certificate.hostname_validation_status, endpoint.certificate.chain_validation_status, endpoint.certificate.revocation_status]);
+      const endpoints = data.endpoints.filter((endpoint) => status.value === 'all' || endpoint.certificate.status === status.value);
+      endpoints.sort((a,b) => {
+        if(sort.value === 'remaining') return (Number(a.certificate.remaining_days) || 0) - (Number(b.certificate.remaining_days) || 0);
+        if(sort.value === 'status') return String(a.certificate.status).localeCompare(String(b.certificate.status));
+        if(sort.value === 'issuer') return String(a.certificate.issuer).localeCompare(String(b.certificate.issuer));
+        if(sort.value === 'key_size') return (Number(a.certificate.key_size) || 0) - (Number(b.certificate.key_size) || 0);
+        if(sort.value === 'endpoint') return String(a.endpoint_id).localeCompare(String(b.endpoint_id), undefined, {numeric:true, sensitivity:'base'});
+        return String(a.certificate.valid_until).localeCompare(String(b.certificate.valid_until));
+      });
+      const rows = endpoints.map((endpoint) => [endpoint.endpoint_id, endpoint.certificate.subject, endpoint.certificate.issuer, (endpoint.certificate.san || []).join(', '), endpoint.certificate.valid_until, endpoint.certificate.remaining_days, endpoint.certificate.self_signed, endpoint.certificate.key_type, endpoint.certificate.key_size, endpoint.certificate.signature_algorithm, endpoint.certificate.trust_status, endpoint.certificate.hostname_validation_status, endpoint.certificate.chain_validation_status, endpoint.certificate.revocation_status]);
       $('certificateTable').replaceChildren(table(['Endpoint','Subject','Issuer','SAN','Expiration','Remaining days','Self-signed','Key type','Key size','Signature','Trust','Hostname validation','Chain validation','Revocation'], rows));
     };
-    status.addEventListener('change', render);
+    [status, sort].forEach((node) => node.addEventListener('change', render));
     render();
+  }
+
+
+  function initCommunicationSecurity(){
+    const rows = data.endpoints.flatMap((endpoint) => endpoint.cipher_suites.map((suite) => [
+      endpoint.endpoint_id,
+      endpoint.hostname,
+      endpoint.port,
+      suite.tls_version,
+      suite.name,
+      suite.key_exchange,
+      suite.authentication,
+      suite.encryption,
+      suite.hash_algorithm,
+      suite.forward_secrecy,
+      suite.strength,
+      suite.compliance_status,
+      suite.policy_reason,
+    ]));
+    const headers = ['Endpoint','Host','Port','TLS Version','Cipher Suite','Key Exchange','Authentication','Encryption','Hash','Forward Secrecy','Strength','Compliance','Policy Reason'];
+    $('communicationTable').replaceChildren(table(headers, rows, {
+      filterable:true,
+      onRender:(visible,total) => { $('communicationCount').textContent = `${visible} shown / ${total} suites`; },
+    }));
   }
 
   function initCompliance(){
@@ -447,6 +584,7 @@
   initFindings();
   initEndpoints();
   initCertificates();
+  initCommunicationSecurity();
   initCompliance();
   initPqc();
   initTechnical();

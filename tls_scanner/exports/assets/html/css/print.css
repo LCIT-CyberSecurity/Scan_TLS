@@ -1,7 +1,7 @@
 @page{margin:12mm}
 *{box-shadow:none!important;text-shadow:none!important}
 body{background:#fff!important;color:#000!important;font-size:11px}
-.no-print,.app-shell,.drawer,.drawer-backdrop,.filters,.copy-button,.button,.icon-button{display:none!important}
+.no-print,.app-shell,.drawer,.drawer-backdrop,.filters,.copy-button,.button,.icon-button,.column-filter-row{display:none!important}
 .report-root{width:auto;max-width:none;padding:0}
 .hero,.kpi-grid,.charts-grid,.scan-info-grid,.section-grid,#endpointTable,.finding-body,.endpoint-grid{display:block}
 .hero-copy,.hero-score,.card,.panel,.metric-card,.finding-block,.endpoint-field{border:1px solid #999!important;background:#fff!important;break-inside:avoid;border-radius:4px;margin:0 0 10px;padding:10px}
@@ -10,5 +10,5 @@ h1{font-size:24px;line-height:1.1;margin:0 0 8px}.summary-text{font-size:11px}.h
 .metric-card{min-height:auto;display:block}.metric-card:before{display:none}.metric-value{font-size:22px}.scan-info{padding:10px}.info-item{display:grid;grid-template-columns:120px minmax(0,1fr);gap:8px;padding:6px 0}.section-heading{margin-bottom:8px}.panel{page-break-inside:avoid;margin:12px 0}
 .chart{min-height:auto}.donut{width:86px;height:86px;margin:0}.donut:after{inset:20px}.donut-center strong{font-size:16px}.legend{display:block}.legend-item{margin:3px 0}.bar-row{margin:7px 0}.bar-track{height:6px}.bar-fill{background:#555!important}
 .finding-card,.endpoint-card{display:block}.finding-body,.endpoint-grid{margin-top:8px}.finding-block,.endpoint-field{margin-bottom:6px}.impact-count{text-align:left}.endpoint-actions,.finding-foot{display:none}
-.table-wrap{overflow:visible;border:1px solid #999}table{font-size:8px;table-layout:auto;min-width:0}thead{display:table-header-group}th{position:static;background:#eee!important;color:#000}th,td{padding:5px;border-bottom:1px solid #bbb}tr{break-inside:avoid}.truncate{white-space:normal;overflow:visible;text-overflow:clip}.table-sort{font-size:8px}.table-sort:after{content:""}
+.table-wrap{overflow:visible;border:1px solid #999}table{font-size:8px;table-layout:auto;min-width:0}thead{display:table-header-group}th{position:static;background:#eee!important;color:#000}th,td{padding:5px;border-bottom:1px solid #bbb}tr{break-inside:avoid}.truncate{white-space:normal;overflow:visible;text-overflow:clip}.table-sort{font-size:8px}.table-sort:after{content:""}.filterable-table-wrap{max-height:none}
 details{display:block}summary{font-weight:700}

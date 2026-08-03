@@ -46,7 +46,45 @@ def count_values(values):
     return counts
 
 
-GRADE_ORDER = {"A+": 0, "A": 1, "B": 2, "C": 3, "D": 4, "F": 5}
+GRADE_ORDER = {"A+": 0, "A": 1, "B": 2, "C": 3, "D": 4, "F": 5, "Not Tested": 6}
+SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "informational": 4, "none": 5}
+
+
+def endpoint_host_key(endpoint):
+    return endpoint.hostname or endpoint.ip_address or endpoint.host_id or endpoint.endpoint_id
+
+
+def group_model_endpoints(endpoints):
+    grouped = {}
+    for endpoint in endpoints:
+        grouped.setdefault(endpoint_host_key(endpoint), []).append(endpoint)
+    return [
+        (host, sorted(items, key=lambda endpoint: (sort_port(endpoint.port), endpoint.endpoint_id)))
+        for host, items in sorted(grouped.items(), key=lambda item: item[0])
+    ]
+
+
+def worst_model_grade(endpoints):
+    return max((endpoint.overall_grade for endpoint in endpoints), key=lambda grade: GRADE_ORDER.get(grade, 99), default="Not Tested")
+
+
+def highest_model_severity(endpoints):
+    return min((endpoint.highest_severity for endpoint in endpoints), key=lambda severity: SEVERITY_ORDER.get(severity, 99), default="none")
+
+
+def joined_unique(values):
+    items = sorted({str(value) for value in values if value not in {None, ""}})
+    return ", ".join(items) if items else "Not Tested"
+
+
+def model_endpoint_summary_row(host, endpoints):
+    findings = sum(endpoint.finding_count for endpoint in endpoints)
+    failed = sum(1 for endpoint in endpoints if endpoint.compliance_status != "compliant")
+    ports = ", ".join(f"{endpoint.port}/{endpoint.protocol}" for endpoint in endpoints)
+    protocols = joined_unique(version for endpoint in endpoints for version in endpoint.supported_tls_versions)
+    certificates = joined_unique(endpoint.certificate.valid_until or endpoint.certificate.status for endpoint in endpoints)
+    pqc = joined_unique(endpoint.pqc.get("readiness") for endpoint in endpoints)
+    return [host, len(endpoints), ports, worst_model_grade(endpoints), f"{failed}/{len(endpoints)}", findings, highest_model_severity(endpoints), certificates, protocols, pqc]
 
 
 def worst_grade(grades):
@@ -653,11 +691,21 @@ def build_markdown_report_from_model(model):
         "",
         "## Endpoint Summary",
         "",
-        "| Endpoint | Grade | Compliance | Findings | Highest Severity | Certificate Expiration | TLS Versions | PQC Readiness |",
-        "| --- | --- | --- | ---: | --- | --- | --- | --- |",
+        "| Host | Endpoints | Ports | Worst Grade | Failed Endpoints | Findings | Highest Severity | Certificate Expiration | TLS Versions | PQC Readiness |",
+        "| --- | ---: | --- | --- | --- | ---: | --- | --- | --- | --- |",
+    ])
+    for host, endpoints in group_model_endpoints(model.endpoints):
+        lines.append("| " + " | ".join(markdown_escape(value) for value in model_endpoint_summary_row(host, endpoints)) + " |")
+    lines.extend([
+        "",
+        "## Communication Security",
+        "",
+        "| Endpoint | Host | Port | TLS Version | Cipher Suite | Key Exchange | Authentication | Encryption | Hash | Forward Secrecy | Strength | Compliance | Policy Reason |",
+        "| --- | --- | ---: | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ])
     for endpoint in model.endpoints:
-        lines.append("| " + " | ".join(markdown_escape(value) for value in [endpoint.endpoint_id, endpoint.overall_grade, endpoint.compliance_status, endpoint.finding_count, endpoint.highest_severity, endpoint.certificate.valid_until, ', '.join(endpoint.supported_tls_versions), endpoint.pqc.get('readiness')]) + " |")
+        for suite in endpoint.cipher_suites:
+            lines.append("| " + " | ".join(markdown_escape(value) for value in [endpoint.endpoint_id, endpoint.hostname, endpoint.port, suite.tls_version, suite.name, suite.key_exchange, suite.authentication, suite.encryption, suite.hash_algorithm, suite.forward_secrecy, suite.strength, suite.compliance_status, suite.policy_reason]) + " |")
     lines.extend([
         "",
         "## Certificate Inventory",

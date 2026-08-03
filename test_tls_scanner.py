@@ -612,6 +612,10 @@ reports:
         self.assertIn("### Grade Distribution", markdown)
         self.assertIn("### Top Findings by Affected Endpoint", markdown)
         self.assertIn("## Endpoint Summary", markdown)
+        self.assertIn("| Host | Endpoints | Ports | Worst Grade |", markdown)
+        self.assertIn("## Communication Security", markdown)
+        self.assertIn("TLS_RSA_WITH_AES_128_CBC_SHA", markdown)
+        self.assertIn("Key Exchange", markdown)
         self.assertIn("TLS 1.1 detected", markdown)
         self.assertIn("Not Tested", markdown)
         self.assertIn("Scan Run ID", markdown)
@@ -758,6 +762,8 @@ reports:
         self.assertIn("application/json", html_report)
         self.assertIn("example.com", html_report)
         self.assertIn("Print / Save as PDF", html_report)
+        self.assertIn("Communication Security", html_report)
+        self.assertIn("communicationTable", html_report)
         self.assertNotIn("# TLS Scan Dashboard", html_report)
 
 
