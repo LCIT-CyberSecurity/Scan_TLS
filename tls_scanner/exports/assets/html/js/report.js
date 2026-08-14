@@ -420,12 +420,21 @@
     return {score, worstGrade, highestSeverity, findings, failed, ports, protocols};
   }
 
+  function portList(ports){
+    const list = el('div','host-port-list');
+    const visiblePorts = ports.slice(0, 8);
+    visiblePorts.forEach((port) => list.append(badge(port, 'port-badge')));
+    if(ports.length > visiblePorts.length) list.append(badge(`+${ports.length - visiblePorts.length}`, 'port-badge port-more'));
+    list.title = ports.join(', ');
+    return list;
+  }
+
   function hostEndpointCard(group){
     const summary = hostSummary(group);
     const card = el('article','endpoint-card host-card card');
     const head = el('div','endpoint-head');
     const identity = el('div','endpoint-identity');
-    identity.append(valueNode(group.host, 'endpoint-host'), valueNode(`${group.endpoints.length} endpoint(s) - ${summary.ports.join(', ')}`, 'endpoint-address'));
+    identity.append(valueNode(group.host, 'endpoint-host'), valueNode(`${group.endpoints.length} endpoint(s) across ${summary.ports.length} port(s)`, 'endpoint-address'), portList(summary.ports));
     const badges = el('div','endpoint-badges');
     badges.append(badge(summary.worstGrade, `grade-badge ${gradeClass(summary.worstGrade)}`), badge(`${summary.score}/100`, `score-badge ${scoreTone(summary.score)}`));
     head.append(identity, badges);
@@ -474,16 +483,9 @@
         return a.host.localeCompare(b.host);
       });
       const shownEndpoints = groups.reduce((total, group) => total + group.endpoints.length, 0);
-      $('endpointCount').textContent = `${groups.length} host(s) / ${shownEndpoints} endpoint(s) shown${shownEndpoints > 500 ? ' - first 500 endpoints included' : ''}`;
-      let rendered = 0;
-      const cards = [];
-      for(const group of groups){
-        if(rendered >= 500) break;
-        const remaining = 500 - rendered;
-        const visibleGroup = {...group, endpoints: group.endpoints.slice(0, remaining)};
-        rendered += visibleGroup.endpoints.length;
-        cards.push(hostEndpointCard(visibleGroup));
-      }
+      const visibleGroups = groups.slice(0, 500);
+      $('endpointCount').textContent = `${visibleGroups.length} host(s) / ${shownEndpoints} endpoint(s) shown${groups.length > visibleGroups.length ? ' - first 500 hosts rendered' : ''}`;
+      const cards = visibleGroups.map(hostEndpointCard);
       $('endpointTable').replaceChildren(...cards);
       if(!groups.length) $('endpointTable').append(el('div','empty','No endpoints match the current filters.'));
     };

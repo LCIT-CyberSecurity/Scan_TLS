@@ -881,6 +881,15 @@ class ProfessionalReportTests(unittest.TestCase):
         self.assertNotIn("fetch(", html)
         self.assertIn("assets/js/report.js", html)
 
+    def test_html_endpoint_host_cards_keep_all_ports_when_rendering_limit_applies(self):
+        script = Path("tls_scanner/exports/assets/html/js/report.js").read_text(encoding="utf-8")
+
+        self.assertIn("const visibleGroups = groups.slice(0, 500);", script)
+        self.assertIn("const cards = visibleGroups.map(hostEndpointCard);", script)
+        self.assertIn("first 500 hosts rendered", script)
+        self.assertNotIn("endpoint(s) - ${summary.ports.join", script)
+        self.assertNotIn("endpoints.slice(0, remaining)", script)
+
     def test_multi_format_exports_create_scan_folder_resources_and_metadata(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             job = self.sample_job(temp_dir)
@@ -1082,7 +1091,7 @@ class DiscoverPortsTests(unittest.TestCase):
         self.assertNotIn("ports", fake_scanner.scan_call)
         self.assertEqual(
             fake_scanner.scan_call["arguments"],
-            "-F -T4 --open --max-retries 1",
+            "--top-ports 2000 -T4 --open --max-retries 2",
         )
 
 

@@ -69,7 +69,7 @@ def discover_open_tcp_ports(nmap, tqdm, targets, mode):
     scanner = nmap.PortScanner()
     scan_options = {
         "fast": {
-            "arguments": "-F -T4 --open --max-retries 1",
+            "arguments": "--top-ports 2000 -T4 --open --max-retries 2",
         },
         "all": {
             "ports": "1-65535",
