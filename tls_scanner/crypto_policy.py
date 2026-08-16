@@ -212,6 +212,8 @@ def evaluate_compliance(
 
 # Endpoint grading is intentionally stricter than per-row compliance and uses the weakest observed signal.
 def grade_finding(finding):
+    if finding.get("trust_classification") == "UNTRUSTED":
+        return "F"
     tls_version = finding["tls_version"]
     cipher_suite = finding["cipher_suite"].upper()
     cipher_tokens = cipher_suite.split("_")

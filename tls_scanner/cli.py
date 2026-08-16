@@ -239,6 +239,13 @@ def print_dry_run(job, export_paths):
     print(f"Log file: {job.log_file or 'disabled'}")
     print(f"Certificate findings: {'enabled' if job.certificate_findings_enabled else 'disabled'}")
     print(f"Certificate expires soon threshold: {job.certificate_expires_within_days} days")
+    print(f"Certificate trust validation: {'enabled' if job.certificate_trust_enabled else 'disabled'}")
+    if job.certificate_trust_enabled:
+        print(f"Public trust store: {'enabled' if job.certificate_public_trust_store_enabled else 'disabled'}")
+        custom_stores = [store for store in job.certificate_trust_stores if store.store_type != 'public']
+        print(f"Custom trust stores: {len(custom_stores)}")
+        for store in custom_stores:
+            print(f"- {store.store_name} ({store.store_type})")
     if job.policies:
         print(f"Policy mode: {job.policy_mode}")
         print("Policies:")

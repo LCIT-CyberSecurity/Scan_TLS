@@ -2,3 +2,5 @@ python-nmap
 prettytable
 tqdm
 PyYAML
+cryptography
+certifi

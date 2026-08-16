@@ -18,7 +18,8 @@ from typing import Any
 
 from ..constants import PQC_TLS_GROUPS
 from ..crypto_policy import selected_policies
-from ..models import EncryptionPolicy, ScanJob
+from ..models import CertificateTrustResult, EncryptionPolicy, ScanJob
+from ..pki import TRUST_UNTRUSTED
 
 
 SEVERITY_ORDER = {
@@ -46,6 +47,7 @@ class ScanMetadata:
     policy_mode: str
     frequency: str
     target_groups: tuple[str, ...] = ()
+    trust_stores: tuple[dict[str, Any], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -89,6 +91,10 @@ class CertificateObservation:
     signature_algorithm: str
     fingerprint: str
     trust_status: str
+    trust_classification: str
+    trusted_by: tuple[str, ...]
+    trust_anchor: str
+    trust_store_results: tuple[dict[str, Any], ...]
     hostname_validation_status: str
     san_validation_status: str
     chain_validation_status: str
@@ -272,6 +278,18 @@ def parse_cipher_suite(cipher_suite: Any) -> dict[str, str]:
 
 
 def row_indexes(row: list[Any], crypto: str) -> dict[str, int]:
+    if len(row) >= (24 if crypto == "pqc" else 23):
+        offset = 1 if crypto == "pqc" else 0
+        return {
+            "ip": 0, "fqdn": 1, "port": 2, "grade": 3, "tls": 4, "cipher": 5,
+            "public_key": 6, "cert_validity": 7, "key_exchange": 8 if crypto == "pqc" else -1,
+            "cert_crypto": 8 + offset, "self_signed": 9 + offset, "days_left": 10 + offset,
+            "issuer": 11 + offset, "subject": 12 + offset, "san": 13 + offset,
+            "key_type": 14 + offset, "key_size": 15 + offset, "signature": 16 + offset,
+            "trust_classification": 17 + offset, "trusted_by": 18 + offset,
+            "trust_anchor": 19 + offset, "chain_validation": 20 + offset,
+            "compliance": -2, "reason": -1,
+        }
     if len(row) >= 19:
         return {
             "ip": 0, "fqdn": 1, "port": 2, "grade": 3, "tls": 4, "cipher": 5,
@@ -280,14 +298,17 @@ def row_indexes(row: list[Any], crypto: str) -> dict[str, int]:
             "days_left": 10 if crypto != "pqc" else 11, "issuer": 11 if crypto != "pqc" else 12,
             "subject": 12 if crypto != "pqc" else 13, "san": 13 if crypto != "pqc" else 14,
             "key_type": 14 if crypto != "pqc" else 15, "key_size": 15 if crypto != "pqc" else 16,
-            "signature": 16 if crypto != "pqc" else 17, "compliance": -2, "reason": -1,
+            "signature": 16 if crypto != "pqc" else 17, "trust_classification": 999,
+            "trusted_by": 999, "trust_anchor": 999, "chain_validation": 999,
+            "compliance": -2, "reason": -1,
         }
     return {
         "ip": 0, "fqdn": 1, "port": 2, "grade": 3, "tls": 4, "cipher": 5,
         "public_key": 6, "cert_validity": 7, "key_exchange": 8 if crypto == "pqc" and len(row) > 10 else -1,
         "cert_crypto": -7, "self_signed": -6, "days_left": -5, "issuer": -4,
         "subject": -3, "san": -2, "key_type": -1, "key_size": -1,
-        "signature": -1, "compliance": -2, "reason": -1,
+        "signature": -1, "trust_classification": 999, "trusted_by": 999,
+        "trust_anchor": 999, "chain_validation": 999, "compliance": -2, "reason": -1,
     }
 
 
@@ -334,8 +355,14 @@ FINDING_DEFINITIONS = {
     "CERTIFICATE_SELF_SIGNED": (
         "Self-Signed Certificate", "Certificate", "medium",
         "The endpoint presented a self-signed certificate.",
-        "Clients cannot establish trust through a recognized certificate chain.",
-        "Use a certificate issued by a trusted internal or public certificate authority.",
+        "Self-signed certificates require explicit trust-anchor configuration to be trusted by clients.",
+        "Use a certificate issued by the intended public or internal certificate authority, or configure the self-signed certificate as a trusted internal anchor where appropriate.",
+    ),
+    "CERTIFICATE_CHAIN_UNTRUSTED": (
+        "Certificate Chain Not Trusted", "PKI", "high",
+        "The endpoint certificate chain did not validate against any enabled trust store.",
+        "Clients using the configured trust stores may reject the service or require unsafe trust exceptions.",
+        "Deploy a certificate chain issued by a configured public or corporate trust anchor, including required intermediates.",
     ),
     "CERTIFICATE_WEAK_SIGNATURE": (
         "Weak Certificate Signature", "Certificate", "medium",
@@ -374,6 +401,8 @@ def classify_finding(reason: Any, tls_version: Any = "", cipher_suite: Any = "")
         return "PQC_HYBRID_GROUP_NOT_SUPPORTED"
     if "forward secrecy" in normalized or "tls_rsa_" in normalized:
         return "TLS_NO_FORWARD_SECRECY"
+    if "certificate chain untrusted" in normalized:
+        return "CERTIFICATE_CHAIN_UNTRUSTED"
     if "certificate expired" in normalized:
         return "CERTIFICATE_EXPIRED"
     if "rsa key" in normalized:
@@ -385,7 +414,19 @@ def classify_finding(reason: Any, tls_version: Any = "", cipher_suite: Any = "")
     return "TLS_WEAK_CIPHER_SUITE"
 
 
-def build_certificate(row: list[Any], indexes: dict[str, int], expires_within_days: int) -> CertificateObservation:
+def fallback_trust_result(row: list[Any], indexes: dict[str, int]) -> CertificateTrustResult:
+    classification = str(row_value(row, indexes, "trust_classification", "NOT_TESTED") or "NOT_TESTED")
+    trusted_by_value = str(row_value(row, indexes, "trusted_by", "") or "")
+    trusted_by = tuple(item.strip() for item in trusted_by_value.split(",") if item.strip() and item.strip() != "None")
+    return CertificateTrustResult(
+        trust_classification=classification,
+        trusted_by=trusted_by,
+        trust_anchor=str(row_value(row, indexes, "trust_anchor", "") or ""),
+        chain_validation_status=str(row_value(row, indexes, "chain_validation", "Not Tested") or "Not Tested"),
+    )
+
+
+def build_certificate(row: list[Any], indexes: dict[str, int], expires_within_days: int, trust_result: CertificateTrustResult | None = None) -> CertificateObservation:
     days_left = safe_int(row_value(row, indexes, "days_left", None))
     self_signed = str(row_value(row, indexes, "self_signed", "unknown") or "unknown")
     key_size = safe_int(row_value(row, indexes, "key_size", None))
@@ -398,6 +439,7 @@ def build_certificate(row: list[Any], indexes: dict[str, int], expires_within_da
         if item.strip() and item.strip() != "-"
     )
     normalized_signature = signature_algorithm.upper().replace("-", "").replace("_", "")
+    trust_result = trust_result or fallback_trust_result(row, indexes)
     status = "Valid"
     if cert_validity == "N/A":
         status = "Validation not tested"
@@ -424,10 +466,14 @@ def build_certificate(row: list[Any], indexes: dict[str, int], expires_within_da
         key_size=key_size,
         signature_algorithm=signature_algorithm,
         fingerprint="Not Tested",
-        trust_status="Not Tested",
+        trust_status=trust_result.trust_classification,
+        trust_classification=trust_result.trust_classification,
+        trusted_by=trust_result.trusted_by,
+        trust_anchor=trust_result.trust_anchor,
+        trust_store_results=tuple(asdict(item) for item in trust_result.trust_store_results),
         hostname_validation_status="Not Tested",
         san_validation_status="Not Tested",
-        chain_validation_status="Not Tested",
+        chain_validation_status=trust_result.chain_validation_status,
         revocation_status="Not Tested",
         ocsp_status="Not Tested",
         crl_status="Not Tested",
@@ -515,7 +561,8 @@ def build_report_model(
         for version in supported_versions:
             if version in tls_versions:
                 tls_versions[version] = "non-compliant" if version in {"SSL 2.0", "SSL 3.0", "TLS 1.0", "TLS 1.1"} else "supported"
-        certificate = build_certificate(first, indexes, job.certificate_expires_within_days)
+        trust_result = job.certificate_trust_results.get(endpoint_id) or fallback_trust_result(first, indexes)
+        certificate = build_certificate(first, indexes, job.certificate_expires_within_days, trust_result)
         cipher_suites = []
         endpoint_finding_ids: set[str] = set()
         untested_checks = ["Trust chain validation", "Hostname validation", "SAN validation", "Revocation status", "OCSP status", "CRL status"]
@@ -562,6 +609,9 @@ def build_report_model(
         if certificate.self_signed == "yes":
             endpoint_finding_ids.add("CERTIFICATE_SELF_SIGNED")
             add_finding(grouped_findings, occurrences, "CERTIFICATE_SELF_SIGNED", endpoint_id, certificate.subject, "KO", policy_ids, scan_timestamp)
+        if certificate.trust_classification == TRUST_UNTRUSTED:
+            endpoint_finding_ids.add("CERTIFICATE_CHAIN_UNTRUSTED")
+            add_finding(grouped_findings, occurrences, "CERTIFICATE_CHAIN_UNTRUSTED", endpoint_id, "No enabled trust store validated the certificate chain", "KO", policy_ids, scan_timestamp)
         if certificate.key_type.upper() == "RSA" and certificate.key_size is not None and certificate.key_size < 2048:
             endpoint_finding_ids.add("CERTIFICATE_RSA_KEY_TOO_SMALL")
             add_finding(grouped_findings, occurrences, "CERTIFICATE_RSA_KEY_TOO_SMALL", endpoint_id, f"RSA {certificate.key_size}-bit key", "KO", policy_ids, scan_timestamp)
@@ -583,7 +633,7 @@ def build_report_model(
             "TLS Versions": "Needs Attention" if any(version in {"TLS 1.0", "TLS 1.1", "SSL 2.0", "SSL 3.0"} for version in supported_versions) else "Pass",
             "Cipher Suites": "Needs Attention" if any(suite.compliance_status == "non_compliant" for suite in cipher_suites) else "Pass",
             "Certificate": certificate.status,
-            "PKI": "Not Tested",
+            "PKI": certificate.chain_validation_status,
             "Protocol Security": "Needs Attention" if any(suite.forward_secrecy == "No" for suite in cipher_suites) else "Pass",
             "PQC Readiness": pqc_status,
         }
@@ -604,10 +654,13 @@ def build_report_model(
             cipher_suites=tuple(cipher_suites),
             certificate=certificate,
             pki={
-                "Trust chain validation": "Not Tested",
+                "Trust classification": certificate.trust_classification,
+                "Trusted by": ", ".join(certificate.trusted_by) or "None",
+                "Trust anchor": certificate.trust_anchor or "None",
+                "Trust chain validation": certificate.chain_validation_status,
                 "Hostname validation": "Not Tested",
                 "SAN validation": "Not Tested",
-                "Certificate chain status": "Not Tested",
+                "Certificate chain status": certificate.chain_validation_status,
                 "Revocation status": "Not Tested",
                 "OCSP status": "Not Tested",
                 "CRL status": "Not Tested",
@@ -675,6 +728,16 @@ def build_report_model(
         policy_mode=job.policy_mode,
         frequency=job.frequency,
         target_groups=tuple(group.name for group in job.target_groups),
+        trust_stores=tuple(
+            {
+                "store_id": store.store_id,
+                "store_name": store.store_name,
+                "store_type": store.store_type,
+                "source": store.source,
+                "metadata": dict(store.metadata),
+            }
+            for store in job.certificate_trust_stores
+        ),
     )
     return ReportModel(
         metadata=metadata_model,
@@ -810,5 +873,17 @@ def build_metadata_document(model: ReportModel, basename: str, written_files: li
         "basename": basename,
         "metadata": asdict(model.metadata),
         "statistics": asdict(model.statistics),
+        "trust_stores": list(model.metadata.trust_stores),
+        "endpoint_trust": [
+            {
+                "endpoint_id": endpoint.endpoint_id,
+                "trust_classification": endpoint.certificate.trust_classification,
+                "trusted_by": list(endpoint.certificate.trusted_by),
+                "trust_anchor": endpoint.certificate.trust_anchor,
+                "chain_validation_status": endpoint.certificate.chain_validation_status,
+                "trust_store_results": list(endpoint.certificate.trust_store_results),
+            }
+            for endpoint in model.endpoints
+        ],
         "files": written_files,
     }

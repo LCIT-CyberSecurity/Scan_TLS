@@ -28,7 +28,8 @@ from .constants import (
 )
 
 DEFAULT_POLICY_NAME = "anssi_encryption_policy"
-from .models import ConfigError, EncryptionPolicy, ScanJob, TargetGroup
+from .models import ConfigError, EncryptionPolicy, ScanJob, TargetGroup, TrustStoreConfig
+from .pki import load_trust_stores
 from .network import parse_ports
 
 
@@ -244,6 +245,50 @@ def parse_ports_config(value, field_name="scan.ports"):
         raise ConfigError(f"{field_name} is invalid: {error}") from error
 
 
+def parse_trust_config(certificate_config):
+    trust_config = require_mapping(certificate_config.get("trust", {}), "checks.certificate.trust")
+    trust_enabled = trust_config.get("enabled", True)
+    if not isinstance(trust_enabled, bool):
+        raise ConfigError("checks.certificate.trust.enabled must be a boolean")
+
+    public_config = require_mapping(
+        trust_config.get("public_store", {}),
+        "checks.certificate.trust.public_store",
+    )
+    public_enabled = public_config.get("enabled", True)
+    if not isinstance(public_enabled, bool):
+        raise ConfigError("checks.certificate.trust.public_store.enabled must be a boolean")
+
+    custom_configs = trust_config.get("custom_stores", [])
+    if custom_configs is None:
+        custom_configs = []
+    if not isinstance(custom_configs, list):
+        raise ConfigError("checks.certificate.trust.custom_stores must be a list")
+
+    custom_stores = []
+    seen_names = set()
+    for item in custom_configs:
+        if not isinstance(item, dict):
+            raise ConfigError("checks.certificate.trust.custom_stores[] must be a mapping")
+        name = item.get("name")
+        if not isinstance(name, str) or not name.strip():
+            raise ConfigError("checks.certificate.trust.custom_stores[].name must be a non-empty string")
+        key = name.casefold()
+        if key in seen_names:
+            raise ConfigError(f"duplicate trust store name: {name}")
+        seen_names.add(key)
+        store_type = item.get("type")
+        if store_type not in {"file", "directory"}:
+            raise ConfigError(f"unknown custom trust store type for {name}: {store_type}")
+        path = item.get("path")
+        if not isinstance(path, str) or not path.strip():
+            raise ConfigError("checks.certificate.trust.custom_stores[].path must be a non-empty string")
+        custom_stores.append(TrustStoreConfig(name=name, store_type=store_type, path=path))
+
+    stores = load_trust_stores(public_enabled, custom_stores) if trust_enabled else ()
+    return trust_enabled, public_enabled, stores
+
+
 def parse_checks_config(value):
     checks_config = require_mapping(value, "checks")
     certificate_config = require_mapping(
@@ -263,7 +308,8 @@ def parse_checks_config(value):
     ):
         raise ConfigError("checks.certificate.expires_within_days must be a non-negative integer")
 
-    return enabled, expires_within_days
+    trust_enabled, public_enabled, trust_stores = parse_trust_config(certificate_config)
+    return enabled, expires_within_days, trust_enabled, public_enabled, trust_stores
 
 
 def load_policy_file(policy_file):
@@ -373,7 +419,7 @@ def build_job_from_sections(scan_config, export_config, logging_config, targets,
     if not isinstance(resolve_dns, bool):
         raise ConfigError("scan.resolve_dns must be a boolean")
     workers = validate_workers(scan_config.get("workers", DEFAULT_WORKERS))
-    certificate_findings_enabled, certificate_expires_within_days = parse_checks_config(checks_config)
+    certificate_findings_enabled, certificate_expires_within_days, certificate_trust_enabled, certificate_public_trust_store_enabled, certificate_trust_stores = parse_checks_config(checks_config)
 
     export_filename = export_config.get("filename")
     if export_filename is not None and not isinstance(export_filename, str):
@@ -426,6 +472,9 @@ def build_job_from_sections(scan_config, export_config, logging_config, targets,
         workers=workers,
         certificate_findings_enabled=certificate_findings_enabled,
         certificate_expires_within_days=certificate_expires_within_days,
+        certificate_trust_enabled=certificate_trust_enabled,
+        certificate_public_trust_store_enabled=certificate_public_trust_store_enabled,
+        certificate_trust_stores=certificate_trust_stores,
     )
 
 
@@ -506,6 +555,7 @@ def build_cli_scan_job(args):
             else getattr(args, "log_file", DEFAULT_LOG_FILE)
         ),
         policies=load_cli_policies(args),
+        certificate_trust_stores=load_trust_stores(True, ()),
     )
 
 

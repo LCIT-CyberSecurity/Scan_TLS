@@ -395,6 +395,115 @@ Example:
 python3 Scan_nmap_TLS3.py -c pqc -p 443 server.example.com
 ```
 
+
+## Public and Corporate PKI Trust Stores
+
+TLS Scan validates certificate chains against explicit trust stores. This is
+separate from certificate inspection, self-signed detection, hostname
+validation, and revocation checks. A self-signed certificate can be trusted when
+it is configured as a trust anchor, and a non-self-signed certificate can be
+untrusted when no enabled store validates its chain.
+
+By default, certificate trust validation is enabled and uses the embedded
+`TLS Scan Public Web PKI` store. The store is a local, versioned,
+Mozilla-derived public trust-store snapshot stored in
+`tls_scanner/truststores/public_roots.pem`, with source metadata in
+`tls_scanner/truststores/public_roots_metadata.json`. Scans do not download CA
+certificates, do not update trust stores, and remain offline-capable for this
+feature. The public store is not claimed to represent every browser or operating
+system trust store.
+
+The bundled snapshot records the source package and version, for example:
+
+```json
+{
+  "name": "TLS Scan Public Web PKI",
+  "source": "Mozilla-derived public trust store",
+  "source_package": "certifi",
+  "source_version": "2023.11.17"
+}
+```
+
+Maintainers can deliberately refresh the snapshot from the locally installed
+`certifi` package:
+
+```bash
+python3 scripts/update_public_trust_store.py
+```
+
+The script locates `certifi.where()`, validates that the bundle contains X.509
+certificates, copies it into TLS Scan, counts certificates, calculates SHA-256,
+and writes metadata. It does not install or upgrade `certifi`; obtaining a newer
+bundle remains an explicit maintenance operation.
+
+Corporate trust stores can be configured under `checks.certificate.trust`:
+
+```yaml
+checks:
+  certificate:
+    enabled: true
+    expires_within_days: 30
+    trust:
+      enabled: true
+      public_store:
+        enabled: true
+      custom_stores:
+        - name: Corporate PKI
+          type: file
+          path: config/truststores/corporate-ca.pem
+        - name: Legacy PKI
+          type: directory
+          path: config/truststores/legacy/
+```
+
+`type: file` loads one PEM file containing one or more CA certificates.
+`type: directory` loads PEM certificates directly inside the directory, without
+recursion. Identical certificates are deduplicated by SHA-256 fingerprint. TLS
+Scan validates missing paths, unreadable files, invalid bundles, empty stores,
+duplicate store names, and unknown store types before scanning.
+
+For an internal-only PKI, disable the public store while keeping corporate
+stores enabled:
+
+```yaml
+checks:
+  certificate:
+    trust:
+      enabled: true
+      public_store:
+        enabled: false
+      custom_stores:
+        - name: Corporate PKI
+          type: file
+          path: config/truststores/corporate-ca.pem
+```
+
+To skip trust validation entirely:
+
+```yaml
+checks:
+  certificate:
+    trust:
+      enabled: false
+```
+
+Trust classifications are:
+
+- `PUBLIC_TRUSTED`: the public Web PKI store validated the chain.
+- `PRIVATE_TRUSTED`: the public store did not validate the chain, but at least
+  one corporate store did.
+- `UNTRUSTED`: every executed trust store failed validation.
+- `NOT_TESTED`: no trust validation was actually executed, for example because
+  trust validation was disabled or the peer chain could not be collected for an
+  unsupported protocol mode.
+- `ERROR`: a technical error prevented a conclusive result.
+
+TLS Scan validates the leaf certificate plus intermediates presented by the
+server against the enabled trust anchors. It does not fetch missing
+intermediates through AIA, and it does not implement hostname validation, SAN
+validation, OCSP, CRL, revocation fetching, OCSP stapling validation, or full
+STARTTLS support in this branch; those controls remain reported as not tested.
+
 ## Endpoint Grade
 
 The `Grade` column is placed between `Port` and `TLS Version`. The weakest
@@ -407,7 +516,7 @@ port does not lower the grade of another port on the same host:
 - `B`: RSA 2048 certificate or static RSA key exchange.
 - `C`: SHA-1 or TLS 1.1.
 - `D`: MD5, TLS 1.0, DES, 3DES, or IDEA.
-- `F`: RC4, `NULL`, `EXPORT`, an expired or unreadable certificate, or an RSA
+- `F`: RC4, `NULL`, `EXPORT`, an expired or unreadable certificate, an untrusted certificate chain, or an RSA
   key smaller than 2048 bits. Unknown TLS versions are also graded `F`.
 
 This grade is inspired by SSL assessment tools but does not reproduce the

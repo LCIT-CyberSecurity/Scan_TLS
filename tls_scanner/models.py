@@ -10,7 +10,8 @@ Produces:
 - the domain exceptions `ConfigError` and `PQCPrerequisiteError`.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any
 
 from .constants import DEFAULT_EXPORT_DIR, DEFAULT_LOG_FILE, DEFAULT_WORKERS
 
@@ -57,6 +58,43 @@ class CertificateInfo:
 
 
 @dataclass
+class TrustStoreConfig:
+    name: str
+    store_type: str
+    path: str = ""
+
+
+@dataclass
+class LoadedTrustStore:
+    store_id: str
+    store_name: str
+    store_type: str
+    source: str
+    certificates: tuple[Any, ...] = ()
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class TrustStoreValidation:
+    store_id: str
+    store_name: str
+    store_type: str
+    status: str
+    validation_error: str = ""
+    trust_anchor_subject: str = ""
+    verified_chain_length: int | None = None
+
+
+@dataclass(frozen=True)
+class CertificateTrustResult:
+    trust_classification: str
+    trusted_by: tuple[str, ...] = ()
+    trust_anchor: str = ""
+    chain_validation_status: str = "Not Tested"
+    trust_store_results: tuple[TrustStoreValidation, ...] = ()
+
+
+@dataclass
 class SecurityFinding:
     ip: str
     fqdn: str
@@ -92,3 +130,7 @@ class ScanJob:
     workers: int = DEFAULT_WORKERS
     certificate_findings_enabled: bool = True
     certificate_expires_within_days: int = 30
+    certificate_trust_enabled: bool = True
+    certificate_public_trust_store_enabled: bool = True
+    certificate_trust_stores: tuple[LoadedTrustStore, ...] = ()
+    certificate_trust_results: dict[str, CertificateTrustResult] = field(default_factory=dict)

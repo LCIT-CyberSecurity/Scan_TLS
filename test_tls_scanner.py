@@ -2,10 +2,16 @@ import csv
 import socket
 import tempfile
 import unittest
+from datetime import datetime, timedelta, timezone
 from argparse import ArgumentTypeError
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
+
+from cryptography import x509
+from cryptography.hazmat.primitives import hashes, serialization
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.x509.oid import NameOID
 
 import Scan_nmap_TLS3 as scanner
 
@@ -1649,6 +1655,151 @@ Signature Algorithm: sha256WithRSAEncryption
 
         self.assertEqual(certificate_info.self_signed, "unknown")
         self.assertEqual(scanner.certificate_crypto_summary(certificate_info), "RSA / unknown")
+
+
+# Offline PKI trust-store validation.
+class PkiTrustStoreTests(unittest.TestCase):
+    def private_key(self):
+        return rsa.generate_private_key(public_exponent=65537, key_size=2048)
+
+    def name(self, common_name):
+        return x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, common_name)])
+
+    def certificate(self, subject_name, issuer_name, subject_key, issuer_key, is_ca=False):
+        now = datetime.now(timezone.utc)
+        builder = (
+            x509.CertificateBuilder()
+            .subject_name(self.name(subject_name))
+            .issuer_name(self.name(issuer_name))
+            .public_key(subject_key.public_key())
+            .serial_number(x509.random_serial_number())
+            .not_valid_before(now - timedelta(days=1))
+            .not_valid_after(now + timedelta(days=365))
+            .add_extension(x509.BasicConstraints(ca=is_ca, path_length=None), critical=True)
+        )
+        if is_ca:
+            builder = builder.add_extension(
+                x509.KeyUsage(
+                    digital_signature=True,
+                    key_encipherment=False,
+                    content_commitment=False,
+                    data_encipherment=False,
+                    key_agreement=False,
+                    key_cert_sign=True,
+                    crl_sign=True,
+                    encipher_only=False,
+                    decipher_only=False,
+                ),
+                critical=True,
+            )
+        return builder.sign(private_key=issuer_key, algorithm=hashes.SHA256())
+
+    def make_chain(self, root_name='Root CA', leaf_name='service.example'):
+        root_key = self.private_key()
+        leaf_key = self.private_key()
+        root = self.certificate(root_name, root_name, root_key, root_key, is_ca=True)
+        leaf = self.certificate(leaf_name, root_name, leaf_key, root_key, is_ca=False)
+        return leaf, root
+
+    def store(self, name, store_type, certificates):
+        return scanner.LoadedTrustStore(
+            store_id=name.lower().replace(' ', '-'),
+            store_name=name,
+            store_type=store_type,
+            source='test',
+            certificates=tuple(certificates),
+            metadata={'name': name, 'certificate_count': len(certificates)},
+        )
+
+    def validate(self, chain, stores, enabled=True):
+        return scanner.validate_peer_chain(
+            scanner.PeerCertificateChain(tuple(chain)),
+            tuple(stores),
+            enabled=enabled,
+        )
+
+    def test_public_store_validates_as_public_trusted(self):
+        leaf, root = self.make_chain()
+        result = self.validate([leaf], [self.store('TLS Scan Public Web PKI', 'public', [root])])
+
+        self.assertEqual(result.trust_classification, 'PUBLIC_TRUSTED')
+        self.assertEqual(result.trusted_by, ('TLS Scan Public Web PKI',))
+
+    def test_public_fails_corporate_validates_as_private_trusted(self):
+        leaf, root = self.make_chain()
+        _other_leaf, other_root = self.make_chain('Other Root CA')
+        result = self.validate(
+            [leaf],
+            [
+                self.store('TLS Scan Public Web PKI', 'public', [other_root]),
+                self.store('Corporate PKI', 'file', [root]),
+            ],
+        )
+
+        self.assertEqual(result.trust_classification, 'PRIVATE_TRUSTED')
+        self.assertEqual(result.trusted_by, ('Corporate PKI',))
+
+    def test_no_store_validates_as_untrusted(self):
+        leaf, _root = self.make_chain()
+        _other_leaf, other_root = self.make_chain('Other Root CA')
+        result = self.validate([leaf], [self.store('TLS Scan Public Web PKI', 'public', [other_root])])
+
+        self.assertEqual(result.trust_classification, 'UNTRUSTED')
+        self.assertTrue(all(item.status == 'untrusted' for item in result.trust_store_results))
+
+    def test_public_and_corporate_validate_keeps_all_trusted_by(self):
+        leaf, root = self.make_chain()
+        result = self.validate(
+            [leaf],
+            [
+                self.store('TLS Scan Public Web PKI', 'public', [root]),
+                self.store('Corporate PKI', 'file', [root]),
+            ],
+        )
+
+        self.assertEqual(result.trust_classification, 'PUBLIC_TRUSTED')
+        self.assertEqual(result.trusted_by, ('TLS Scan Public Web PKI', 'Corporate PKI'))
+
+    def test_validation_disabled_is_not_tested(self):
+        leaf, root = self.make_chain()
+        result = self.validate([leaf], [self.store('Corporate PKI', 'file', [root])], enabled=False)
+
+        self.assertEqual(result.trust_classification, 'NOT_TESTED')
+        self.assertEqual(result.chain_validation_status, 'Not Tested')
+
+    def test_chain_collection_failure_is_not_untrusted(self):
+        result = scanner.validate_peer_chain(
+            scanner.PeerCertificateChain((), status='not_tested', error='STARTTLS not implemented'),
+            (self.store('Corporate PKI', 'file', []),),
+        )
+
+        self.assertEqual(result.trust_classification, 'NOT_TESTED')
+
+    def test_custom_file_missing_raises_config_error(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            missing = Path(temp_dir) / 'missing.pem'
+            with self.assertRaisesRegex(scanner.ConfigError, 'does not exist'):
+                scanner.load_trust_stores(False, (scanner.TrustStoreConfig('Corporate PKI', 'file', str(missing)),))
+
+    def test_invalid_bundle_raises_config_error(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / 'invalid.pem'
+            path.write_text('not a certificate\n', encoding='utf-8')
+            with self.assertRaisesRegex(scanner.ConfigError, 'does not contain any usable PEM certificate'):
+                scanner.load_trust_stores(False, (scanner.TrustStoreConfig('Corporate PKI', 'file', str(path)),))
+
+    def test_empty_directory_raises_config_error(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with self.assertRaisesRegex(scanner.ConfigError, 'contains no usable PEM certificate'):
+                scanner.load_trust_stores(False, (scanner.TrustStoreConfig('Legacy PKI', 'directory', temp_dir),))
+
+    def test_self_signed_anchor_can_be_private_trusted(self):
+        root_key = self.private_key()
+        root = self.certificate('Self Signed Service', 'Self Signed Service', root_key, root_key, is_ca=True)
+        result = self.validate([root], [self.store('Corporate PKI', 'file', [root])])
+
+        self.assertEqual(result.trust_classification, 'PRIVATE_TRUSTED')
+        self.assertNotEqual(result.trust_classification, 'UNTRUSTED')
 
 
 # Endpoint grades use the weakest finding for each individual host and port.

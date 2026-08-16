@@ -18,6 +18,11 @@ defaults:
     certificate:
       enabled: true
       expires_within_days: 30
+      trust:
+        enabled: true
+        public_store:
+          enabled: true
+        custom_stores: []
 
 reports:
   - name: external_anssi_weekly

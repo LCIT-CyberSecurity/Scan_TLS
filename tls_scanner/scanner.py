@@ -18,6 +18,7 @@ import time
 from .checks import build_certificate_info, certificate_crypto_summary
 from .crypto_policy import evaluate_compliance, extract_cipher_suites
 from .network import resolve_fqdn
+from .pki import TRUST_UNTRUSTED, collect_peer_certificate_chain, trust_result_not_tested, validate_peer_chain
 from .pqc import evaluate_pqc_compliance, probe_pqc_key_exchange
 
 
@@ -114,6 +115,17 @@ def collect_scan_results(scanner, args, results, findings, fqdn_cache):
 
             certificate_output = port_info["script"].get("ssl-cert", "")
             certificate_info = build_certificate_info(certificate_output)
+            endpoint_id = f"{host}:{port}/tcp"
+            if args.certificate_trust_enabled:
+                chain = collect_peer_certificate_chain(host, port, fqdn)
+                trust_result = validate_peer_chain(
+                    chain,
+                    args.certificate_trust_stores,
+                    enabled=args.certificate_trust_enabled,
+                )
+            else:
+                trust_result = trust_result_not_tested("trust validation disabled")
+            args.certificate_trust_results[endpoint_id] = trust_result
             public_key_type = certificate_info.public_key_type
             public_key_bits = certificate_info.public_key_bits
             public_key = public_key_type
@@ -149,6 +161,8 @@ def collect_scan_results(scanner, args, results, findings, fqdn_cache):
                         public_key_bits,
                         args.policies,
                     )
+                if trust_result.trust_classification == TRUST_UNTRUSTED:
+                    compliance, reason = "KO", "Certificate chain untrusted"
                 finding = {
                     "tls_version": tls_version,
                     "cipher_suite": cipher_suite,
@@ -156,6 +170,7 @@ def collect_scan_results(scanner, args, results, findings, fqdn_cache):
                     "certificate_output": certificate_output,
                     "public_key_type": public_key_type,
                     "public_key_bits": public_key_bits,
+                    "trust_classification": trust_result.trust_classification,
                 }
                 findings.setdefault((host, port), []).append(finding)
                 row = [
@@ -184,6 +199,10 @@ def collect_scan_results(scanner, args, results, findings, fqdn_cache):
                         if certificate_info.public_key_bits is not None
                         else "unknown",
                         certificate_info.signature_algorithm or "unknown",
+                        trust_result.trust_classification,
+                        ", ".join(trust_result.trusted_by) or "None",
+                        trust_result.trust_anchor or "None",
+                        trust_result.chain_validation_status,
                         compliance,
                         reason,
                     ]

@@ -61,7 +61,7 @@
   function csvHeaders(){
     const headers = ['IP','FQDN','Port', data.metadata.crypto_profile === 'pqc' ? 'TLS Grade' : 'Grade', 'TLS Version', 'Cipher Suite', 'Public Key', 'Certificate Validity'];
     if(data.metadata.crypto_profile === 'pqc') headers.push('Key Exchange');
-    headers.push('Certificate Crypto','Self-signed','Certificate Days Left','Certificate Issuer','Certificate Subject','Certificate SAN','Certificate Key Type','Certificate Key Size','Certificate Signature Algorithm','Compliance','Reason');
+    headers.push('Certificate Crypto','Self-signed','Certificate Days Left','Certificate Issuer','Certificate Subject','Certificate SAN','Certificate Key Type','Certificate Key Size','Certificate Signature Algorithm','Certificate Trust Classification','Certificate Trusted By','Certificate Trust Anchor','Certificate Chain Validation','Compliance','Reason');
     return headers;
   }
 
@@ -542,11 +542,43 @@
         if(sort.value === 'endpoint') return String(a.endpoint_id).localeCompare(String(b.endpoint_id), undefined, {numeric:true, sensitivity:'base'});
         return String(a.certificate.valid_until).localeCompare(String(b.certificate.valid_until));
       });
-      const rows = endpoints.map((endpoint) => [endpoint.endpoint_id, endpoint.certificate.subject, endpoint.certificate.issuer, (endpoint.certificate.san || []).join(', '), endpoint.certificate.valid_until, endpoint.certificate.remaining_days, endpoint.certificate.self_signed, endpoint.certificate.key_type, endpoint.certificate.key_size, endpoint.certificate.signature_algorithm, endpoint.certificate.trust_status, endpoint.certificate.hostname_validation_status, endpoint.certificate.chain_validation_status, endpoint.certificate.revocation_status]);
-      $('certificateTable').replaceChildren(table(['Endpoint','Subject','Issuer','SAN','Expiration','Remaining days','Self-signed','Key type','Key size','Signature','Trust','Hostname validation','Chain validation','Revocation'], rows, {filterable:true}));
+      const rows = endpoints.map((endpoint) => [endpoint.endpoint_id, endpoint.certificate.subject, endpoint.certificate.issuer, (endpoint.certificate.san || []).join(', '), endpoint.certificate.valid_until, endpoint.certificate.remaining_days, endpoint.certificate.self_signed, endpoint.certificate.key_type, endpoint.certificate.key_size, endpoint.certificate.signature_algorithm, endpoint.certificate.trust_classification, (endpoint.certificate.trusted_by || []).join(', ') || 'None', endpoint.certificate.trust_anchor || 'None', endpoint.certificate.hostname_validation_status, endpoint.certificate.chain_validation_status, endpoint.certificate.revocation_status]);
+      $('certificateTable').replaceChildren(table(['Endpoint','Subject','Issuer','SAN','Expiration','Remaining days','Self-signed','Key type','Key size','Signature','Trust classification','Trusted by','Trust anchor','Hostname validation','Chain validation','Revocation'], rows, {filterable:true}));
     };
     [status, sort].forEach((node) => node.addEventListener('change', render));
     render();
+  }
+
+  function trustTone(value){
+    const normalized = String(value || '').toLowerCase();
+    if(normalized === 'public_trusted' || normalized === 'private_trusted' || normalized === 'trusted') return 'status-compliant';
+    if(normalized === 'untrusted') return 'status-non_compliant';
+    if(normalized === 'error') return 'status-error';
+    return 'status-not_tested';
+  }
+
+  function initCertificateTrust(){
+    const summaryRows = data.endpoints.map((endpoint) => {
+      const cert = endpoint.certificate;
+      return [
+        endpoint.endpoint_id,
+        badge(cert.trust_classification, trustTone(cert.trust_classification)),
+        badge(cert.chain_validation_status, trustTone(cert.chain_validation_status)),
+        (cert.trusted_by || []).join(', ') || 'None',
+        cert.trust_anchor || 'None',
+      ];
+    });
+    const storeRows = data.endpoints.flatMap((endpoint) => (endpoint.certificate.trust_store_results || []).map((result) => [
+      endpoint.endpoint_id,
+      result.store_name,
+      badge(result.status, trustTone(result.status)),
+      result.trust_anchor_subject || 'None',
+      result.validation_error || '',
+    ]));
+    const root = $('certificateTrust');
+    root.append(table(['Endpoint','Trust classification','Chain validation','Trusted by','Trust anchor'], summaryRows, {filterable:true}));
+    root.append(el('h3','','Trust Store Results'));
+    root.append(table(['Endpoint','Trust Store','Result','Trust Anchor','Error'], storeRows, {filterable:true}));
   }
 
 
@@ -604,6 +636,8 @@
     root.append(el('h3','','TLS Versions'), table(['Version','Status'], Object.entries(endpoint.tls_versions)));
     root.append(el('h3','','Cipher Suites'), table(['TLS version','Cipher suite','Key exchange','Authentication','Encryption','Hash','Forward secrecy','Strength','Compliance','Policy reason'], endpoint.cipher_suites.slice(0,300).map((suite) => [suite.tls_version, suite.name, suite.key_exchange, suite.authentication, suite.encryption, suite.hash_algorithm, suite.forward_secrecy, suite.strength, suite.compliance_status, suite.policy_reason])));
     root.append(el('h3','','Certificate'), table(['Field','Value'], Object.entries(endpoint.certificate).map(([key,value]) => [key, Array.isArray(value) ? value.join(', ') : value])));
+    root.append(el('h3','','Certificate Trust'), table(['Field','Value'], [['Trust classification', endpoint.certificate.trust_classification], ['Chain validation', endpoint.certificate.chain_validation_status], ['Trusted by', (endpoint.certificate.trusted_by || []).join(', ') || 'None'], ['Trust anchor', endpoint.certificate.trust_anchor || 'None']]));
+    root.append(el('h3','','Trust Store Results'), table(['Trust Store','Result','Trust Anchor','Error'], (endpoint.certificate.trust_store_results || []).map((result) => [result.store_name, result.status, result.trust_anchor_subject || 'None', result.validation_error || ''])));
     root.append(el('h3','','PKI Validation'), table(['Check','Status'], Object.entries(endpoint.pki)));
     root.append(el('h3','','PQC'), table(['Field','Value'], Object.entries(endpoint.pqc).map(([key,value]) => [key, Array.isArray(value) ? value.join(', ') : value])));
     $('endpointDrawer').classList.add('open');
@@ -647,6 +681,7 @@
   initFindings();
   initEndpoints();
   initCertificates();
+  initCertificateTrust();
   initCommunicationSecurity();
   initCompliance();
   initPqc();
