@@ -2,7 +2,7 @@
 Command-line interface and top-level TLS scan orchestration.
 
 Called by:
-- `Scan_nmap_TLS3.py`, which remains the root entry point;
+- `tls_scan.py`, which is the root entry point;
 - CLI tests that validate parsing, dry-run behavior, and the main execution flow.
 
 Produces:

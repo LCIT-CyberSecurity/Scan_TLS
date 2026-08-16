@@ -52,13 +52,13 @@ python3 -m pip install -r requirements.txt
 Run an ad hoc scan with one or more comma-separated targets:
 
 ```bash
-python3 Scan_nmap_TLS3.py [-i] [-c {standard,pqc}] [-p PORTS] [-e FILENAME] [--log-level LEVEL] [--log-file FILENAME] [--no-log-file] <targets> [csv_filename]
+python3 tls_scan.py [-i] [-c {standard,pqc}] [-p PORTS] [-e FILENAME] [--log-level LEVEL] [--log-file FILENAME] [--no-log-file] <targets> [csv_filename]
 ```
 
 Run a configured report:
 
 ```bash
-python3 Scan_nmap_TLS3.py --config config/config.yaml --report external_anssi_weekly
+python3 tls_scan.py --config config/config.yaml --report external_anssi_weekly
 ```
 
 | Parameter | Description |
@@ -90,13 +90,13 @@ scan settings, logging and export settings.
 List configured reports:
 
 ```bash
-python3 Scan_nmap_TLS3.py --config config/config.yaml --list-reports
+python3 tls_scan.py --config config/config.yaml --list-reports
 ```
 
 Validate a report without running Nmap:
 
 ```bash
-python3 Scan_nmap_TLS3.py --config config/config.yaml --report external_anssi_weekly --dry-run
+python3 tls_scan.py --config config/config.yaml --report external_anssi_weekly --dry-run
 ```
 
 Example report config:
@@ -167,7 +167,7 @@ For example, this command keeps the configured report but scans only port
 `443` with debug logging:
 
 ```bash
-python3 Scan_nmap_TLS3.py --config config/config.yaml --report external_anssi_weekly -p 443 --log-level debug
+python3 tls_scan.py --config config/config.yaml --report external_anssi_weekly -p 443 --log-level debug
 ```
 
 ### Periodic scans with cron
@@ -190,22 +190,22 @@ Each file can define its own targets, ports, crypto profile, export formats,
 report name, policies and logging. Run them independently from the command line:
 
 ```bash
-python3 Scan_nmap_TLS3.py --config config/scans/external-standard.yaml
-python3 Scan_nmap_TLS3.py --config config/scans/external-pqc.yaml
-python3 Scan_nmap_TLS3.py --config config/scans/internal-standard.yaml
+python3 tls_scan.py --config config/scans/external-standard.yaml
+python3 tls_scan.py --config config/scans/external-pqc.yaml
+python3 tls_scan.py --config config/scans/internal-standard.yaml
 ```
 
 Example `crontab` entries:
 
 ```cron
 # Daily external TLS scan at 02:00
-0 2 * * * cd /home/cdev/Git/Scan_TLS && .venv/bin/python Scan_nmap_TLS3.py --config config/scans/external-standard.yaml >> logs/cron-external-standard.log 2>&1
+0 2 * * * cd /home/cdev/Git/Scan_TLS && .venv/bin/python tls_scan.py --config config/scans/external-standard.yaml >> logs/cron-external-standard.log 2>&1
 
 # Weekly PQC scan every Monday at 03:00
-0 3 * * 1 cd /home/cdev/Git/Scan_TLS && .venv/bin/python Scan_nmap_TLS3.py --config config/scans/external-pqc.yaml >> logs/cron-external-pqc.log 2>&1
+0 3 * * 1 cd /home/cdev/Git/Scan_TLS && .venv/bin/python tls_scan.py --config config/scans/external-pqc.yaml >> logs/cron-external-pqc.log 2>&1
 
 # Monthly internal scan on the first day of the month at 04:00
-0 4 1 * * cd /home/cdev/Git/Scan_TLS && .venv/bin/python Scan_nmap_TLS3.py --config config/scans/internal-standard.yaml >> logs/cron-internal-standard.log 2>&1
+0 4 1 * * cd /home/cdev/Git/Scan_TLS && .venv/bin/python tls_scan.py --config config/scans/internal-standard.yaml >> logs/cron-internal-standard.log 2>&1
 ```
 
 Operational recommendations for cron jobs:
@@ -285,15 +285,15 @@ Limitations: the scanner still depends on Nmap output for observed TLS/certifica
 Use `-e` to select the export format from the filename:
 
 ```bash
-python3 Scan_nmap_TLS3.py example.com -e results.csv
-python3 Scan_nmap_TLS3.py example.com -e results.cbom.json
-python3 Scan_nmap_TLS3.py example.com -e results.md
+python3 tls_scan.py example.com -e results.csv
+python3 tls_scan.py example.com -e results.cbom.json
+python3 tls_scan.py example.com -e results.md
 ```
 
 The legacy positional syntax remains available for CSV exports:
 
 ```bash
-python3 Scan_nmap_TLS3.py example.com results.csv
+python3 tls_scan.py example.com results.csv
 ```
 
 The terminal table and CSV export contain separate `IP` and `FQDN` columns.
@@ -392,7 +392,7 @@ no RSA key size provides post-quantum security.
 Example:
 
 ```bash
-python3 Scan_nmap_TLS3.py -c pqc -p 443 server.example.com
+python3 tls_scan.py -c pqc -p 443 server.example.com
 ```
 
 
@@ -527,72 +527,72 @@ Qualys SSL Labs algorithm.
 Scan multiple subnets using the default fast port discovery:
 
 ```bash
-python3 Scan_nmap_TLS3.py 192.168.1.0/24,10.0.0.0/24
+python3 tls_scan.py 192.168.1.0/24,10.0.0.0/24
 ```
 
 Scan several TCP ports:
 
 ```bash
-python3 Scan_nmap_TLS3.py -p 443,8443,9443 192.168.1.0/24
+python3 tls_scan.py -p 443,8443,9443 192.168.1.0/24
 ```
 
 Scan a port range and individual ports:
 
 ```bash
-python3 Scan_nmap_TLS3.py -p 443,8000-8010,8443 server.example.com
+python3 tls_scan.py -p 443,8000-8010,8443 server.example.com
 ```
 
 Quickly discover common TCP ports before testing TLS:
 
 ```bash
-python3 Scan_nmap_TLS3.py -p fast 192.168.1.0/24
+python3 tls_scan.py -p fast 192.168.1.0/24
 ```
 
 Scan standard SMTP and submission ports:
 
 ```bash
-python3 Scan_nmap_TLS3.py -p 25,465,587 smtp.example.com
+python3 tls_scan.py -p 25,465,587 smtp.example.com
 ```
 
 Discover all open TCP ports before testing TLS:
 
 ```bash
-python3 Scan_nmap_TLS3.py -p all 192.168.1.10
+python3 tls_scan.py -p all 192.168.1.10
 ```
 
 Scan multiple individual IP addresses without subnet notation:
 
 ```bash
-python3 Scan_nmap_TLS3.py 192.168.1.10,192.168.1.20,10.0.0.5
+python3 tls_scan.py 192.168.1.10,192.168.1.20,10.0.0.5
 ```
 
 Scan multiple FQDNs:
 
 ```bash
-python3 Scan_nmap_TLS3.py web.example.com,mail.example.com
+python3 tls_scan.py web.example.com,mail.example.com
 ```
 
 Scan a mix of subnets, individual IP addresses, and FQDNs, then export the
 results:
 
 ```bash
-python3 Scan_nmap_TLS3.py 192.168.1.0/24,10.0.0.5,web.example.com results.csv
+python3 tls_scan.py 192.168.1.0/24,10.0.0.5,web.example.com results.csv
 ```
 
 Disable DNS resolution and leave the `FQDN` column empty:
 
 ```bash
-python3 Scan_nmap_TLS3.py -i 192.168.1.0/24,10.0.0.5,web.example.com results.csv
+python3 tls_scan.py -i 192.168.1.0/24,10.0.0.5,web.example.com results.csv
 ```
 
 Combine fast port discovery, multiple targets, disabled DNS, and CSV export:
 
 ```bash
-python3 Scan_nmap_TLS3.py -i -p fast 192.168.1.0/24,10.0.0.5 results.csv
+python3 tls_scan.py -i -p fast 192.168.1.0/24,10.0.0.5 results.csv
 ```
 
 Display all command-line options:
 
 ```bash
-python3 Scan_nmap_TLS3.py --help
+python3 tls_scan.py --help
 ```

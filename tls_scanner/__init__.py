@@ -2,7 +2,7 @@
 Public facade for the `tls_scanner` package.
 
 Called by:
-- `Scan_nmap_TLS3.py`, to preserve historical imports from the former monolithic script;
+- `tls_scan.py`, as the root-level command wrapper;
 - tests and external scripts that still import the public API from the package.
 
 Produces:

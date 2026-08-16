@@ -13,7 +13,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 
-import Scan_nmap_TLS3 as scanner
+import tls_scanner as scanner
 
 
 # Input normalization and command-line port validation.
@@ -28,44 +28,44 @@ class NormalizeTargetsTests(unittest.TestCase):
 
 
 class ParsePortsTests(unittest.TestCase):
-    @patch("Scan_nmap_TLS3.sys.argv", ["Scan_nmap_TLS3.py"])
+    @patch("tls_scanner.cli.sys.argv", ["tls_scan.py"])
     def test_accepts_no_arguments_for_default_config_mode(self):
         args = scanner.parse_args()
 
         self.assertIsNone(args.targets)
 
-    @patch("Scan_nmap_TLS3.sys.argv", ["Scan_nmap_TLS3.py", "192.0.2.10"])
+    @patch("tls_scanner.cli.sys.argv", ["tls_scan.py", "192.0.2.10"])
     def test_defaults_to_fast_port_discovery(self):
         self.assertEqual(scanner.parse_args().ports, "fast")
 
-    @patch("Scan_nmap_TLS3.sys.argv", ["Scan_nmap_TLS3.py", "192.0.2.10"])
+    @patch("tls_scanner.cli.sys.argv", ["tls_scan.py", "192.0.2.10"])
     def test_defaults_to_four_workers(self):
         self.assertEqual(scanner.parse_args().workers, 4)
 
-    @patch("Scan_nmap_TLS3.sys.argv", ["Scan_nmap_TLS3.py", "--workers", "8", "192.0.2.10"])
+    @patch("tls_scanner.cli.sys.argv", ["tls_scan.py", "--workers", "8", "192.0.2.10"])
     def test_accepts_workers(self):
         args = scanner.parse_args()
 
         self.assertEqual(args.workers, 8)
         self.assertTrue(args.workers_was_explicit)
 
-    @patch("Scan_nmap_TLS3.sys.argv", ["Scan_nmap_TLS3.py", "--workers", "0", "192.0.2.10"])
+    @patch("tls_scanner.cli.sys.argv", ["tls_scan.py", "--workers", "0", "192.0.2.10"])
     def test_rejects_workers_below_minimum(self):
         with self.assertRaises(SystemExit):
             scanner.parse_args()
 
-    @patch("Scan_nmap_TLS3.sys.argv", ["Scan_nmap_TLS3.py", "192.0.2.10"])
+    @patch("tls_scanner.cli.sys.argv", ["tls_scan.py", "192.0.2.10"])
     def test_defaults_to_standard_crypto_criterion(self):
         self.assertEqual(scanner.parse_args().crypto, "standard")
 
     @patch(
-        "Scan_nmap_TLS3.sys.argv",
-        ["Scan_nmap_TLS3.py", "-c", "pqc", "192.0.2.10"],
+        "tls_scanner.cli.sys.argv",
+        ["tls_scan.py", "-c", "pqc", "192.0.2.10"],
     )
     def test_accepts_pqc_crypto_criterion(self):
         self.assertEqual(scanner.parse_args().crypto, "pqc")
 
-    @patch("Scan_nmap_TLS3.sys.argv", ["Scan_nmap_TLS3.py", "192.0.2.10"])
+    @patch("tls_scanner.cli.sys.argv", ["tls_scan.py", "192.0.2.10"])
     def test_defaults_to_info_file_logging(self):
         args = scanner.parse_args()
 
@@ -74,9 +74,9 @@ class ParsePortsTests(unittest.TestCase):
         self.assertFalse(args.no_log_file)
 
     @patch(
-        "Scan_nmap_TLS3.sys.argv",
+        "tls_scanner.cli.sys.argv",
         [
-            "Scan_nmap_TLS3.py",
+            "tls_scan.py",
             "--log-level",
             "debug",
             "--log-file",
@@ -91,9 +91,9 @@ class ParsePortsTests(unittest.TestCase):
         self.assertEqual(args.log_file, "custom.log")
 
     @patch(
-        "Scan_nmap_TLS3.sys.argv",
+        "tls_scanner.cli.sys.argv",
         [
-            "Scan_nmap_TLS3.py",
+            "tls_scan.py",
             "--policy",
             "anssi_encryption_policy",
             "--policy",
@@ -108,8 +108,8 @@ class ParsePortsTests(unittest.TestCase):
         self.assertTrue(args.policy_was_explicit)
 
     @patch(
-        "Scan_nmap_TLS3.sys.argv",
-        ["Scan_nmap_TLS3.py", "--no-log-file", "192.0.2.10"],
+        "tls_scanner.cli.sys.argv",
+        ["tls_scan.py", "--no-log-file", "192.0.2.10"],
     )
     def test_accepts_disabling_file_logging(self):
         self.assertTrue(scanner.parse_args().no_log_file)
@@ -133,23 +133,23 @@ class ParsePortsTests(unittest.TestCase):
 
 class ExportArgumentTests(unittest.TestCase):
     @patch(
-        "Scan_nmap_TLS3.sys.argv",
-        ["Scan_nmap_TLS3.py", "192.0.2.10", "results.csv"],
+        "tls_scanner.cli.sys.argv",
+        ["tls_scan.py", "192.0.2.10", "results.csv"],
     )
     def test_accepts_legacy_positional_csv_filename(self):
         self.assertEqual(scanner.parse_args().csv_filename, "results.csv")
 
     @patch(
-        "Scan_nmap_TLS3.sys.argv",
-        ["Scan_nmap_TLS3.py", "192.0.2.10", "-e", "results.csv"],
+        "tls_scanner.cli.sys.argv",
+        ["tls_scan.py", "192.0.2.10", "-e", "results.csv"],
     )
     def test_accepts_export_option(self):
         self.assertEqual(scanner.parse_args().csv_filename, "results.csv")
 
     @patch(
-        "Scan_nmap_TLS3.sys.argv",
+        "tls_scanner.cli.sys.argv",
         [
-            "Scan_nmap_TLS3.py",
+            "tls_scan.py",
             "192.0.2.10",
             "legacy.csv",
             "-e",
@@ -161,8 +161,8 @@ class ExportArgumentTests(unittest.TestCase):
             scanner.parse_args()
 
     @patch(
-        "Scan_nmap_TLS3.sys.argv",
-        ["Scan_nmap_TLS3.py", "192.0.2.10", "-e", "results.cbom.json"],
+        "tls_scanner.cli.sys.argv",
+        ["tls_scan.py", "192.0.2.10", "-e", "results.cbom.json"],
     )
     def test_detects_cbom_export(self):
         args = scanner.parse_args()
@@ -171,8 +171,8 @@ class ExportArgumentTests(unittest.TestCase):
         self.assertEqual(args.export_format, "cbom")
 
     @patch(
-        "Scan_nmap_TLS3.sys.argv",
-        ["Scan_nmap_TLS3.py", "192.0.2.10", "-e", "results.html"],
+        "tls_scanner.cli.sys.argv",
+        ["tls_scan.py", "192.0.2.10", "-e", "results.html"],
     )
     def test_detects_html_export(self):
         args = scanner.parse_args()
@@ -181,8 +181,8 @@ class ExportArgumentTests(unittest.TestCase):
         self.assertEqual(args.export_format, "html")
 
     @patch(
-        "Scan_nmap_TLS3.sys.argv",
-        ["Scan_nmap_TLS3.py", "192.0.2.10", "-e", "results.json"],
+        "tls_scanner.cli.sys.argv",
+        ["tls_scan.py", "192.0.2.10", "-e", "results.json"],
     )
     def test_rejects_ambiguous_export_extension(self):
         with self.assertRaises(SystemExit):
@@ -191,9 +191,9 @@ class ExportArgumentTests(unittest.TestCase):
 
 class ScanJobTests(unittest.TestCase):
     @patch(
-        "Scan_nmap_TLS3.sys.argv",
+        "tls_scanner.cli.sys.argv",
         [
-            "Scan_nmap_TLS3.py",
+            "tls_scan.py",
             "-i",
             "-c",
             "pqc",
@@ -261,8 +261,8 @@ checks:
 
         try:
             with patch(
-                "Scan_nmap_TLS3.sys.argv",
-                ["Scan_nmap_TLS3.py", "--config", config_path],
+                "tls_scanner.cli.sys.argv",
+                ["tls_scan.py", "--config", config_path],
             ):
                 job = scanner.build_scan_job(scanner.parse_args())
         finally:
@@ -297,9 +297,9 @@ logging:
 
         try:
             with patch(
-                "Scan_nmap_TLS3.sys.argv",
+                "tls_scanner.cli.sys.argv",
                 [
-                    "Scan_nmap_TLS3.py",
+                    "tls_scan.py",
                     "--config",
                     config_path,
                     "-p",
@@ -330,8 +330,8 @@ scan:
 
         try:
             with patch(
-                "Scan_nmap_TLS3.sys.argv",
-                ["Scan_nmap_TLS3.py", "--config", config_path],
+                "tls_scanner.cli.sys.argv",
+                ["tls_scan.py", "--config", config_path],
             ):
                 with self.assertRaisesRegex(
                     scanner.ConfigError,
@@ -364,8 +364,8 @@ scan:
 
         try:
             with patch(
-                "Scan_nmap_TLS3.sys.argv",
-                ["Scan_nmap_TLS3.py", "--config", config_path],
+                "tls_scanner.cli.sys.argv",
+                ["tls_scan.py", "--config", config_path],
             ):
                 with self.assertRaisesRegex(scanner.ConfigError, "scan.targets is required"):
                     scanner.build_scan_job(scanner.parse_args())
@@ -384,8 +384,8 @@ export:
 
         try:
             with patch(
-                "Scan_nmap_TLS3.sys.argv",
-                ["Scan_nmap_TLS3.py", "--config", config_path],
+                "tls_scanner.cli.sys.argv",
+                ["tls_scan.py", "--config", config_path],
             ):
                 with self.assertRaisesRegex(
                     scanner.ConfigError,
@@ -409,8 +409,8 @@ checks:
 
         try:
             with patch(
-                "Scan_nmap_TLS3.sys.argv",
-                ["Scan_nmap_TLS3.py", "--config", config_path],
+                "tls_scanner.cli.sys.argv",
+                ["tls_scan.py", "--config", config_path],
             ):
                 with self.assertRaisesRegex(
                     scanner.ConfigError,
@@ -1274,13 +1274,13 @@ class ScanProgressTests(unittest.TestCase):
 
 # Reverse DNS resolution and failure fallback.
 class ResolveFqdnTests(unittest.TestCase):
-    @patch("Scan_nmap_TLS3.socket.gethostbyaddr")
+    @patch("tls_scanner.network.socket.gethostbyaddr")
     def test_returns_resolved_fqdn(self, gethostbyaddr):
         gethostbyaddr.return_value = ("host.example.com.", [], ["192.0.2.10"])
 
         self.assertEqual(scanner.resolve_fqdn("192.0.2.10"), "host.example.com")
 
-    @patch("Scan_nmap_TLS3.socket.gethostbyaddr")
+    @patch("tls_scanner.network.socket.gethostbyaddr")
     def test_returns_empty_value_when_reverse_dns_fails(self, gethostbyaddr):
         gethostbyaddr.side_effect = socket.herror
 
@@ -1288,7 +1288,7 @@ class ResolveFqdnTests(unittest.TestCase):
 
 
 class ResolveTargetFqdnTests(unittest.TestCase):
-    @patch("Scan_nmap_TLS3.socket.gethostbyname_ex")
+    @patch("tls_scanner.network.socket.gethostbyname_ex")
     def test_maps_target_fqdn_to_its_resolved_ip_addresses(self, gethostbyname_ex):
         gethostbyname_ex.return_value = (
             "smtp.free.fr",
