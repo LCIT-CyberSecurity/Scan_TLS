@@ -936,6 +936,46 @@ class LoggingTests(unittest.TestCase):
         self.assertIn("INFO run_id=run-123 scan_start targets=192.0.2.10", log_text)
 
 
+class TerminalOutputTests(unittest.TestCase):
+    def test_terminal_headers_match_enriched_standard_rows_without_reason(self):
+        job = scanner.ScanJob(
+            targets="www.example.com",
+            ports="443",
+            crypto="standard",
+            ip=False,
+        )
+        row = [
+            "192.0.2.10",
+            "www.example.com",
+            443,
+            "A+",
+            "TLSv1.3",
+            "TLS_AES_256_GCM_SHA384",
+            "RSA 3072 bits",
+            "2099-01-01",
+            "RSA 3072 / SHA-256",
+            "no",
+            26418,
+            "Demo Public CA",
+            "CN=www.example.com",
+            "www.example.com",
+            "RSA",
+            3072,
+            "sha256WithRSAEncryption",
+            "PUBLIC_TRUSTED",
+            "TLS Scan Public Web PKI",
+            "Demo Public Root CA",
+            "Passed",
+            "OK",
+            "",
+        ]
+
+        headers = scanner.build_terminal_headers(job)
+
+        self.assertIn("Certificate Trust Classification", headers)
+        self.assertIn("Certificate Chain Validation", headers)
+        self.assertEqual(len(headers), len(row[:-1]))
+
 class CsvExportTests(unittest.TestCase):
     def test_appends_scan_timestamp_and_parameters(self):
         args = SimpleNamespace(

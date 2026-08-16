@@ -223,6 +223,40 @@ def parse_args():
     return args
 
 
+def build_terminal_headers(job):
+    headers = [
+        "IP",
+        "FQDN",
+        "Port",
+        "TLS Grade" if job.crypto == "pqc" else "Grade",
+        "TLS Version",
+        "Cipher Suite",
+        "Public Key",
+        "Certificate Validity",
+    ]
+    if job.crypto == "pqc":
+        headers.append("Key Exchange")
+    headers.extend(
+        [
+            "Certificate Crypto",
+            "Self-signed",
+            "Certificate Days Left",
+            "Certificate Issuer",
+            "Certificate Subject",
+            "Certificate SAN",
+            "Certificate Key Type",
+            "Certificate Key Size",
+            "Certificate Signature Algorithm",
+            "Certificate Trust Classification",
+            "Certificate Trusted By",
+            "Certificate Trust Anchor",
+            "Certificate Chain Validation",
+            "Compliance",
+        ]
+    )
+    return headers
+
+
 def print_dry_run(job, export_paths):
     print(f"Report: {job.report_name}")
     print(f"Frequency: {job.frequency}")
@@ -393,34 +427,7 @@ def main():
             "Use -p fast, -p all, or specify ports with -p."
         )
 
-    headers = [
-        "IP",
-        "FQDN",
-        "Port",
-        "TLS Grade" if job.crypto == "pqc" else "Grade",
-        "TLS Version",
-        "Cipher Suite",
-        "Public Key",
-        "Certificate Validity",
-    ]
-    if job.crypto == "pqc":
-        headers.append("Key Exchange")
-    headers.extend(
-        [
-            "Certificate Crypto",
-            "Self-signed",
-            "Certificate Days Left",
-            "Certificate Issuer",
-            "Certificate Subject",
-            "Certificate SAN",
-            "Certificate Key Type",
-            "Certificate Key Size",
-            "Certificate Signature Algorithm",
-            "Compliance",
-        ]
-    )
-
-    table = PrettyTable(headers)
+    table = PrettyTable(build_terminal_headers(job))
     for row in results:
         # The last value is the CSV-only reason and is hidden in the terminal.
         table.add_row(row[:-1])

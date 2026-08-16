@@ -10,7 +10,7 @@ Produces:
 """
 
 from .checks import build_certificate_info, certificate_crypto_summary
-from .cli import has_cli_option, main, parse_args, print_dry_run, print_startup_banner
+from .cli import build_terminal_headers, has_cli_option, main, parse_args, print_dry_run, print_startup_banner
 from .config import (
     build_cli_scan_job,
     build_config_scan_job,
