@@ -557,6 +557,24 @@
     return 'status-not_tested';
   }
 
+
+  function trustDefinitions(){
+    const definitions = [
+      ['PUBLIC_TRUSTED', 'The certificate chain validated against the TLS Scan Public Web PKI snapshot.'],
+      ['PRIVATE_TRUSTED', 'The public store did not validate the chain, but at least one configured corporate store did.'],
+      ['UNTRUSTED', 'Every trust store that was executed failed to validate the chain.'],
+      ['NOT_TESTED', 'Trust validation was not executed, disabled, or the peer chain could not be collected.'],
+      ['ERROR', 'A technical error prevented TLS Scan from reaching a conclusive trust result.'],
+    ];
+    const wrap = el('div','trust-definition-grid');
+    definitions.forEach(([label, text]) => {
+      const item = el('div','trust-definition-item');
+      item.append(badge(label, trustTone(label)), valueNode(text));
+      wrap.append(item);
+    });
+    return wrap;
+  }
+
   function initCertificateTrust(){
     const summaryRows = data.endpoints.map((endpoint) => {
       const cert = endpoint.certificate;
@@ -576,6 +594,7 @@
       result.validation_error || '',
     ]));
     const root = $('certificateTrust');
+    root.append(trustDefinitions());
     root.append(table(['Endpoint','Trust classification','Chain validation','Trusted by','Trust anchor'], summaryRows, {filterable:true}));
     root.append(el('h3','','Trust Store Results'));
     root.append(table(['Endpoint','Trust Store','Result','Trust Anchor','Error'], storeRows, {filterable:true}));

@@ -34,3 +34,15 @@ reports:
       mode: strict_all
       names:
         - anssi_encryption_policy
+
+  - name: pki_trust_test
+    description: Public PKI trust-store validation test profile.
+    frequency: manual
+    scan:
+      ports: 443
+    target_groups:
+      - pki_trust_test_endpoints
+    encryption_policies:
+      mode: strict_all
+      names:
+        - anssi_encryption_policy

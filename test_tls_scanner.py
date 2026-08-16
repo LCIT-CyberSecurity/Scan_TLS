@@ -896,6 +896,15 @@ class ProfessionalReportTests(unittest.TestCase):
         self.assertNotIn("endpoint(s) - ${summary.ports.join", script)
         self.assertNotIn("endpoints.slice(0, remaining)", script)
 
+    def test_html_defines_certificate_trust_classifications(self):
+        script = Path("tls_scanner/exports/assets/html/js/report.js").read_text(encoding="utf-8")
+
+        self.assertIn("PUBLIC_TRUSTED", script)
+        self.assertIn("PRIVATE_TRUSTED", script)
+        self.assertIn("UNTRUSTED", script)
+        self.assertIn("NOT_TESTED", script)
+        self.assertIn("A technical error prevented TLS Scan", script)
+
     def test_multi_format_exports_create_scan_folder_resources_and_metadata(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             job = self.sample_job(temp_dir)

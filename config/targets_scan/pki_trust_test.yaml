@@ -1,0 +1,10 @@
+name: pki_trust_test_endpoints
+description: Public PKI trust classification test targets.
+
+targets:
+  fqdn:
+    - www.google.com
+    - self-signed.badssl.com
+    - expired.badssl.com
+  ip: []
+  subnets: []
