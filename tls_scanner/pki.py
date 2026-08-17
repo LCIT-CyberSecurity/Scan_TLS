@@ -8,6 +8,7 @@ snapshots already available on disk.
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import json
 import re
 import shutil
@@ -15,15 +16,21 @@ import socket
 import subprocess
 import tempfile
 from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlparse
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 from cryptography import x509
 from cryptography.exceptions import InvalidSignature
+from cryptography.x509 import ocsp
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec, ed25519, ed448, padding, rsa
 
 from .models import (
+    CertificateRevocationResult,
     CertificateTrustResult,
     ConfigError,
     LoadedTrustStore,
@@ -401,6 +408,250 @@ def validate_peer_chain(chain: PeerCertificateChain, stores: tuple[LoadedTrustSt
     if chain.status != "ok" or not chain.certificates:
         return trust_result_error(chain.error or "certificate chain could not be collected")
     return classify_trust(tuple(validate_chain_with_store(chain.certificates, store) for store in stores))
+
+
+REVOCATION_GOOD = "Good"
+REVOCATION_REVOKED = "Revoked"
+REVOCATION_UNKNOWN = "Unknown"
+REVOCATION_NOT_TESTED = "Not Tested"
+REVOCATION_ERROR = "Error"
+
+
+class NoRedirectHandler(HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def revocation_result_not_tested(reason: str = "") -> CertificateRevocationResult:
+    return CertificateRevocationResult(
+        revocation_status=REVOCATION_NOT_TESTED,
+        ocsp_status=REVOCATION_NOT_TESTED,
+        crl_status=REVOCATION_NOT_TESTED,
+        details=(reason,) if reason else (),
+    )
+
+
+def extension_value(certificate: x509.Certificate, extension_type):
+    try:
+        return certificate.extensions.get_extension_for_class(extension_type).value
+    except x509.ExtensionNotFound:
+        return None
+
+
+def ocsp_urls(certificate: x509.Certificate) -> tuple[str, ...]:
+    aia = extension_value(certificate, x509.AuthorityInformationAccess)
+    if aia is None:
+        return ()
+    return tuple(
+        str(item.access_location.value)
+        for item in aia
+        if item.access_method == x509.AuthorityInformationAccessOID.OCSP
+    )
+
+
+def crl_urls(certificate: x509.Certificate) -> tuple[str, ...]:
+    distribution_points = extension_value(certificate, x509.CRLDistributionPoints)
+    if distribution_points is None:
+        return ()
+    urls = []
+    for point in distribution_points:
+        if point.full_name is None:
+            continue
+        urls.extend(str(name.value) for name in point.full_name if isinstance(name, x509.UniformResourceIdentifier))
+    return tuple(urls)
+
+
+def validate_revocation_url(url: str, allow_private_urls: bool = False) -> str:
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise ValueError("revocation URL must use http or https and include a hostname")
+    if allow_private_urls:
+        return url
+    try:
+        addresses = socket.getaddrinfo(parsed.hostname, parsed.port, type=socket.SOCK_STREAM)
+    except OSError as error:
+        raise ValueError(f"unable to resolve revocation URL host: {error}") from error
+    for item in addresses:
+        address = ipaddress.ip_address(item[4][0])
+        if address.is_private or address.is_loopback or address.is_link_local or address.is_multicast or address.is_reserved:
+            raise ValueError("revocation URL resolves to a private or local address")
+    return url
+
+
+def fetch_url(url: str, timeout: int, max_response_bytes: int, allow_private_urls: bool = False, data: bytes | None = None, headers: dict[str, str] | None = None) -> bytes:
+    validate_revocation_url(url, allow_private_urls)
+    request = Request(url, data=data, headers=headers or {})
+    opener = build_opener(NoRedirectHandler)
+    try:
+        with opener.open(request, timeout=timeout) as response:
+            payload = response.read(max_response_bytes + 1)
+    except HTTPError as error:
+        raise ValueError(f"HTTP {error.code} from revocation URL") from error
+    except URLError as error:
+        raise ValueError(f"revocation URL fetch failed: {error.reason}") from error
+    except OSError as error:
+        raise ValueError(f"revocation URL fetch failed: {error}") from error
+    if len(payload) > max_response_bytes:
+        raise ValueError("revocation response exceeds configured size limit")
+    return payload
+
+
+def verify_tbs_signature(signature: bytes, tbs_bytes: bytes, public_key, signature_hash) -> bool:
+    try:
+        if isinstance(public_key, rsa.RSAPublicKey):
+            public_key.verify(signature, tbs_bytes, padding.PKCS1v15(), signature_hash)
+        elif isinstance(public_key, ec.EllipticCurvePublicKey):
+            public_key.verify(signature, tbs_bytes, ec.ECDSA(signature_hash))
+        elif isinstance(public_key, (ed25519.Ed25519PublicKey, ed448.Ed448PublicKey)):
+            public_key.verify(signature, tbs_bytes)
+        else:
+            return False
+    except (InvalidSignature, TypeError, ValueError):
+        return False
+    return True
+
+
+def public_key_identifier(public_key) -> bytes:
+    return x509.SubjectKeyIdentifier.from_public_key(public_key).digest
+
+
+def verify_ocsp_response_signature(response: ocsp.OCSPResponse, issuer: x509.Certificate) -> bool:
+    if response.responder_name == issuer.subject or response.responder_key_hash == public_key_identifier(issuer.public_key()):
+        return verify_tbs_signature(response.signature, response.tbs_response_bytes, issuer.public_key(), response.signature_hash_algorithm)
+    for responder_cert in response.certificates:
+        eku = extension_value(responder_cert, x509.ExtendedKeyUsage)
+        if eku is None or x509.ExtendedKeyUsageOID.OCSP_SIGNING not in eku:
+            continue
+        if responder_cert.issuer == issuer.subject and verify_signature(responder_cert, issuer):
+            return verify_tbs_signature(response.signature, response.tbs_response_bytes, responder_cert.public_key(), response.signature_hash_algorithm)
+    return False
+
+
+def time_is_stale(next_update: datetime | None) -> bool:
+    if next_update is None:
+        return False
+    if next_update.tzinfo is None:
+        next_update = next_update.replace(tzinfo=timezone.utc)
+    return next_update < datetime.now(timezone.utc)
+
+
+def check_ocsp_revocation(leaf: x509.Certificate, issuer: x509.Certificate, timeout: int, max_response_bytes: int, allow_private_urls: bool = False) -> tuple[str, str]:
+    urls = ocsp_urls(leaf)
+    if not urls:
+        return REVOCATION_NOT_TESTED, "no OCSP responder URL in certificate"
+    request = ocsp.OCSPRequestBuilder().add_certificate(leaf, issuer, hashes.SHA1()).build()
+    request_data = request.public_bytes(serialization.Encoding.DER)
+    errors = []
+    for url in urls:
+        try:
+            data = fetch_url(
+                url,
+                timeout,
+                max_response_bytes,
+                allow_private_urls,
+                data=request_data,
+                headers={"Content-Type": "application/ocsp-request", "Accept": "application/ocsp-response"},
+            )
+            response = ocsp.load_der_ocsp_response(data)
+            if response.response_status != ocsp.OCSPResponseStatus.SUCCESSFUL:
+                errors.append(f"{url}: OCSP responder returned {response.response_status.name}")
+                continue
+            if response.serial_number != leaf.serial_number:
+                errors.append(f"{url}: OCSP response serial does not match certificate")
+                continue
+            if time_is_stale(response.next_update):
+                errors.append(f"{url}: OCSP response is stale")
+                continue
+            if not verify_ocsp_response_signature(response, issuer):
+                errors.append(f"{url}: OCSP response signature could not be verified")
+                continue
+            if response.certificate_status == ocsp.OCSPCertStatus.REVOKED:
+                return REVOCATION_REVOKED, f"OCSP responder reports certificate revoked via {url}"
+            if response.certificate_status == ocsp.OCSPCertStatus.GOOD:
+                return REVOCATION_GOOD, f"OCSP responder reports certificate good via {url}"
+            return REVOCATION_UNKNOWN, f"OCSP responder returned unknown status via {url}"
+        except ValueError as error:
+            errors.append(f"{url}: {error}")
+    return REVOCATION_ERROR, "; ".join(errors) if errors else "OCSP check failed"
+
+
+def load_crl(data: bytes) -> x509.CertificateRevocationList:
+    try:
+        return x509.load_der_x509_crl(data)
+    except ValueError:
+        return x509.load_pem_x509_crl(data)
+
+
+def check_crl_revocation(leaf: x509.Certificate, issuer: x509.Certificate, timeout: int, max_response_bytes: int, allow_private_urls: bool = False) -> tuple[str, str]:
+    urls = crl_urls(leaf)
+    if not urls:
+        return REVOCATION_NOT_TESTED, "no CRL distribution point URL in certificate"
+    errors = []
+    for url in urls:
+        try:
+            crl = load_crl(fetch_url(url, timeout, max_response_bytes, allow_private_urls))
+            if crl.issuer != issuer.subject:
+                errors.append(f"{url}: CRL issuer does not match certificate issuer")
+                continue
+            if not verify_tbs_signature(crl.signature, crl.tbs_certlist_bytes, issuer.public_key(), crl.signature_hash_algorithm):
+                errors.append(f"{url}: CRL signature could not be verified")
+                continue
+            if time_is_stale(crl.next_update):
+                errors.append(f"{url}: CRL is stale")
+                continue
+            revoked = crl.get_revoked_certificate_by_serial_number(leaf.serial_number)
+            if revoked is not None:
+                return REVOCATION_REVOKED, f"CRL lists certificate serial as revoked via {url}"
+            return REVOCATION_GOOD, f"CRL does not list certificate serial via {url}"
+        except ValueError as error:
+            errors.append(f"{url}: {error}")
+    return REVOCATION_ERROR, "; ".join(errors) if errors else "CRL check failed"
+
+
+def combine_revocation_status(ocsp_status: str, crl_status: str) -> str:
+    statuses = {ocsp_status, crl_status}
+    if REVOCATION_REVOKED in statuses:
+        return REVOCATION_REVOKED
+    tested = statuses - {REVOCATION_NOT_TESTED}
+    if not tested:
+        return REVOCATION_NOT_TESTED
+    if REVOCATION_GOOD in tested:
+        return REVOCATION_GOOD
+    if REVOCATION_UNKNOWN in tested:
+        return REVOCATION_UNKNOWN
+    return REVOCATION_ERROR
+
+
+def validate_certificate_revocation(
+    chain: PeerCertificateChain,
+    enabled: bool = False,
+    ocsp_enabled: bool = True,
+    crl_enabled: bool = True,
+    timeout_seconds: int = 5,
+    max_response_bytes: int = 1048576,
+    allow_private_urls: bool = False,
+) -> CertificateRevocationResult:
+    if not enabled:
+        return revocation_result_not_tested("revocation validation disabled")
+    if chain.status == "not_tested":
+        return revocation_result_not_tested(chain.error)
+    if chain.status != "ok" or not chain.certificates:
+        return CertificateRevocationResult(revocation_status=REVOCATION_ERROR, details=(chain.error or "certificate chain could not be collected",))
+    if len(chain.certificates) < 2:
+        return revocation_result_not_tested("issuer certificate not presented by server")
+    leaf, issuer = chain.certificates[0], chain.certificates[1]
+    ocsp_status, ocsp_detail = (REVOCATION_NOT_TESTED, "OCSP check disabled")
+    crl_status, crl_detail = (REVOCATION_NOT_TESTED, "CRL check disabled")
+    if ocsp_enabled:
+        ocsp_status, ocsp_detail = check_ocsp_revocation(leaf, issuer, timeout_seconds, max_response_bytes, allow_private_urls)
+    if crl_enabled:
+        crl_status, crl_detail = check_crl_revocation(leaf, issuer, timeout_seconds, max_response_bytes, allow_private_urls)
+    return CertificateRevocationResult(
+        revocation_status=combine_revocation_status(ocsp_status, crl_status),
+        ocsp_status=ocsp_status,
+        crl_status=crl_status,
+        details=tuple(detail for detail in (ocsp_detail, crl_detail) if detail),
+    )
 
 
 def trust_result_to_report_dict(result: CertificateTrustResult) -> dict[str, object]:

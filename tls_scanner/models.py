@@ -95,6 +95,14 @@ class CertificateTrustResult:
 
 
 @dataclass
+class CertificateRevocationResult:
+    revocation_status: str = "Not Tested"
+    ocsp_status: str = "Not Tested"
+    crl_status: str = "Not Tested"
+    details: tuple[str, ...] = ()
+
+
+@dataclass
 class SecurityFinding:
     ip: str
     fqdn: str
@@ -134,3 +142,10 @@ class ScanJob:
     certificate_public_trust_store_enabled: bool = True
     certificate_trust_stores: tuple[LoadedTrustStore, ...] = ()
     certificate_trust_results: dict[str, CertificateTrustResult] = field(default_factory=dict)
+    certificate_revocation_enabled: bool = False
+    certificate_revocation_ocsp_enabled: bool = True
+    certificate_revocation_crl_enabled: bool = True
+    certificate_revocation_timeout_seconds: int = 5
+    certificate_revocation_max_response_bytes: int = 1048576
+    certificate_revocation_allow_private_urls: bool = False
+    certificate_revocation_results: dict[str, CertificateRevocationResult] = field(default_factory=dict)

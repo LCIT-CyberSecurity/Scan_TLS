@@ -23,6 +23,13 @@ defaults:
         public_store:
           enabled: true
         custom_stores: []
+      revocation:
+        enabled: true
+        ocsp: true
+        crl: true
+        timeout_seconds: 5
+        max_response_bytes: 1048576
+        allow_private_urls: false
 
 reports:
   - name: external_anssi_weekly

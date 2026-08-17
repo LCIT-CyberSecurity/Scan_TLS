@@ -14,6 +14,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509.oid import NameOID
 
 import tls_scanner as scanner
+from tls_scanner import pki
 
 
 # Input normalization and command-line port validation.
@@ -256,6 +257,13 @@ checks:
   certificate:
     enabled: true
     expires_within_days: 45
+    revocation:
+      enabled: true
+      ocsp: false
+      crl: true
+      timeout_seconds: 10
+      max_response_bytes: 2048
+      allow_private_urls: true
 """
         )
 
@@ -279,6 +287,12 @@ checks:
         self.assertEqual(job.log_file, "audit.log")
         self.assertTrue(job.certificate_findings_enabled)
         self.assertEqual(job.certificate_expires_within_days, 45)
+        self.assertTrue(job.certificate_revocation_enabled)
+        self.assertFalse(job.certificate_revocation_ocsp_enabled)
+        self.assertTrue(job.certificate_revocation_crl_enabled)
+        self.assertEqual(job.certificate_revocation_timeout_seconds, 10)
+        self.assertEqual(job.certificate_revocation_max_response_bytes, 2048)
+        self.assertTrue(job.certificate_revocation_allow_private_urls)
 
     def test_cli_explicit_values_override_yaml_config(self):
         config_path = self.write_config(
@@ -903,6 +917,29 @@ class ProfessionalReportTests(unittest.TestCase):
         self.assertEqual(model.statistics.non_compliant_endpoints, 1)
         self.assertGreater(model.statistics.finding_occurrences, model.statistics.unique_findings)
         self.assertEqual(model.endpoints[1].compliance_status, "non_compliant")
+        self.assertEqual(model.endpoints[0].pki["Trusted by"], "N/A")
+        self.assertEqual(model.endpoints[0].pki["Trust anchor"], "N/A")
+
+    def test_report_model_uses_certificate_revocation_results(self):
+        job = self.sample_job()
+        endpoint_id = "192.0.2.10:443/tcp"
+        job.certificate_revocation_results[endpoint_id] = scanner.CertificateRevocationResult(
+            revocation_status="Revoked",
+            ocsp_status="Revoked",
+            crl_status="Good",
+            details=("OCSP responder reports certificate revoked",),
+        )
+
+        model = scanner.build_report_model([self.sample_results()[0]], job, "2026-08-01T12:00:00+02:00")
+
+        endpoint = model.endpoints[0]
+        self.assertEqual(endpoint.certificate.status, "Revoked")
+        self.assertEqual(endpoint.certificate.revocation_status, "Revoked")
+        self.assertEqual(endpoint.certificate.ocsp_status, "Revoked")
+        self.assertEqual(endpoint.certificate.crl_status, "Good")
+        self.assertEqual(endpoint.pki["Revocation status"], "Revoked")
+        self.assertIn("CERTIFICATE_REVOKED", endpoint.finding_ids)
+        self.assertTrue(any(finding.finding_id == "CERTIFICATE_REVOKED" for finding in model.findings))
 
     def test_html_escapes_scan_data_and_uses_no_external_urls(self):
         job = self.sample_job()
@@ -1005,6 +1042,9 @@ class TerminalOutputTests(unittest.TestCase):
             "TLS Scan Public Web PKI",
             "Demo Public Root CA",
             "Passed",
+            "Not Tested",
+            "Not Tested",
+            "Not Tested",
             "OK",
             "",
         ]
@@ -1013,6 +1053,9 @@ class TerminalOutputTests(unittest.TestCase):
 
         self.assertIn("Certificate Trust Classification", headers)
         self.assertIn("Certificate Chain Validation", headers)
+        self.assertIn("Certificate Revocation", headers)
+        self.assertIn("Certificate OCSP", headers)
+        self.assertIn("Certificate CRL", headers)
         self.assertEqual(len(headers), len(row[:-1]))
 
 class CsvExportTests(unittest.TestCase):
@@ -1023,7 +1066,7 @@ class CsvExportTests(unittest.TestCase):
             ports="fast",
             ip=False,
         )
-        results = [["finding"]]
+        results = [[f"field-{index}" for index in range(26)]]
 
         headers, rows = scanner.build_csv_export(
             results,
@@ -1038,6 +1081,10 @@ class CsvExportTests(unittest.TestCase):
         self.assertIn("Certificate Key Type", headers)
         self.assertIn("Certificate Key Size", headers)
         self.assertIn("Certificate Signature Algorithm", headers)
+        self.assertIn("Certificate Revocation", headers)
+        self.assertIn("Certificate OCSP", headers)
+        self.assertIn("Certificate CRL", headers)
+        self.assertEqual(len(headers), len(rows[0]))
         self.assertEqual(
             headers[-5:],
             [
@@ -1902,6 +1949,77 @@ class PkiTrustStoreTests(unittest.TestCase):
 
         self.assertEqual(result.trust_classification, 'PRIVATE_TRUSTED')
         self.assertNotEqual(result.trust_classification, 'UNTRUSTED')
+
+    def test_ocsp_responder_key_hash_uses_issuer_public_key_identifier(self):
+        _leaf, root = self.make_chain()
+        response = Mock(
+            responder_name=None,
+            responder_key_hash=pki.public_key_identifier(root.public_key()),
+            signature=b"signature",
+            tbs_response_bytes=b"tbs",
+            signature_hash_algorithm=hashes.SHA256(),
+        )
+
+        with patch("tls_scanner.pki.verify_tbs_signature", return_value=True) as verify:
+            self.assertTrue(pki.verify_ocsp_response_signature(response, root))
+
+        verify.assert_called_once_with(b"signature", b"tbs", root.public_key(), response.signature_hash_algorithm)
+
+    def test_revocation_validation_disabled_is_not_tested(self):
+        leaf, root = self.make_chain()
+
+        result = scanner.validate_certificate_revocation(
+            scanner.PeerCertificateChain((leaf, root)),
+            enabled=False,
+        )
+
+        self.assertEqual(result.revocation_status, 'Not Tested')
+        self.assertEqual(result.ocsp_status, 'Not Tested')
+        self.assertEqual(result.crl_status, 'Not Tested')
+
+    def test_revocation_validation_without_issuer_is_not_tested(self):
+        leaf, _root = self.make_chain()
+
+        result = scanner.validate_certificate_revocation(
+            scanner.PeerCertificateChain((leaf,)),
+            enabled=True,
+        )
+
+        self.assertEqual(result.revocation_status, 'Not Tested')
+        self.assertIn('issuer certificate not presented', result.details[0])
+
+    def test_revocation_validation_marks_revoked_when_ocsp_revoked(self):
+        leaf, root = self.make_chain()
+
+        with patch('tls_scanner.pki.check_ocsp_revocation', return_value=('Revoked', 'ocsp revoked')), patch(
+            'tls_scanner.pki.check_crl_revocation', return_value=('Good', 'crl good')
+        ):
+            result = scanner.validate_certificate_revocation(
+                scanner.PeerCertificateChain((leaf, root)),
+                enabled=True,
+            )
+
+        self.assertEqual(result.revocation_status, 'Revoked')
+        self.assertEqual(result.ocsp_status, 'Revoked')
+        self.assertEqual(result.crl_status, 'Good')
+        self.assertEqual(result.details, ('ocsp revoked', 'crl good'))
+
+    def test_revocation_url_rejects_private_resolved_hosts_by_default(self):
+        with patch('tls_scanner.pki.socket.getaddrinfo', return_value=[(socket.AF_INET, socket.SOCK_STREAM, 6, '', ('127.0.0.1', 80))]):
+            with self.assertRaisesRegex(ValueError, 'private or local address'):
+                pki.validate_revocation_url('http://ocsp.example.test/status')
+
+    def test_revocation_fetch_enforces_response_size_limit(self):
+        response = Mock()
+        response.read.return_value = b'x' * 6
+        response.__enter__ = Mock(return_value=response)
+        response.__exit__ = Mock(return_value=None)
+        opener = Mock()
+        opener.open.return_value = response
+
+        with patch('tls_scanner.pki.validate_revocation_url'), patch('tls_scanner.pki.build_opener', return_value=opener):
+            with self.assertRaisesRegex(ValueError, 'exceeds configured size limit'):
+                pki.fetch_url('http://ocsp.example.test/status', timeout=5, max_response_bytes=5)
 
 
 # Endpoint grades use the weakest finding for each individual host and port.

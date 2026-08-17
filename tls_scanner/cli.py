@@ -258,6 +258,9 @@ def build_terminal_headers(job):
             "Certificate Trusted By",
             "Certificate Trust Anchor",
             "Certificate Chain Validation",
+            "Certificate Revocation",
+            "Certificate OCSP",
+            "Certificate CRL",
             "Compliance",
         ]
     )
@@ -287,6 +290,13 @@ def print_dry_run(job, export_paths):
         print(f"Custom trust stores: {len(custom_stores)}")
         for store in custom_stores:
             print(f"- {store.store_name} ({store.store_type})")
+    print(f"Certificate revocation validation: {'enabled' if job.certificate_revocation_enabled else 'disabled'}")
+    if job.certificate_revocation_enabled:
+        print(f"OCSP checks: {'enabled' if job.certificate_revocation_ocsp_enabled else 'disabled'}")
+        print(f"CRL checks: {'enabled' if job.certificate_revocation_crl_enabled else 'disabled'}")
+        print(f"Revocation timeout: {job.certificate_revocation_timeout_seconds} seconds")
+        print(f"Revocation response limit: {job.certificate_revocation_max_response_bytes} bytes")
+        print(f"Private revocation URLs: {'allowed' if job.certificate_revocation_allow_private_urls else 'blocked'}")
     if job.policies:
         print(f"Policy mode: {job.policy_mode}")
         print("Policies:")

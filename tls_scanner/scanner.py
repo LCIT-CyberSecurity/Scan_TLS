@@ -18,8 +18,14 @@ import time
 from .checks import build_certificate_info, certificate_crypto_summary
 from .crypto_policy import evaluate_compliance, extract_cipher_suites
 from .network import resolve_fqdn
-from .pki import TRUST_UNTRUSTED, collect_peer_certificate_chain, trust_result_not_tested, validate_peer_chain
+from .pki import REVOCATION_REVOKED, TRUST_UNTRUSTED, collect_peer_certificate_chain, revocation_result_not_tested, trust_result_not_tested, validate_certificate_revocation, validate_peer_chain
 from .pqc import evaluate_pqc_compliance, probe_pqc_key_exchange
+
+
+def trust_display_values(trust_result):
+    if trust_result.trust_classification == TRUST_UNTRUSTED:
+        return "N/A", "N/A"
+    return ", ".join(trust_result.trusted_by) or "N/A", trust_result.trust_anchor or "N/A"
 
 
 def load_dependencies():
@@ -116,8 +122,11 @@ def collect_scan_results(scanner, args, results, findings, fqdn_cache):
             certificate_output = port_info["script"].get("ssl-cert", "")
             certificate_info = build_certificate_info(certificate_output)
             endpoint_id = f"{host}:{port}/tcp"
-            if args.certificate_trust_enabled:
+            if args.certificate_trust_enabled or args.certificate_revocation_enabled:
                 chain = collect_peer_certificate_chain(host, port, fqdn)
+            else:
+                chain = None
+            if args.certificate_trust_enabled and chain is not None:
                 trust_result = validate_peer_chain(
                     chain,
                     args.certificate_trust_stores,
@@ -125,7 +134,20 @@ def collect_scan_results(scanner, args, results, findings, fqdn_cache):
                 )
             else:
                 trust_result = trust_result_not_tested("trust validation disabled")
+            if args.certificate_revocation_enabled and chain is not None:
+                revocation_result = validate_certificate_revocation(
+                    chain,
+                    enabled=args.certificate_revocation_enabled,
+                    ocsp_enabled=args.certificate_revocation_ocsp_enabled,
+                    crl_enabled=args.certificate_revocation_crl_enabled,
+                    timeout_seconds=args.certificate_revocation_timeout_seconds,
+                    max_response_bytes=args.certificate_revocation_max_response_bytes,
+                    allow_private_urls=args.certificate_revocation_allow_private_urls,
+                )
+            else:
+                revocation_result = revocation_result_not_tested("revocation validation disabled")
             args.certificate_trust_results[endpoint_id] = trust_result
+            args.certificate_revocation_results[endpoint_id] = revocation_result
             public_key_type = certificate_info.public_key_type
             public_key_bits = certificate_info.public_key_bits
             public_key = public_key_type
@@ -163,6 +185,8 @@ def collect_scan_results(scanner, args, results, findings, fqdn_cache):
                     )
                 if trust_result.trust_classification == TRUST_UNTRUSTED:
                     compliance, reason = "KO", "Certificate chain untrusted"
+                if revocation_result.revocation_status == REVOCATION_REVOKED:
+                    compliance, reason = "KO", "Certificate revoked"
                 finding = {
                     "tls_version": tls_version,
                     "cipher_suite": cipher_suite,
@@ -171,6 +195,7 @@ def collect_scan_results(scanner, args, results, findings, fqdn_cache):
                     "public_key_type": public_key_type,
                     "public_key_bits": public_key_bits,
                     "trust_classification": trust_result.trust_classification,
+                    "revocation_status": revocation_result.revocation_status,
                 }
                 findings.setdefault((host, port), []).append(finding)
                 row = [
@@ -200,9 +225,11 @@ def collect_scan_results(scanner, args, results, findings, fqdn_cache):
                         else "unknown",
                         certificate_info.signature_algorithm or "unknown",
                         trust_result.trust_classification,
-                        ", ".join(trust_result.trusted_by) or "None",
-                        trust_result.trust_anchor or "None",
+                        *trust_display_values(trust_result),
                         trust_result.chain_validation_status,
+                        revocation_result.revocation_status,
+                        revocation_result.ocsp_status,
+                        revocation_result.crl_status,
                         compliance,
                         reason,
                     ]

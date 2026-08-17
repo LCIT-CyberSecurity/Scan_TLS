@@ -322,6 +322,35 @@ def parse_trust_config(certificate_config):
     return trust_enabled, public_enabled, stores
 
 
+def parse_revocation_config(certificate_config):
+    revocation_config = require_mapping(certificate_config.get("revocation", {}), "checks.certificate.revocation")
+    enabled = revocation_config.get("enabled", False)
+    if not isinstance(enabled, bool):
+        raise ConfigError("checks.certificate.revocation.enabled must be a boolean")
+
+    ocsp_enabled = revocation_config.get("ocsp", True)
+    if not isinstance(ocsp_enabled, bool):
+        raise ConfigError("checks.certificate.revocation.ocsp must be a boolean")
+
+    crl_enabled = revocation_config.get("crl", True)
+    if not isinstance(crl_enabled, bool):
+        raise ConfigError("checks.certificate.revocation.crl must be a boolean")
+
+    timeout_seconds = revocation_config.get("timeout_seconds", 5)
+    if not isinstance(timeout_seconds, int) or isinstance(timeout_seconds, bool) or timeout_seconds < 1 or timeout_seconds > 30:
+        raise ConfigError("checks.certificate.revocation.timeout_seconds must be between 1 and 30")
+
+    max_response_bytes = revocation_config.get("max_response_bytes", 1048576)
+    if not isinstance(max_response_bytes, int) or isinstance(max_response_bytes, bool) or max_response_bytes < 1024 or max_response_bytes > 10485760:
+        raise ConfigError("checks.certificate.revocation.max_response_bytes must be between 1024 and 10485760")
+
+    allow_private_urls = revocation_config.get("allow_private_urls", False)
+    if not isinstance(allow_private_urls, bool):
+        raise ConfigError("checks.certificate.revocation.allow_private_urls must be a boolean")
+
+    return enabled, ocsp_enabled, crl_enabled, timeout_seconds, max_response_bytes, allow_private_urls
+
+
 def parse_checks_config(value):
     checks_config = require_mapping(value, "checks")
     certificate_config = require_mapping(
@@ -342,7 +371,8 @@ def parse_checks_config(value):
         raise ConfigError("checks.certificate.expires_within_days must be a non-negative integer")
 
     trust_enabled, public_enabled, trust_stores = parse_trust_config(certificate_config)
-    return enabled, expires_within_days, trust_enabled, public_enabled, trust_stores
+    revocation = parse_revocation_config(certificate_config)
+    return (enabled, expires_within_days, trust_enabled, public_enabled, trust_stores, *revocation)
 
 
 def load_policy_file(policy_file):
@@ -452,7 +482,19 @@ def build_job_from_sections(scan_config, export_config, logging_config, targets,
     if not isinstance(resolve_dns, bool):
         raise ConfigError("scan.resolve_dns must be a boolean")
     workers = validate_workers(scan_config.get("workers", DEFAULT_WORKERS))
-    certificate_findings_enabled, certificate_expires_within_days, certificate_trust_enabled, certificate_public_trust_store_enabled, certificate_trust_stores = parse_checks_config(checks_config)
+    (
+        certificate_findings_enabled,
+        certificate_expires_within_days,
+        certificate_trust_enabled,
+        certificate_public_trust_store_enabled,
+        certificate_trust_stores,
+        certificate_revocation_enabled,
+        certificate_revocation_ocsp_enabled,
+        certificate_revocation_crl_enabled,
+        certificate_revocation_timeout_seconds,
+        certificate_revocation_max_response_bytes,
+        certificate_revocation_allow_private_urls,
+    ) = parse_checks_config(checks_config)
 
     export_filename = export_config.get("filename")
     if export_filename is not None and not isinstance(export_filename, str):
@@ -508,6 +550,12 @@ def build_job_from_sections(scan_config, export_config, logging_config, targets,
         certificate_trust_enabled=certificate_trust_enabled,
         certificate_public_trust_store_enabled=certificate_public_trust_store_enabled,
         certificate_trust_stores=certificate_trust_stores,
+        certificate_revocation_enabled=certificate_revocation_enabled,
+        certificate_revocation_ocsp_enabled=certificate_revocation_ocsp_enabled,
+        certificate_revocation_crl_enabled=certificate_revocation_crl_enabled,
+        certificate_revocation_timeout_seconds=certificate_revocation_timeout_seconds,
+        certificate_revocation_max_response_bytes=certificate_revocation_max_response_bytes,
+        certificate_revocation_allow_private_urls=certificate_revocation_allow_private_urls,
     )
 
 

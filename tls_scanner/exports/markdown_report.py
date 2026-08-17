@@ -11,10 +11,15 @@ Produces:
 
 from ..config import config_targets_to_list
 from ..models import SecurityFinding
+from ..pki import TRUST_UNTRUSTED
 
 
 def markdown_escape(value):
     return str(value).replace("|", "\\|").replace("\n", " ")
+
+
+def certificate_trust_display_values(certificate):
+    return ", ".join(certificate.trusted_by) or "N/A", certificate.trust_anchor or "N/A"
 
 
 def sort_port(value):
@@ -710,13 +715,13 @@ def build_markdown_report_from_model(model):
         "",
         "## Certificate Inventory",
         "",
-        "| Endpoint | Subject | Issuer | SAN | Expiration | Remaining Days | Status | Key | Signature | Trust Classification | Trusted By | Trust Anchor | Hostname Validation | Chain Validation | Revocation |",
-        "| --- | --- | --- | --- | --- | ---: | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
+        "| Endpoint | Subject | Issuer | SAN | Expiration | Remaining Days | Status | Key | Signature | Trust Classification | Trusted By | Trust Anchor | Hostname Validation | Chain Validation | Revocation | OCSP | CRL |",
+        "| --- | --- | --- | --- | --- | ---: | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |",
     ])
     for endpoint in model.endpoints:
         cert = endpoint.certificate
         key = f"{cert.key_type} {cert.key_size or ''}".strip()
-        lines.append("| " + " | ".join(markdown_escape(value) for value in [endpoint.endpoint_id, cert.subject, cert.issuer, ', '.join(cert.san), cert.valid_until, cert.remaining_days if cert.remaining_days is not None else 'unknown', cert.status, key, cert.signature_algorithm, cert.trust_classification, ', '.join(cert.trusted_by) or 'None', cert.trust_anchor or 'None', cert.hostname_validation_status, cert.chain_validation_status, cert.revocation_status]) + " |")
+        lines.append("| " + " | ".join(markdown_escape(value) for value in [endpoint.endpoint_id, cert.subject, cert.issuer, ', '.join(cert.san), cert.valid_until, cert.remaining_days if cert.remaining_days is not None else 'unknown', cert.status, key, cert.signature_algorithm, cert.trust_classification, *certificate_trust_display_values(cert), cert.hostname_validation_status, cert.chain_validation_status, cert.revocation_status, cert.ocsp_status, cert.crl_status]) + " |")
 
     lines.extend([
         "",
@@ -729,7 +734,7 @@ def build_markdown_report_from_model(model):
     ])
     for endpoint in model.endpoints:
         cert = endpoint.certificate
-        lines.append("| " + " | ".join(markdown_escape(value) for value in [endpoint.endpoint_id, cert.trust_classification, cert.chain_validation_status, ', '.join(cert.trusted_by) or 'None', cert.trust_anchor or 'None']) + " |")
+        lines.append("| " + " | ".join(markdown_escape(value) for value in [endpoint.endpoint_id, cert.trust_classification, cert.chain_validation_status, *certificate_trust_display_values(cert)]) + " |")
     lines.extend([
         "",
         "### Trust Store Results",
@@ -743,7 +748,7 @@ def build_markdown_report_from_model(model):
             any_store_result = True
             lines.append("| " + " | ".join(markdown_escape(value) for value in [endpoint.endpoint_id, result.get('store_name', '-'), result.get('status', '-'), result.get('trust_anchor_subject', '') or 'None', result.get('validation_error', '') or '']) + " |")
     if not any_store_result:
-        lines.append("| - | - | Not Tested | None | |")
+        lines.append("| - | - | Not Tested | N/A | |")
 
     lines.extend([
         "",

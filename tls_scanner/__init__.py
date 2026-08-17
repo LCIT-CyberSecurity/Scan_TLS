@@ -88,13 +88,15 @@ from .exports.paths import (
     write_exports,
 )
 from .logging_config import configure_logging
-from .models import CertificateInfo, CertificateTrustResult, ConfigError, EncryptionPolicy, LoadedTrustStore, PQCPrerequisiteError, ScanJob, SecurityFinding, TargetGroup, TrustStoreConfig, TrustStoreValidation
+from .models import CertificateInfo, CertificateRevocationResult, CertificateTrustResult, ConfigError, EncryptionPolicy, LoadedTrustStore, PQCPrerequisiteError, ScanJob, SecurityFinding, TargetGroup, TrustStoreConfig, TrustStoreValidation
 from .network import normalize_targets, parse_ports, resolve_fqdn, resolve_target_fqdns
 from .pki import (
     PUBLIC_TRUST_STORE_NAME,
     PeerCertificateChain,
     collect_peer_certificate_chain,
+    revocation_result_not_tested,
     load_trust_stores,
+    validate_certificate_revocation,
     validate_peer_chain,
 )
 from .pqc import (
