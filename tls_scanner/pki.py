@@ -53,6 +53,8 @@ PEM_CERTIFICATE_RE = re.compile(
     re.DOTALL,
 )
 
+SMTP_STARTTLS_PORTS = {25, 587}
+
 
 @dataclass(frozen=True)
 class PeerCertificateChain:
@@ -222,11 +224,24 @@ def safe_sni_name(hostname: str) -> str:
         return hostname if hostname else ""
 
 
+def starttls_protocol_for_port(port: int | str) -> str:
+    try:
+        normalized_port = int(port)
+    except (TypeError, ValueError):
+        return ""
+    if normalized_port in SMTP_STARTTLS_PORTS:
+        return "smtp"
+    return ""
+
+
 def collect_peer_certificate_chain(host: str, port: int | str, fqdn: str = "", timeout: int = 10) -> PeerCertificateChain:
     if shutil.which("openssl") is None:
         return PeerCertificateChain((), "error", "openssl is required to collect the peer certificate chain")
     endpoint = f"{host}:{port}"
     command = ["openssl", "s_client", "-showcerts", "-connect", endpoint]
+    starttls_protocol = starttls_protocol_for_port(port)
+    if starttls_protocol:
+        command.extend(["-starttls", starttls_protocol])
     server_name = safe_sni_name(fqdn or host)
     if server_name:
         command.extend(["-servername", server_name])

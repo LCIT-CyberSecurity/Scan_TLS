@@ -85,7 +85,7 @@ def list_config_reports(config):
     return names
 
 
-def select_config_report(config, report_name=None):
+def indexed_config_reports(config):
     reports = config.get("reports")
     if reports is None:
         return None
@@ -101,7 +101,17 @@ def select_config_report(config, report_name=None):
         name = validate_config_name(report.get("name"), "reports[].name")
         if name in indexed_reports:
             raise ConfigError(f"duplicate report name: {name}")
+        run_by_default = report.get("run_by_default", False)
+        if not isinstance(run_by_default, bool):
+            raise ConfigError(f"report {name}.run_by_default must be a boolean")
         indexed_reports[name] = report
+    return indexed_reports
+
+
+def select_config_report(config, report_name=None):
+    indexed_reports = indexed_config_reports(config)
+    if indexed_reports is None:
+        return None
 
     if report_name:
         validate_config_name(report_name, "--report")
@@ -116,6 +126,29 @@ def select_config_report(config, report_name=None):
 
     available = ", ".join(sorted(indexed_reports))
     raise ConfigError(f"multiple reports configured; use --report NAME. Available reports: {available}")
+
+
+def select_default_config_reports(config):
+    indexed_reports = indexed_config_reports(config)
+    if indexed_reports is None:
+        return None
+    selected = tuple(report for report in indexed_reports.values() if report.get("run_by_default", False))
+    if selected:
+        return selected
+    if len(indexed_reports) == 1:
+        return (next(iter(indexed_reports.values())),)
+    available = ", ".join(sorted(indexed_reports))
+    raise ConfigError(
+        "multiple reports configured; use --report NAME, --all-reports, "
+        f"or set run_by_default: true on one or more reports. Available reports: {available}"
+    )
+
+
+def select_all_config_reports(config):
+    indexed_reports = indexed_config_reports(config)
+    if indexed_reports is None:
+        return None
+    return tuple(indexed_reports.values())
 
 
 def merge_mappings(*mappings):
@@ -519,6 +552,14 @@ def build_config_scan_job(config, report_name=None):
     )
     job.policies = (load_default_policy(),)
     return job
+
+
+def build_config_scan_jobs(config, all_reports=False):
+    if "reports" not in config:
+        return (build_config_scan_job(config),)
+
+    reports = select_all_config_reports(config) if all_reports else select_default_config_reports(config)
+    return tuple(build_config_scan_job(config, report["name"]) for report in reports)
 
 
 def load_cli_policies(args):

@@ -18,8 +18,9 @@ import uuid
 
 from .config import (
     build_cli_scan_job,
-    build_config_scan_job,
+    build_config_scan_jobs,
     build_scan_job,
+    load_cli_policies,
     list_config_reports,
     validate_workers,
     load_yaml_config,
@@ -100,6 +101,11 @@ def parse_args():
         "--report",
         metavar="NAME",
         help="run this report definition from the config file",
+    )
+    parser.add_argument(
+        "--all-reports",
+        action="store_true",
+        help="run every report definition from the config file",
     )
     parser.add_argument(
         "--list-reports",
@@ -199,6 +205,7 @@ def parse_args():
     args.log_level_was_explicit = has_cli_option(raw_args, "--log-level")
     args.log_file_was_explicit = has_cli_option(raw_args, "--log-file")
     args.report_was_explicit = has_cli_option(raw_args, "--report")
+    args.all_reports_was_explicit = has_cli_option(raw_args, "--all-reports")
     args.policy_was_explicit = has_cli_option(raw_args, "--policy", "--policy-file")
 
     explicit_export = args.export_filename
@@ -292,20 +299,55 @@ def print_dry_run(job, export_paths):
             print(f"- {path}")
 
 
-# Main deliberately stays as orchestration: build job, run scan, grade, display, export.
-def main():
-    cli_args = parse_args()
-    try:
-        if getattr(cli_args, "list_reports", False):
-            config_path = cli_args.config or DEFAULT_CONFIG_FILE
-            for report_name in list_config_reports(load_yaml_config(config_path)):
-                print(report_name)
-            return 0
-        job = build_scan_job(cli_args)
-    except ConfigError as error:
-        print(error, file=sys.stderr)
-        return 1
+def apply_cli_overrides(job, args):
+    if args.targets is not None:
+        job.targets = args.targets
+        job.target_groups = ()
+    if getattr(args, "ports_was_explicit", False):
+        job.ports = args.ports
+    if getattr(args, "crypto_was_explicit", False):
+        job.crypto = args.crypto
+    if getattr(args, "workers_was_explicit", False):
+        job.workers = args.workers
+    if getattr(args, "ip_was_explicit", False):
+        job.ip = args.ip
+    if getattr(args, "export_was_explicit", False) or getattr(args, "csv_filename", None):
+        job.csv_filename = args.csv_filename
+        job.export_format = args.export_format
+        job.export_formats = ()
+    if getattr(args, "log_level_was_explicit", False):
+        job.log_level = args.log_level
+    if getattr(args, "no_log_file", False):
+        job.log_file = None
+    elif getattr(args, "log_file_was_explicit", False):
+        job.log_file = args.log_file
+    if getattr(args, "policy_was_explicit", False):
+        job.policies = load_cli_policies(args)
+    job.dry_run = getattr(args, "dry_run", False)
+    return job
 
+
+def build_scan_jobs(args):
+    if getattr(args, "all_reports", False) and getattr(args, "report", None):
+        raise ConfigError("use either --report or --all-reports, not both")
+    if getattr(args, "all_reports", False) and getattr(args, "targets", None) is not None:
+        raise ConfigError("--all-reports cannot be used with positional targets")
+
+    config_path = getattr(args, "config", None)
+    targets = getattr(args, "targets", None)
+    if config_path is None and targets is not None:
+        return (build_scan_job(args),)
+
+    config = load_yaml_config(config_path or DEFAULT_CONFIG_FILE)
+    if getattr(args, "report", None):
+        jobs = (build_scan_job(args),)
+    else:
+        jobs = build_config_scan_jobs(config, all_reports=getattr(args, "all_reports", False))
+        jobs = tuple(apply_cli_overrides(job, args) for job in jobs)
+    return jobs
+
+
+def run_job(job, show_banner=True):
     job.scan_run_id = str(uuid.uuid4())
     scan_start = time.monotonic()
     try:
@@ -325,7 +367,8 @@ def main():
     if job.dry_run:
         print_dry_run(job, export_paths)
         return 0
-    print_startup_banner()
+    if show_banner:
+        print_startup_banner()
     targets = normalize_targets(job.targets)
     logger.info(
         "scan_start targets=%s ports=%s workers=%s crypto=%s dns=%s log_level=%s log_file=%s export=%s",
@@ -448,4 +491,27 @@ def main():
 
     duration_seconds = time.monotonic() - scan_start
     logger.info("scan_end status=success duration_seconds=%.3f", duration_seconds)
+    return 0
+
+
+# Main deliberately stays as orchestration: build jobs, run scans, grade, display, export.
+def main():
+    cli_args = parse_args()
+    try:
+        if getattr(cli_args, "list_reports", False):
+            config_path = cli_args.config or DEFAULT_CONFIG_FILE
+            for report_name in list_config_reports(load_yaml_config(config_path)):
+                print(report_name)
+            return 0
+        jobs = build_scan_jobs(cli_args)
+    except ConfigError as error:
+        print(error, file=sys.stderr)
+        return 1
+
+    for index, job in enumerate(jobs):
+        if len(jobs) > 1:
+            print(f"\n=== Report {index + 1}/{len(jobs)}: {job.report_name} ===")
+        result = run_job(job, show_banner=index == 0)
+        if result != 0:
+            return result
     return 0

@@ -27,6 +27,7 @@ defaults:
 reports:
   - name: external_anssi_weekly
     description: Public-facing endpoints checked against ANSSI TLS policy.
+    run_by_default: true
     frequency: weekly
     target_groups:
       - external_public_endpoints
@@ -37,6 +38,7 @@ reports:
 
   - name: pki_trust_test
     description: Public PKI trust-store validation test profile.
+    run_by_default: false
     frequency: manual
     scan:
       ports: 443

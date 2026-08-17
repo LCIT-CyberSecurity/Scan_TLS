@@ -10,10 +10,11 @@ Produces:
 """
 
 from .checks import build_certificate_info, certificate_crypto_summary
-from .cli import build_terminal_headers, has_cli_option, main, parse_args, print_dry_run, print_startup_banner
+from .cli import build_scan_jobs, build_terminal_headers, has_cli_option, main, parse_args, print_dry_run, print_startup_banner
 from .config import (
     build_cli_scan_job,
     build_config_scan_job,
+    build_config_scan_jobs,
     build_job_from_sections,
     build_scan_job,
     config_targets_to_cli_value,
@@ -33,7 +34,9 @@ from .config import (
     parse_ports_config,
     require_mapping,
     validate_workers,
+    select_all_config_reports,
     select_config_report,
+    select_default_config_reports,
     validate_config_name,
 )
 from .constants import (

@@ -517,6 +517,36 @@ reports:
         with self.assertRaisesRegex(scanner.ConfigError, "multiple reports configured"):
             scanner.select_config_report(config)
 
+    def test_selects_reports_marked_run_by_default(self):
+        config = {
+            "reports": [
+                {"name": "external_weekly", "run_by_default": True},
+                {"name": "pki_trust_test", "run_by_default": False},
+            ]
+        }
+
+        reports = scanner.select_default_config_reports(config)
+
+        self.assertEqual([report["name"] for report in reports], ["external_weekly"])
+
+    def test_selects_all_reports_for_explicit_all_reports_mode(self):
+        config = {
+            "reports": [
+                {"name": "external_weekly", "run_by_default": True},
+                {"name": "pki_trust_test", "run_by_default": False},
+            ]
+        }
+
+        reports = scanner.select_all_config_reports(config)
+
+        self.assertEqual([report["name"] for report in reports], ["external_weekly", "pki_trust_test"])
+
+    def test_rejects_non_boolean_run_by_default(self):
+        config = {"reports": [{"name": "external_weekly", "run_by_default": "yes"}]}
+
+        with self.assertRaisesRegex(scanner.ConfigError, "run_by_default must be a boolean"):
+            scanner.select_default_config_reports(config)
+
     def test_builds_timestamped_export_paths(self):
         job = scanner.ScanJob(
             targets="example.com",
@@ -1823,6 +1853,29 @@ class PkiTrustStoreTests(unittest.TestCase):
         )
 
         self.assertEqual(result.trust_classification, 'NOT_TESTED')
+
+    def test_collect_peer_certificate_chain_uses_smtp_starttls_on_submission_port(self):
+        completed = SimpleNamespace(stdout=b'', stderr=b'no peer certificate available')
+
+        with patch('tls_scanner.pki.shutil.which', return_value='/usr/bin/openssl'), patch(
+            'tls_scanner.pki.subprocess.run', return_value=completed
+        ) as run:
+            result = scanner.collect_peer_certificate_chain('smtp.free.fr', 587, 'smtp.free.fr')
+
+        command = run.call_args.args[0]
+        self.assertIn('-starttls', command)
+        self.assertEqual(command[command.index('-starttls') + 1], 'smtp')
+        self.assertEqual(result.status, 'not_tested')
+
+    def test_collect_peer_certificate_chain_keeps_direct_tls_for_smtps_port(self):
+        completed = SimpleNamespace(stdout=b'', stderr=b'no peer certificate available')
+
+        with patch('tls_scanner.pki.shutil.which', return_value='/usr/bin/openssl'), patch(
+            'tls_scanner.pki.subprocess.run', return_value=completed
+        ) as run:
+            scanner.collect_peer_certificate_chain('smtp.free.fr', 465, 'smtp.free.fr')
+
+        self.assertNotIn('-starttls', run.call_args.args[0])
 
     def test_custom_file_missing_raises_config_error(self):
         with tempfile.TemporaryDirectory() as temp_dir:
