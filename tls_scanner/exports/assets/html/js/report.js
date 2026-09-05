@@ -5,18 +5,42 @@
   const $ = (id) => document.getElementById(id);
   const severityOrder = {critical:0, high:1, medium:2, low:3, informational:4, none:5};
   const gradeOrder = {'A+':0, A:1, B:2, C:3, D:4, F:5, 'Not Tested':6};
-  const severityColors = {critical:'#d92d20', high:'#f04438', medium:'#f79009', low:'#facc15', informational:'#2563eb', none:'#64748b'};
-  const complianceColors = ['#16a34a','#ef4444','#f59e0b','#64748b'];
-  const gradeColors = {'A+':'#16a34a', A:'#22c55e', B:'#3b82f6', C:'#facc15', D:'#f97316', F:'#ef4444', 'Not Tested':'#64748b'};
+  const severityColors = {critical:'#b42318', high:'#d92d20', medium:'#f79009', low:'#ca8a04', informational:'#2563eb', none:'#64748b'};
+    const tlsOrder = ['SSL 2.0','SSL 3.0','TLS 1.0','TLS 1.1','TLS 1.2','TLS 1.3'];
+  const certOrder = ['Valid','Expiring soon','Expired','Revoked','Self-signed','Weak key','Weak signature','Validation not tested'];
+  const expirationOrder = ['Already expired','Within 7 days','Within 30 days','Within 60 days','Within 90 days','After 90 days'];
 
   const normalize = (value) => String(value == null || value === '' ? '-' : value);
   const pct = (part,total) => total ? Math.round(Number(part || 0) * 100 / total) : 0;
+  const sum = (obj) => Object.values(obj || {}).reduce((a,b) => a + Number(b || 0), 0);
 
   function el(tag, cls, value){
     const node = document.createElement(tag);
     if(cls) node.className = cls;
     if(value !== undefined) node.textContent = normalize(value);
     return node;
+  }
+
+  function icon(name){
+    const svg = document.createElementNS('http://www.w3.org/2000/svg','svg');
+    svg.setAttribute('viewBox','0 0 24 24');
+    svg.setAttribute('aria-hidden','true');
+    svg.setAttribute('focusable','false');
+    const paths = {
+      shield:['M12 3l7 3v5c0 4.7-2.8 8.6-7 10-4.2-1.4-7-5.3-7-10V6l7-3z','M9 12l2 2 4-5'],
+      activity:['M4 12h4l2-6 4 12 2-6h4'],
+      certificate:['M7 3h10v10H7z','M9 17l3-2 3 2v4l-3-2-3 2z'],
+      clock:['M12 4a8 8 0 108 8 8 8 0 00-8-8z','M12 8v5l3 2'],
+      quantum:['M12 4a8 8 0 100 16 8 8 0 000-16z','M4 12h16','M12 4c2 2 3 5 3 8s-1 6-3 8','M12 4c-2 2-3 5-3 8s1 6 3 8'],
+      server:['M5 6h14v5H5z','M5 13h14v5H5z','M8 8h.1','M8 15h.1'],
+      alert:['M12 4l9 16H3L12 4z','M12 9v5','M12 17h.1'],
+    }[name] || [];
+    paths.forEach((d) => {
+      const path = document.createElementNS('http://www.w3.org/2000/svg','path');
+      path.setAttribute('d', d);
+      svg.append(path);
+    });
+    return svg;
   }
 
   function valueNode(value, cls){
@@ -58,6 +82,13 @@
     input.remove();
   }
 
+  function formatReportDate(value){
+    const date = new Date(value);
+    if(Number.isNaN(date.getTime())) return normalize(value);
+    const pad = (item) => String(item).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  }
+
   function csvHeaders(){
     const headers = ['IP','FQDN','Port', data.metadata.crypto_profile === 'pqc' ? 'TLS Grade' : 'Grade', 'TLS Version', 'Cipher Suite', 'Public Key', 'Certificate Validity'];
     if(data.metadata.crypto_profile === 'pqc') headers.push('Key Exchange');
@@ -94,13 +125,11 @@
   function badge(value, cls){ return el('span', `badge ${cls || ''}`, value); }
   function severityClass(value){ return `severity-${String(value || 'informational').toLowerCase()}`; }
   function statusClass(value){ return `status-${String(value || 'not_tested').toLowerCase().replace(/[\s-]+/g,'_')}`; }
-  function gradeClass(value){ return `grade-${String(value || 'not-tested').replace('+','plus').replace(/\s+/g,'-').toLowerCase()}`; }
-
-  function metricCard(label, value, tone, extra){
-    const card = el('article', `metric-card ${tone ? `tone-${tone}` : ''}`);
-    card.append(el('div','metric-label',label), el('div','metric-value',value));
-    if(extra) card.append(el('div','metric-extra',extra));
-    return card;
+  function statusBadge(value){ return badge(value, statusClass(value)); }
+  function dot(label, count, cls){
+    const item = el('div','status-line');
+    item.append(el('i', cls || ''), el('span','',label), el('strong','',count));
+    return item;
   }
 
   function infoItem(label, value, copy){
@@ -211,141 +240,186 @@
     return wrap;
   }
 
-  function barChart(title, counts, unit, colorResolver){
-    const card = el('article','card chart chart-bars');
-    card.append(el('h3','',title));
-    const total = Object.values(counts).reduce((a,b) => a + Number(b || 0), 0);
-    Object.entries(counts).forEach(([label,count]) => {
-      const row = el('div','bar-row');
-      const top = el('div','bar-top');
-      top.append(valueNode(label, 'bar-label'), el('strong','bar-value',`${count}${unit ? ` ${unit}` : ''}`));
-      const track = el('div','bar-track');
-      const fill = el('div','bar-fill');
-      fill.style.width = `${pct(count,total)}%`;
-      fill.style.background = colorResolver ? colorResolver(label) : '#2563eb';
-      track.append(fill);
-      row.append(top, track);
-      card.append(row);
-    });
-    if(!total) card.append(el('p','muted','No data available.'));
-    return card;
+  function postureTone(){
+    const s = data.statistics;
+    if(s.critical_findings || s.high_findings || s.non_compliant_endpoints) return 'high-risk';
+    if(s.endpoints_with_errors || s.endpoints_not_fully_tested) return 'needs-attention';
+    return 'strong';
   }
 
-  function donutChart(title, counts, colors){
-    const card = el('article','card chart chart-donut');
-    card.append(el('h3','',title));
-    const total = Object.values(counts).reduce((a,b) => a + Number(b || 0), 0);
-    let start = 0;
-    const stops = [];
-    Object.values(counts).forEach((count, index) => {
-      const deg = total ? Number(count || 0) * 360 / total : 0;
-      stops.push(`${colors[index % colors.length]} ${start}deg ${start + deg}deg`);
-      start += deg;
-    });
-    const visual = el('div','donut-wrap');
-    const donut = el('div','donut');
-    donut.style.background = `conic-gradient(${stops.join(',') || '#e2e8f0 0deg 360deg'})`;
-    donut.setAttribute('role','img');
-    donut.setAttribute('aria-label', Object.entries(counts).map(([k,v]) => `${k}: ${v}`).join(', '));
-    const center = el('div','donut-center');
-    center.append(el('strong','',`${total}`), el('span','','total'));
-    donut.append(center);
-    visual.append(donut);
-    const legend = el('div','legend');
-    Object.entries(counts).forEach(([label,count], index) => {
-      const item = el('span','legend-item');
-      const swatch = el('i','');
-      swatch.style.background = colors[index % colors.length];
-      item.append(swatch, valueNode(`${label}: ${count}`));
-      legend.append(item);
-    });
-    card.append(visual, legend);
-    return card;
+  function postureLabel(){
+    const tone = postureTone();
+    if(tone === 'strong') return 'Strong';
+    if(tone === 'high-risk') return 'High risk';
+    return 'Needs attention';
+  }
+
+  function initContext(){
+    const m = data.metadata, s = data.statistics;
+    const compliantPct = pct(s.compliant_endpoints, s.total_endpoints);
+    const posture = postureLabel();
+    $('postureTitle').textContent = posture === 'Strong' ? 'Your TLS security posture is policy aligned' : 'Your TLS security posture requires focused remediation';
+    const policyName = data.policies.map((p) => p.name).join(', ') || 'Legacy scanner policy';
+    [
+      ['Scan Date', formatReportDate(m.scan_timestamp), false],
+      ['Duration', m.scan_duration_seconds == null ? 'Not Recorded' : `${m.scan_duration_seconds}s`, false],
+      ['Policy', policyName, true],
+      ['Scanner Version', m.scanner_version, false],
+      ['Ports', m.ports, false],
+      ['Run ID', m.scan_run_id || '-', true],
+    ].forEach(([label,value,copy]) => $('scanContext').append(infoItem(label,value,copy)));
+    $('pageFooterMeta').textContent = `${policyName} | ${compliantPct}% compliant`;
+    priorityActions();
   }
 
   function priorityActions(){
     const s = data.statistics;
     const actions = [];
-    if(s.critical_findings) actions.push(['Critical', `${s.critical_findings} critical finding(s) need immediate ownership`, 'critical']);
-    if(s.high_findings) actions.push(['High', `${s.high_findings} high-risk finding(s) should be prioritized`, 'high']);
-    if(s.certificates_expiring_soon) actions.push(['Certificates', `${s.certificates_expiring_soon} certificate(s) expire soon`, 'medium']);
-    if(s.endpoints_with_errors) actions.push(['Coverage', `${s.endpoints_with_errors} endpoint(s) need scan reliability review`, 'low']);
-    if(!actions.length) actions.push(['Maintain', 'Keep policy monitoring and certificate renewal cadence active', 'informational']);
-    actions.slice(0,4).forEach(([label,text,tone]) => {
+    if(s.top_findings && s.top_findings.length) s.top_findings.slice(0,3).forEach((finding) => actions.push([finding.title, `${finding.affected_endpoints} impacted endpoint(s)`, finding.severity]));
+    if(!actions.length) actions.push(['No recurring weaknesses', 'Maintain monitoring cadence', 'informational']);
+    actions.forEach(([label,text,tone]) => {
       const item = el('div',`priority-item ${severityClass(tone)}`);
       item.append(badge(label, severityClass(tone)), valueNode(text));
       $('priorityActions').append(item);
     });
   }
 
-  function initContext(){
-    const m = data.metadata, s = data.statistics;
-    $('overallGrade').textContent = s.overall_grade;
-    $('overallGrade').className = gradeClass(s.overall_grade);
-    $('overallCompliance').textContent = s.compliance_status;
-    $('overallCompliance').className = `score-status ${statusClass(s.compliance_status)}`;
-    $('scoreMeta').append(
-      el('span','',`${s.total_endpoints} endpoints`),
-      el('span','',`${pct(s.compliant_endpoints, s.total_endpoints)}% compliant`)
-    );
-    const policyName = data.policies.map((p) => p.name).join(', ') || 'Legacy scanner policy';
-    const rows = [
-      ['Scan Date', m.scan_timestamp, false],
-      ['Duration', m.scan_duration_seconds == null ? 'Not Recorded' : `${m.scan_duration_seconds}s`, false],
-      ['Policy', policyName, true],
-      ['Scanner Version', m.scanner_version, false],
-      ['Ports', m.ports, false],
-      ['Run ID', m.scan_run_id || '-', true],
-    ];
-    rows.forEach(([label,value,copy]) => $('scanContext').append(infoItem(label,value,copy)));
-    priorityActions();
-  }
-
   function initKpis(){
     const s = data.statistics;
-    const severity = s.findings_by_severity || {};
-    const unique = (name) => severity[name] ? severity[name].unique : 0;
+    const compliantPct = `${pct(s.compliant_endpoints, s.total_endpoints)}% compliant`;
+    const highRisk = Number(s.critical_findings || 0) + Number(s.high_findings || 0);
     [
-      ['Hosts', s.total_hosts, 'info'],
-      ['Endpoints', s.total_endpoints, 'info'],
-      ['Critical', unique('critical'), 'critical'],
-      ['High', unique('high'), 'high'],
-      ['Medium', unique('medium'), 'medium'],
-      ['Low', unique('low'), 'low'],
-      ['Passed', s.compliant_endpoints, 'pass'],
-      ['Failed', s.non_compliant_endpoints + s.endpoints_with_errors, 'fail'],
-    ].forEach(([label,value,tone]) => $('kpis').append(metricCard(label,value,tone)));
+      ['Hosts', s.total_hosts, 'server'],
+      ['Endpoints', s.total_endpoints, 'activity'],
+      ['High risk findings', highRisk, 'alert'],
+      ['Total findings', s.finding_occurrences, 'shield'],
+      ['Compliant endpoints', compliantPct, 'certificate'],
+    ].forEach(([label,value,iconName]) => {
+      const item = el('article','kpi-item');
+      item.append(icon(iconName), el('span','kpi-label',label), el('strong','kpi-value',value));
+      $('kpis').append(item);
+    });
+  }
+
+  function horizontalBars(counts, order, classResolver){
+    const total = sum(counts);
+    const wrap = el('div','bars-compact');
+    order.forEach((label) => {
+      const count = Number(counts[label] || 0);
+      const row = el('div','bar-row');
+      const top = el('div','bar-top');
+      top.append(valueNode(label, 'bar-label'), el('strong','bar-value',count));
+      const track = el('div','bar-track');
+      const fill = el('div','bar-fill');
+      fill.style.width = `${pct(count,total)}%`;
+      if(classResolver) fill.className = `bar-fill ${classResolver(label)}`;
+      track.append(fill);
+      row.append(top, track);
+      wrap.append(row);
+    });
+    return wrap;
+  }
+
+  function donutCompliance(){
+    const s = data.statistics;
+    const total = s.total_endpoints;
+    const value = pct(s.compliant_endpoints, total);
+    const donut = el('div','donut compliance-donut');
+    donut.style.background = `conic-gradient(#16a34a 0deg ${value * 3.6}deg, #d92d20 ${value * 3.6}deg 360deg)`;
+    donut.setAttribute('role','img');
+    donut.setAttribute('aria-label', `${value}% compliant endpoints`);
+    const center = el('div','donut-center');
+    center.append(el('strong','',`${value}%`), el('span','','compliant'));
+    donut.append(center);
+    return donut;
+  }
+
+  function insight(text, tone){
+    const node = el('aside',`analytics-insight ${tone || 'info'}`);
+    node.append(el('strong','','Insight'), el('p','',text));
+    return node;
+  }
+
+  function analyticsRow(iconName, title, subtitle, visual, takeaway){
+    const row = el('article','analytics-row');
+    const head = el('div','analytics-head');
+    const iconWrap = el('div','analytics-icon');
+    iconWrap.append(icon(iconName));
+    head.append(iconWrap, el('h3','',title), el('p','',subtitle));
+    row.append(head, el('div','analytics-visual'), takeaway);
+    row.children[1].append(visual);
+    return row;
   }
 
   function initCharts(){
     const s = data.statistics;
-    $('charts').append(barChart('Grade Distribution', s.grade_distribution, '', (label) => gradeColors[label] || '#64748b'));
-    $('charts').append(donutChart('Endpoint Compliance', s.endpoint_compliance, complianceColors));
-    $('charts').append(barChart('Findings by Severity', Object.fromEntries(Object.entries(s.findings_by_severity).map(([k,v]) => [k, v.occurrences])), '', (label) => severityColors[label] || '#64748b'));
-    $('charts').append(barChart('Top Findings', Object.fromEntries(s.top_findings.map((f) => [f.title, f.affected_endpoints])), 'endpoint(s)', (label) => severityColors[(s.top_findings.find((f) => f.title === label) || {}).severity] || '#2563eb'));
-    $('charts').append(barChart('TLS Version Distribution', s.tls_version_distribution, '', (label) => label.includes('1.3') ? '#16a34a' : label.includes('1.2') ? '#2563eb' : '#f97316'));
-    $('charts').append(donutChart('Certificate Status', s.certificate_status, ['#16a34a','#facc15','#ef4444','#f97316','#d92d20','#b91c1c','#64748b']));
-    $('charts').append(barChart('Certificate Expiration Timeline', s.certificate_expiration_timeline, '', (label) => label.includes('expired') ? '#ef4444' : label.includes('7') || label.includes('30') ? '#f97316' : '#2563eb'));
-    $('charts').append(donutChart('PQC Readiness', s.pqc_readiness, ['#16a34a','#f97316','#64748b','#ef4444']));
+    const complianceList = el('div','compliance-visual');
+    complianceList.append(donutCompliance());
+    const legend = el('div','status-list');
+    Object.entries(s.endpoint_compliance).forEach(([label,count]) => legend.append(dot(label.replace(' endpoints',''), count, `dot-${label.toLowerCase().replace(/[^a-z]+/g,'-')}`)));
+    complianceList.append(legend);
+    $('charts').append(analyticsRow('shield', 'Endpoint compliance', 'Compliance status of scanned endpoints against the selected policy.', complianceList, insight(s.non_compliant_endpoints === s.total_endpoints && s.total_endpoints ? 'All scanned endpoints are non-compliant. Remediation is required.' : `${s.compliant_endpoints} of ${s.total_endpoints} endpoints are compliant.`, s.non_compliant_endpoints ? 'danger' : 'success')));
+
+    const legacy = Number(s.tls_version_distribution['SSL 2.0'] || 0) + Number(s.tls_version_distribution['SSL 3.0'] || 0) + Number(s.tls_version_distribution['TLS 1.0'] || 0) + Number(s.tls_version_distribution['TLS 1.1'] || 0);
+    $('charts').append(analyticsRow('activity', 'TLS version distribution', 'Distribution of supported TLS versions across all endpoints.', horizontalBars(s.tls_version_distribution, tlsOrder, (label) => label === 'TLS 1.3' ? 'success' : label === 'TLS 1.2' ? 'info' : 'warning'), insight(legacy ? `Legacy TLS versions are still enabled on ${legacy} endpoint occurrence(s).` : 'No legacy TLS versions were observed.', legacy ? 'warning' : 'success')));
+
+    const certList = el('div','status-list certificate-status-list');
+    certOrder.forEach((label) => certList.append(dot(label, s.certificate_status[label] || 0, `dot-cert-${label.toLowerCase().replace(/[^a-z]+/g,'-')}`)));
+    const certText = s.expired_certificates ? `${s.expired_certificates} expired certificate(s) detected. Ensure certificates are renewed and properly trusted.` : `${s.certificates_expiring_soon} certificate(s) are expiring soon.`;
+    $('charts').append(analyticsRow('certificate', 'Certificate status', 'Status of server certificates found on scanned endpoints.', certList, insight(certText, s.expired_certificates ? 'danger' : s.certificates_expiring_soon ? 'warning' : 'success')));
+
+    const expiringSoon = Number(s.certificate_expiration_timeline['Within 7 days'] || 0) + Number(s.certificate_expiration_timeline['Within 30 days'] || 0) + Number(s.certificate_expiration_timeline['Within 60 days'] || 0);
+    const expireText = `${s.certificate_expiration_timeline['Already expired'] || 0} certificate(s) are already expired. ${expiringSoon} certificate(s) expire within 60 days.`;
+    $('charts').append(analyticsRow('clock', 'Certificate expiration timeline', 'Time remaining before certificate expiration across all endpoints.', horizontalBars(s.certificate_expiration_timeline, expirationOrder, (label) => label === 'Already expired' ? 'danger' : label.includes('7') || label.includes('30') || label.includes('60') ? 'warning' : 'info'), insight(expireText, s.certificate_expiration_timeline['Already expired'] ? 'danger' : expiringSoon ? 'warning' : 'info')));
+
+    const pqc = s.pqc_readiness || {};
+    const pqcTested = Number(pqc['Endpoints supporting hybrid ML-KEM groups'] || 0) + Number(pqc['Classical cryptography only'] || 0) + Number(pqc['Endpoints with PQC scan errors'] || 0);
+    let pqcVisual;
+    let pqcInsight;
+    if(!pqcTested){
+      pqcVisual = el('div','pqc-empty-state');
+      pqcVisual.append(el('strong','','PQC testing was not enabled for this scan.'), el('p','','Enable PQC analysis to assess readiness for post-quantum cryptography.'));
+      pqcInsight = insight('No PQC negotiation data is available in this report.', 'info');
+    } else {
+      pqcVisual = horizontalBars(pqc, Object.keys(pqc), (label) => label.includes('supporting') ? 'success' : label.includes('errors') ? 'danger' : 'info');
+      pqcInsight = insight(`${pqc['Classical cryptography only'] || 0} endpoint(s) use classical cryptography only.`, 'info');
+    }
+    $('charts').append(analyticsRow('quantum', 'PQC readiness', 'Post-quantum cryptography support detected on scanned endpoints.', pqcVisual, pqcInsight));
+  }
+
+  function topFindingRow(finding, index){
+    const row = el('article','top-finding-row');
+    row.append(el('strong','rank',index + 1), badge(finding.severity, severityClass(finding.severity)), valueNode(finding.title, 'top-finding-title'), valueNode(`${finding.affected_endpoints} impacted endpoint(s)`, 'top-finding-impact'));
+    return row;
+  }
+
+  function initTopFindings(){
+    const root = $('topFindingsList');
+    const top = data.statistics.top_findings || [];
+    if(!top.length){
+      root.append(el('div','empty','No findings were identified.'));
+      return;
+    }
+    top.slice(0,6).forEach((finding, index) => root.append(topFindingRow(finding, index)));
   }
 
   function findingCard(finding){
-    const card = el('article',`finding-card card ${severityClass(finding.severity)}`);
+    const card = el('article',`finding-card ${severityClass(finding.severity)}`);
     const head = el('div','finding-head');
     const title = el('div','finding-title');
     title.append(badge(finding.severity, severityClass(finding.severity)), valueNode(finding.title, 'finding-name'));
     const impacted = el('div','impact-count');
-    impacted.append(el('strong','',finding.affected_endpoint_ids.length), el('span','','impacted endpoint(s)'));
+    impacted.append(el('strong','',finding.affected_endpoint_ids.length), el('span','','impacted endpoints'));
     head.append(title, impacted);
     const body = el('div','finding-body');
     [['Risk', finding.technical_impact], ['Recommendation', finding.remediation], ['Evidence', finding.evidence]].forEach(([label,value]) => {
-      const block = el('div','finding-block');
+      const block = el('section','finding-block');
       block.append(el('span','block-label',label), valueNode(value));
       body.append(block);
     });
     const foot = el('div','finding-foot');
-    foot.append(valueNode(finding.finding_id, 'mono'), copyButton(finding.finding_id));
-    if(finding.policy_ids && finding.policy_ids.length) foot.append(valueNode(finding.policy_ids.join(', '), 'mono'));
+    foot.append(valueNode(`ID ${finding.finding_id}`, 'mono'), copyButton(finding.finding_id));
+    if(finding.policy_ids && finding.policy_ids.length) foot.append(valueNode(`Policy ${finding.policy_ids.join(', ')}`, 'mono'));
     card.append(head, body, foot);
     return card;
   }
@@ -390,9 +464,7 @@
     return 'score-bad';
   }
 
-  function hostKey(endpoint){
-    return endpoint.hostname || endpoint.ip_address || endpoint.host_id || endpoint.endpoint_id;
-  }
+  function hostKey(endpoint){ return endpoint.hostname || endpoint.ip_address || endpoint.host_id || endpoint.endpoint_id; }
 
   function groupEndpointsByHost(endpoints){
     const grouped = new Map();
@@ -401,10 +473,7 @@
       if(!grouped.has(key)) grouped.set(key, {host:key, endpoints:[]});
       grouped.get(key).endpoints.push(endpoint);
     });
-    return Array.from(grouped.values()).map((group) => ({
-      ...group,
-      endpoints: group.endpoints.sort((a,b) => Number(a.port) - Number(b.port) || a.endpoint_id.localeCompare(b.endpoint_id)),
-    }));
+    return Array.from(grouped.values()).map((group) => ({...group,endpoints: group.endpoints.sort((a,b) => Number(a.port) - Number(b.port) || a.endpoint_id.localeCompare(b.endpoint_id))}));
   }
 
   function hostSummary(group){
@@ -417,41 +486,43 @@
     const failed = endpoints.filter((endpoint) => endpoint.compliance_status !== 'compliant').length;
     const ports = Array.from(new Set(endpoints.map((endpoint) => `${endpoint.port}/${endpoint.protocol}`)));
     const protocols = Array.from(new Set(endpoints.flatMap((endpoint) => endpoint.supported_tls_versions || [])));
-    return {score, worstGrade, highestSeverity, findings, failed, ports, protocols};
+    const certStatuses = Array.from(new Set(endpoints.map((endpoint) => endpoint.certificate.status).filter(Boolean)));
+    const trust = Array.from(new Set(endpoints.map((endpoint) => endpoint.certificate.trust_classification).filter(Boolean)));
+    return {score, worstGrade, highestSeverity, findings, failed, ports, protocols, certStatuses, trust};
   }
 
   function portList(ports){
     const list = el('div','host-port-list');
-    const visiblePorts = ports.slice(0, 8);
-    visiblePorts.forEach((port) => list.append(badge(port, 'port-badge')));
-    if(ports.length > visiblePorts.length) list.append(badge(`+${ports.length - visiblePorts.length}`, 'port-badge port-more'));
+    ports.slice(0, 8).forEach((port) => list.append(badge(port, 'port-badge')));
+    if(ports.length > 8) list.append(badge(`+${ports.length - 8}`, 'port-badge port-more'));
     list.title = ports.join(', ');
     return list;
   }
 
+  function compactCounts(group){
+    const counts = {critical:0, high:0, medium:0, low:0, informational:0};
+    group.endpoints.forEach((endpoint) => (endpoint.finding_ids || []).forEach((id) => {
+      const finding = data.findings.find((item) => item.finding_id === id);
+      if(finding) counts[finding.severity] += 1;
+    }));
+    return counts;
+  }
+
   function hostEndpointCard(group){
     const summary = hostSummary(group);
-    const card = el('article','endpoint-card host-card card');
-    const head = el('div','endpoint-head');
+    const counts = compactCounts(group);
+    const card = el('article','endpoint-card host-card');
+    const main = el('div','endpoint-main');
     const identity = el('div','endpoint-identity');
-    identity.append(valueNode(group.host, 'endpoint-host'), valueNode(`${group.endpoints.length} endpoint(s) across ${summary.ports.length} port(s)`, 'endpoint-address'), portList(summary.ports));
-    const badges = el('div','endpoint-badges');
-    badges.append(badge(summary.worstGrade, `grade-badge ${gradeClass(summary.worstGrade)}`), badge(`${summary.score}/100`, `score-badge ${scoreTone(summary.score)}`));
-    head.append(identity, badges);
-    const grid = el('div','endpoint-grid endpoint-compact-grid');
-    [
-      ['Average Score', `${summary.score}/100`, scoreTone(summary.score)],
-      ['Failed Endpoints', `${summary.failed}/${group.endpoints.length}`, summary.failed ? 'status-non_compliant' : 'status-compliant'],
-      ['Protocols', summary.protocols.join(', ') || 'Not Tested', ''],
-      ['Findings', `${summary.findings} finding(s)`, severityClass(summary.highestSeverity)],
-    ].forEach(([label,value,cls]) => {
-      const item = el('div','endpoint-field');
-      item.append(el('span','field-label',label), valueNode(value, cls));
-      grid.append(item);
-    });
-    const actions = el('div','endpoint-actions');
-    actions.append(copyButton(group.host), button('Open details', () => openHostEndpoints(group), 'button'));
-    card.append(head, grid, actions);
+    identity.append(valueNode(group.host, 'endpoint-host'), valueNode(`${group.endpoints[0].ip_address} · ${summary.ports.join(', ')}`, 'endpoint-address'));
+    identity.append(portList(summary.protocols));
+    const state = el('div','endpoint-state');
+    state.append(statusBadge(summary.failed ? 'Non-compliant' : 'Compliant'), valueNode(`Certificate: ${summary.certStatuses.join(', ') || 'Not Tested'} · ${summary.trust.join(', ') || 'Trust not tested'}`, 'endpoint-cert'));
+    const risk = el('div','endpoint-risk');
+    risk.append(valueNode(`High ${counts.critical + counts.high}`, severityClass(counts.critical + counts.high ? 'high' : 'none')), valueNode(`Medium ${counts.medium}`, severityClass(counts.medium ? 'medium' : 'none')), valueNode(`${summary.findings} findings`, 'muted'));
+    const action = button('View details', () => openHostEndpoints(group), 'text-button no-print');
+    main.append(identity, state, risk, action);
+    card.append(main);
     return card;
   }
 
@@ -500,14 +571,14 @@
     root.append(el('h2','',group.host));
     root.append(table(['Metric','Value'], [
       ['Average Score', `${summary.score}/100`],
-      ['Worst Grade', summary.worstGrade],
+      ['Worst TLS Grade', summary.worstGrade],
       ['Endpoints', group.endpoints.length],
       ['Failed Endpoints', `${summary.failed}/${group.endpoints.length}`],
       ['Ports', summary.ports.join(', ')],
       ['Findings', summary.findings],
     ]));
     root.append(el('h3','','Endpoints'));
-    root.append(table(['Endpoint','IP','Port','Grade','Score','Compliance','Protocols','Findings','Details'], group.endpoints.map((endpoint) => [
+    root.append(table(['Endpoint','IP','Port','TLS Grade','Score','Compliance','Protocols','Findings','Details'], group.endpoints.map((endpoint) => [
       endpoint.endpoint_id,
       endpoint.ip_address,
       `${endpoint.port}/${endpoint.protocol}`,
@@ -523,11 +594,14 @@
     $('drawerBackdrop').classList.add('open');
   }
 
+  function trustedByLabel(cert){ return (cert.trusted_by || []).join(', ') || 'N/A'; }
+  function trustAnchorLabel(cert){ return cert.trust_anchor || 'N/A'; }
+
   function initCertificates(){
     const filters = $('certificateFilters');
     const status = document.createElement('select');
     status.setAttribute('aria-label','Filter certificates by status');
-    ['all','Valid','Expiring soon','Expired','Revoked','Self-signed','Weak key','Weak signature','Validation not tested'].forEach((value) => status.add(new Option(value === 'all' ? 'All certificate states' : value, value)));
+    ['all',...certOrder].forEach((value) => status.add(new Option(value === 'all' ? 'All certificate states' : value, value)));
     const sort = document.createElement('select');
     sort.setAttribute('aria-label','Sort certificates');
     [['expiration','Expiration'],['remaining','Remaining days'],['status','Status'],['endpoint','Endpoint'],['issuer','Issuer'],['key_size','Key size']].forEach(([value,label]) => sort.add(new Option(`Sort by ${label}`, value)));
@@ -542,8 +616,22 @@
         if(sort.value === 'endpoint') return String(a.endpoint_id).localeCompare(String(b.endpoint_id), undefined, {numeric:true, sensitivity:'base'});
         return String(a.certificate.valid_until).localeCompare(String(b.certificate.valid_until));
       });
-      const rows = endpoints.map((endpoint) => [endpoint.endpoint_id, endpoint.certificate.subject, endpoint.certificate.issuer, (endpoint.certificate.san || []).join(', '), endpoint.certificate.valid_until, endpoint.certificate.remaining_days, endpoint.certificate.self_signed, endpoint.certificate.key_type, endpoint.certificate.key_size, endpoint.certificate.signature_algorithm, endpoint.certificate.trust_classification, trustedByLabel(endpoint.certificate), trustAnchorLabel(endpoint.certificate), endpoint.certificate.hostname_validation_status, endpoint.certificate.chain_validation_status, endpoint.certificate.revocation_status, endpoint.certificate.ocsp_status, endpoint.certificate.crl_status]);
-      $('certificateTable').replaceChildren(table(['Endpoint','Subject','Issuer','SAN','Expiration','Remaining days','Self-signed','Key type','Key size','Signature','Trust classification','Trusted by','Trust anchor','Hostname validation','Chain validation','Revocation','OCSP','CRL'], rows, {filterable:true}));
+      const rows = endpoints.map((endpoint) => [
+        endpoint.endpoint_id,
+        endpoint.certificate.subject,
+        endpoint.certificate.valid_until,
+        `${endpoint.certificate.key_type} ${endpoint.certificate.key_size || ''}`.trim(),
+        badge(endpoint.certificate.trust_classification, trustTone(endpoint.certificate.trust_classification)),
+        badge(endpoint.certificate.hostname_validation_status, trustTone(endpoint.certificate.hostname_validation_status)),
+        endpoint.certificate.issuer,
+        (endpoint.certificate.san || []).join(', '),
+        trustedByLabel(endpoint.certificate),
+        trustAnchorLabel(endpoint.certificate),
+        endpoint.certificate.signature_algorithm,
+        endpoint.certificate.chain_validation_status,
+        endpoint.certificate.revocation_status,
+      ]);
+      $('certificateTable').replaceChildren(table(['Endpoint','Subject','Expiration','Key','Trust','Hostname validation','Issuer','SAN','Trusted by','Trust anchor','Signature','Chain validation','Revocation'], rows, {filterable:true}));
     };
     [status, sort].forEach((node) => node.addEventListener('change', render));
     render();
@@ -551,28 +639,18 @@
 
   function trustTone(value){
     const normalized = String(value || '').toLowerCase();
-    if(normalized === 'public_trusted' || normalized === 'private_trusted' || normalized === 'trusted') return 'status-compliant';
-    if(normalized === 'untrusted') return 'status-non_compliant';
+    if(normalized === 'public_trusted' || normalized === 'private_trusted' || normalized === 'trusted' || normalized === 'passed' || normalized === 'valid') return 'status-compliant';
+    if(normalized === 'untrusted' || normalized === 'failed' || normalized === 'revoked') return 'status-non_compliant';
     if(normalized === 'error') return 'status-error';
     return 'status-not_tested';
   }
 
-
-  function trustedByLabel(cert){
-    return (cert.trusted_by || []).join(", ") || "N/A";
-  }
-
-  function trustAnchorLabel(cert){
-    return cert.trust_anchor || "N/A";
-  }
-
-
   function trustDefinitions(){
     const definitions = [
-      ['PUBLIC_TRUSTED', 'The certificate chain validated against the TLS Scan Public Web PKI snapshot.'],
-      ['PRIVATE_TRUSTED', 'The public store did not validate the chain, but at least one configured corporate store did.'],
-      ['UNTRUSTED', 'Every trust store that was executed failed to validate the chain.'],
-      ['NOT_TESTED', 'Trust validation was not executed, disabled, or the peer chain could not be collected.'],
+      ['PUBLIC_TRUSTED', 'Validated by public trust store.'],
+      ['PRIVATE_TRUSTED', 'Validated by a configured private store.'],
+      ['UNTRUSTED', 'No executed trust store validated the chain.'],
+      ['NOT_TESTED', 'Trust validation was not executed or inconclusive.'],
       ['ERROR', 'A technical error prevented TLS Scan from reaching a conclusive trust result.'],
     ];
     const wrap = el('div','trust-definition-grid');
@@ -587,69 +665,52 @@
   function initCertificateTrust(){
     const summaryRows = data.endpoints.map((endpoint) => {
       const cert = endpoint.certificate;
-      return [
-        endpoint.endpoint_id,
-        badge(cert.trust_classification, trustTone(cert.trust_classification)),
-        badge(cert.chain_validation_status, trustTone(cert.chain_validation_status)),
-        trustedByLabel(cert),
-        trustAnchorLabel(cert),
-      ];
+      return [endpoint.endpoint_id, badge(cert.trust_classification, trustTone(cert.trust_classification)), badge(cert.chain_validation_status, trustTone(cert.chain_validation_status)), trustedByLabel(cert), trustAnchorLabel(cert)];
     });
-    const storeRows = data.endpoints.flatMap((endpoint) => (endpoint.certificate.trust_store_results || []).map((result) => [
-      endpoint.endpoint_id,
-      result.store_name,
-      badge(result.status, trustTone(result.status)),
-      result.trust_anchor_subject || 'None',
-      result.validation_error || '',
-    ]));
+    const storeRows = data.endpoints.flatMap((endpoint) => (endpoint.certificate.trust_store_results || []).map((result) => [endpoint.endpoint_id, result.store_name, badge(result.status, trustTone(result.status)), result.trust_anchor_subject || 'None', result.validation_error || '']));
     const root = $('certificateTrust');
     root.append(trustDefinitions());
     root.append(table(['Endpoint','Trust classification','Chain validation','Trusted by','Trust anchor'], summaryRows, {filterable:true}));
-    root.append(el('h3','','Trust Store Results'));
+    root.append(el('h3','trust-store-heading','Trust Store Results'));
     root.append(table(['Endpoint','Trust Store','Result','Trust Anchor','Error'], storeRows, {filterable:true}));
   }
 
-
   function initCommunicationSecurity(){
-    const rows = data.endpoints.flatMap((endpoint) => endpoint.cipher_suites.map((suite) => [
-      endpoint.endpoint_id,
-      endpoint.hostname,
-      endpoint.port,
-      suite.tls_version,
-      suite.name,
-      suite.key_exchange,
-      suite.authentication,
-      suite.encryption,
-      suite.hash_algorithm,
-      suite.forward_secrecy,
-      suite.strength,
-      suite.compliance_status,
-      suite.policy_reason,
-    ]));
+    const rows = data.endpoints.flatMap((endpoint) => endpoint.cipher_suites.map((suite) => [endpoint.endpoint_id, endpoint.hostname, endpoint.port, suite.tls_version, suite.name, suite.key_exchange, suite.authentication, suite.encryption, suite.hash_algorithm, suite.forward_secrecy, suite.strength, suite.compliance_status, suite.policy_reason]));
     const headers = ['Endpoint','Host','Port','TLS Version','Cipher Suite','Key Exchange','Authentication','Encryption','Hash','Forward Secrecy','Strength','Compliance','Policy Reason'];
-    $('communicationTable').replaceChildren(table(headers, rows, {
-      filterable:true,
-      onRender:(visible,total) => { $('communicationCount').textContent = `${visible} shown / ${total} suites`; },
-    }));
+    $('communicationTable').replaceChildren(table(headers, rows, {filterable:true,onRender:(visible,total) => { $('communicationCount').textContent = `${visible} shown / ${total} suites`; }}));
   }
 
   function initCompliance(){
     data.policies.forEach((policy) => {
-      const card = el('article','policy-card card');
-      card.append(el('h3','',`${policy.name}${policy.version ? ` v${policy.version}` : ''}`), el('p','muted',policy.description || 'Selected policy'));
+      const card = el('article','policy-card');
+      const head = el('div','policy-head');
+      head.append(el('div','policy-name',`${policy.name}${policy.version ? ` v${policy.version}` : ''}`), badge(policy.non_compliant_endpoints ? 'Non-compliant' : 'Compliant', policy.non_compliant_endpoints ? 'status-non_compliant' : 'status-compliant'));
       const progress = el('div','progress');
       const fill = el('span','');
       fill.style.width = `${policy.compliance_percentage}%`;
       progress.append(fill);
-      card.append(progress, el('p','',`${policy.compliance_percentage}% compliant - ${policy.non_compliant_endpoints} non-compliant endpoint(s), ${policy.failed_controls} failed control occurrence(s).`));
+      card.append(head, el('p','muted',policy.description || 'Selected policy'), progress, el('p','policy-summary',`${policy.compliance_percentage}% compliant · ${policy.non_compliant_endpoints} non-compliant endpoint(s) · ${policy.failed_controls} failed control occurrence(s).`));
       $('policyCompliance').append(card);
     });
     if(!data.policies.length) $('policyCompliance').append(el('div','empty','No policy summary is available.'));
   }
 
   function initPqc(){
-    Object.entries(data.statistics.pqc_readiness).forEach(([key,value]) => $('pqcReadiness').append(metricCard(key,value,'info')));
-    $('pqcReadiness').append(metricCard('Readiness Meaning','Internal TLS Scan indicator','info','This is not a certification or an official standard.'));
+    const root = $('pqcReadiness');
+    const pqc = data.statistics.pqc_readiness || {};
+    const tested = Number(pqc['Endpoints supporting hybrid ML-KEM groups'] || 0) + Number(pqc['Classical cryptography only'] || 0) + Number(pqc['Endpoints with PQC scan errors'] || 0);
+    if(!tested){
+      $('pqc').classList.add('print-skip-when-brief');
+      root.append(el('div','empty','PQC testing was not enabled for this scan. The readiness summary is included above.'));
+      return;
+    }
+    Object.entries(pqc).forEach(([key,value]) => {
+      const item = el('article','pqc-detail-item');
+      item.append(el('span','',key), el('strong','',value));
+      root.append(item);
+    });
+    root.append(el('p','muted','This is an internal TLS Scan indicator, not a certification or an official standard.'));
   }
 
   function openEndpoint(id){
@@ -658,21 +719,20 @@
     const root = $('drawerContent');
     root.textContent = '';
     root.append(el('h2','',`${endpoint.hostname}:${endpoint.port}`));
-    root.append(table(['Field','Value'], [['Endpoint ID', endpoint.endpoint_id], ['IP address', endpoint.ip_address], ['Protocol', endpoint.protocol], ['Overall Grade', endpoint.overall_grade], ['Compliance Status', endpoint.compliance_status], ['Findings', endpoint.finding_count], ['Highest Severity', endpoint.highest_severity]]));
+    root.append(table(['Field','Value'], [['Endpoint ID', endpoint.endpoint_id], ['IP address', endpoint.ip_address], ['Protocol', endpoint.protocol], ['TLS Grade', endpoint.overall_grade], ['Compliance Status', endpoint.compliance_status], ['Findings', endpoint.finding_count], ['Highest Severity', endpoint.highest_severity]]));
     root.append(el('h3','','Security Breakdown'), table(['Area','Result'], Object.entries(endpoint.security_breakdown)));
     root.append(el('h3','','Findings'), table(['Finding'], endpoint.finding_ids.map((finding) => [finding])));
     root.append(el('h3','','TLS Versions'), table(['Version','Status'], Object.entries(endpoint.tls_versions)));
     root.append(el('h3','','Cipher Suites'), table(['TLS version','Cipher suite','Key exchange','Authentication','Encryption','Hash','Forward secrecy','Strength','Compliance','Policy reason'], endpoint.cipher_suites.slice(0,300).map((suite) => [suite.tls_version, suite.name, suite.key_exchange, suite.authentication, suite.encryption, suite.hash_algorithm, suite.forward_secrecy, suite.strength, suite.compliance_status, suite.policy_reason])));
     root.append(el('h3','','Certificate'), table(['Field','Value'], Object.entries(endpoint.certificate).map(([key,value]) => [key, Array.isArray(value) ? value.join(', ') : value])));
     root.append(el('h3','','Certificate Trust'), table(['Field','Value'], [['Trust classification', endpoint.certificate.trust_classification], ['Chain validation', endpoint.certificate.chain_validation_status], ['Trusted by', trustedByLabel(endpoint.certificate)], ['Trust anchor', trustAnchorLabel(endpoint.certificate)]]));
-    root.append(el('h3','','Trust Store Results'), table(['Trust Store','Result','Trust Anchor','Error'], (endpoint.certificate.trust_store_results || []).map((result) => [result.store_name, result.status, result.trust_anchor_subject || 'None', result.validation_error || ''])));
+    root.append(el('h3','trust-store-heading','Trust Store Results'), table(['Trust Store','Result','Trust Anchor','Error'], (endpoint.certificate.trust_store_results || []).map((result) => [result.store_name, result.status, result.trust_anchor_subject || 'None', result.validation_error || ''])));
     root.append(el('h3','','PKI Validation'), table(['Check','Status'], Object.entries(endpoint.pki)));
     root.append(el('h3','','PQC'), table(['Field','Value'], Object.entries(endpoint.pqc).map(([key,value]) => [key, Array.isArray(value) ? value.join(', ') : value])));
     $('endpointDrawer').classList.add('open');
     $('endpointDrawer').setAttribute('aria-hidden','false');
     $('drawerBackdrop').classList.add('open');
   }
-
 
   function initNavigation(){
     const links = Array.from(document.querySelectorAll('.app-shell nav a'));
@@ -706,6 +766,7 @@
   initContext();
   initKpis();
   initCharts();
+  initTopFindings();
   initFindings();
   initEndpoints();
   initCertificates();
