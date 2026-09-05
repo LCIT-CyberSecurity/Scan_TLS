@@ -388,8 +388,11 @@
   }
 
   function topFindingRow(finding, index){
+    const full = data.findings.find((item) => item.finding_id === finding.finding_id) || {};
     const row = el('article','top-finding-row');
-    row.append(el('strong','rank',index + 1), badge(finding.severity, severityClass(finding.severity)), valueNode(finding.title, 'top-finding-title'), valueNode(`${finding.affected_endpoints} impacted endpoint(s)`, 'top-finding-impact'));
+    const summary = el('div','top-finding-summary');
+    summary.append(valueNode(finding.title, 'top-finding-title'), valueNode(full.description || full.technical_impact || 'Prioritized remediation theme.', 'top-finding-description'));
+    row.append(el('strong','rank',index + 1), badge(finding.severity, severityClass(finding.severity)), summary, valueNode(`${finding.affected_endpoints} impacted endpoint(s)`, 'top-finding-impact'));
     return row;
   }
 
@@ -412,8 +415,8 @@
     impacted.append(el('strong','',finding.affected_endpoint_ids.length), el('span','','impacted endpoints'));
     head.append(title, impacted);
     const body = el('div','finding-body');
-    [['Risk', finding.technical_impact], ['Recommendation', finding.remediation], ['Evidence', finding.evidence]].forEach(([label,value]) => {
-      const block = el('section','finding-block');
+    [['Risk', finding.technical_impact, 'risk'], ['Recommendation', finding.remediation, 'recommendation'], ['Evidence', finding.evidence, 'evidence']].forEach(([label,value,type]) => {
+      const block = el('section',`finding-block finding-block-${type}`);
       block.append(el('span','block-label',label), valueNode(value));
       body.append(block);
     });
