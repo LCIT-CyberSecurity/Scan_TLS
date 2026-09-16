@@ -5,8 +5,7 @@
   const $ = (id) => document.getElementById(id);
   const severityOrder = {critical:0, high:1, medium:2, low:3, informational:4, none:5};
   const gradeOrder = {'A+':0, A:1, B:2, C:3, D:4, F:5, 'Not Tested':6};
-  const severityColors = {critical:'#b42318', high:'#d92d20', medium:'#f79009', low:'#ca8a04', informational:'#2563eb', none:'#64748b'};
-    const tlsOrder = ['SSL 2.0','SSL 3.0','TLS 1.0','TLS 1.1','TLS 1.2','TLS 1.3'];
+  const tlsOrder = ['SSL 2.0','SSL 3.0','TLS 1.0','TLS 1.1','TLS 1.2','TLS 1.3'];
   const certOrder = ['Valid','Expiring soon','Expired','Revoked','Self-signed','Weak key','Weak signature','Validation not tested'];
   const expirationOrder = ['Already expired','Within 7 days','Within 30 days','Within 60 days','Within 90 days','After 90 days'];
 
@@ -197,7 +196,7 @@
     };
 
     headers.forEach((h, index) => {
-      const th = el('th','',h);
+      const th = el('th');
       if(sortable){
         const sortButton = button(h, () => {
           state.direction = state.index === index ? state.direction * -1 : 1;
@@ -325,7 +324,7 @@
     const total = s.total_endpoints;
     const value = pct(s.compliant_endpoints, total);
     const donut = el('div','donut compliance-donut');
-    donut.style.background = `conic-gradient(#16a34a 0deg ${value * 3.6}deg, #d92d20 ${value * 3.6}deg 360deg)`;
+    donut.style.background = `conic-gradient(var(--ok) 0deg ${value * 3.6}deg, var(--high) ${value * 3.6}deg 360deg)`;
     donut.setAttribute('role','img');
     donut.setAttribute('aria-label', `${value}% compliant endpoints`);
     const center = el('div','donut-center');

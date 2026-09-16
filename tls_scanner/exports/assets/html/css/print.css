@@ -1,16 +1,773 @@
-@page{size:A4;margin:14mm 12mm 16mm}
-@page technical{size:A4 landscape;margin:12mm}
-*{box-shadow:none!important;text-shadow:none!important;animation:none!important;transition:none!important}
-html{scroll-behavior:auto!important}
-body{background:#fff!important;color:#111827!important;font-size:10.5pt;line-height:1.48;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-.no-print,.app-shell,.drawer,.drawer-backdrop,.filters,.copy-button,.button,.icon-button,.column-filter-row,.text-link,.text-button{display:none!important}
-.report-root{width:auto;max-width:none;padding:0;margin:0}.report-cover{min-height:0;margin:0 0 16mm;padding:12mm;border-radius:6px;background:#071327!important;color:#fff!important;break-inside:avoid}.report-cover:before,.report-cover:after{display:none}.cover-brand strong{font-size:22pt}.cover-brand span,.cover-meta span{color:#dbeafe!important}.cover-meta strong{font-size:14pt;color:#fff!important}.executive-summary{display:block;margin-bottom:12mm;break-inside:avoid}.summary-copy{min-width:0}h1{font-size:24pt;line-height:1.08;margin:0 0 7mm}h2{font-size:16pt;margin:0}h3{font-size:12pt;margin:0 0 3mm}.eyebrow{font-size:8pt;color:#1d4ed8!important;letter-spacing:.08em;margin:0 0 2mm}.summary-text{font-size:10.5pt;color:#27364a!important}.priority-strip{display:flex;gap:3mm;flex-wrap:wrap;margin-top:6mm}.priority-item{border:1px solid #d7dee8;border-radius:999px;padding:2mm 3mm;background:#fff!important}.kpi-row{display:grid;grid-template-columns:repeat(5,1fr);gap:0;margin:0 0 12mm;padding:6mm 0;border-top:1px solid #cbd5e1;border-bottom:1px solid #cbd5e1;background:#fff!important;break-inside:avoid}.kpi-item{display:block;padding:0 3mm;border-right:1px solid #e5e7eb}.kpi-item:last-child{border-right:0}.kpi-item svg{display:none}.kpi-label{display:block;font-size:7.5pt;color:#6b7280!important;text-transform:uppercase}.kpi-value{display:block;font-size:13pt;color:#111827!important}.scan-info{margin:0 0 12mm;break-inside:avoid}.scan-info-grid{display:grid;grid-template-columns:repeat(3,1fr);border-top:1px solid #d1d5db;border-bottom:1px solid #d1d5db}.info-item{padding:2.5mm 3mm;border-right:1px solid #e5e7eb;border-top:1px solid #e5e7eb}.info-item:nth-child(3n){border-right:0}.info-label{font-size:7.5pt;color:#6b7280!important;text-transform:uppercase}.info-value,.truncate{white-space:normal!important;overflow:visible!important;text-overflow:clip!important;overflow-wrap:anywhere!important}
-.analytics{margin:0 0 12mm}.analytics-row{display:grid;grid-template-columns:36mm 1fr 46mm;gap:7mm;align-items:start;padding:8mm 0;border-top:1px solid #d1d5db;break-inside:avoid}.analytics-row:last-child{border-bottom:1px solid #d1d5db}.analytics-icon{display:none}.analytics-head{display:block}.analytics-head p,.analytics-insight p,.pqc-empty-state p{font-size:8.5pt;color:#4b5563!important}.analytics-insight,.pqc-empty-state{border:1px solid #d1d5db!important;background:#fff!important;padding:4mm;border-radius:4px}.compliance-visual{display:grid;grid-template-columns:28mm 1fr;gap:6mm}.donut{width:26mm;height:26mm}.donut:after{inset:6mm}.donut-center strong{font-size:11pt}.donut-center span,.analytics-insight strong{font-size:7.5pt}.status-line,.bar-label,.bar-value{font-size:8.5pt}.bar-track{height:2.4mm;background:#e5e7eb!important}.bar-fill{background:#4b5563!important}.bar-fill.success{background:#15803d!important}.bar-fill.warning{background:#b45309!important}.bar-fill.danger{background:#991b1b!important}.bar-fill.info{background:#1d4ed8!important}
-.panel{margin:13mm 0;padding:0;background:transparent!important;border:0;box-shadow:none!important}.section-heading{display:flex;align-items:flex-end;justify-content:space-between;gap:6mm;margin-bottom:4mm;break-after:avoid}.section-count{border:1px solid #d1d5db;border-radius:999px;padding:1.5mm 3mm;font-size:8pt;color:#4b5563!important;background:#fff!important}.top-finding-row{display:grid;grid-template-columns:10mm 24mm 1fr 35mm;gap:4mm;align-items:start;padding:6mm 0;border-top:1px solid #d1d5db;break-inside:avoid}.top-finding-row:last-child{border-bottom:1px solid #d1d5db}.rank{font-size:12pt}.top-finding-title{font-weight:800}.top-finding-impact{text-align:right;color:#4b5563!important}.finding-card{padding:7mm 0 7mm 4mm;border-top:1px solid #d1d5db;border-left:2mm solid #cbd5e1;break-inside:avoid}.finding-body{display:grid;grid-template-columns:1fr;gap:3mm}.finding-block{padding:0;border:0;background:#fff!important}.finding-foot{display:none}.impact-count{text-align:left}.endpoint-card{padding:6mm 0;border-top:1px solid #d1d5db;break-inside:avoid}.endpoint-card:last-child{border-bottom:1px solid #d1d5db}.endpoint-main{display:grid;grid-template-columns:1.2fr 1fr .7fr;gap:5mm}.endpoint-host{font-size:11pt}.endpoint-address,.endpoint-cert,.endpoint-risk .truncate{font-size:8.5pt}.host-port-list{display:flex;gap:2mm;flex-wrap:wrap;margin-top:2mm}.badge{border:1px solid #cbd5e1!important;border-radius:999px;padding:1mm 2mm;background:#fff!important;font-size:7.5pt;font-weight:800;text-transform:uppercase;color:#111827!important}.severity-critical,.severity-high,.status-non_compliant,.status-error{color:#991b1b!important}.severity-medium{color:#9a3412!important}.severity-informational,.status-not_tested{color:#1d4ed8!important}.status-compliant{color:#166534!important}.trust-definition-grid{display:flex;gap:2mm;flex-wrap:wrap}.trust-definition-item{border:1px solid #d1d5db;border-radius:999px;padding:1.5mm 2mm;background:#fff!important}.trust-store-heading{margin-top:9mm!important;padding-top:5mm;border-top:1px solid #d1d5db}.policy-card,.pqc-detail-item{padding:6mm 0;border-top:1px solid #d1d5db;break-inside:avoid}.policy-card:last-child,.pqc-detail-item:last-child{border-bottom:1px solid #d1d5db}.policy-head{display:flex;justify-content:space-between;gap:5mm}.progress{height:2.5mm;background:#e5e7eb!important}.progress span{background:#1d4ed8!important}.report-footer{position:fixed;left:12mm;right:12mm;bottom:5mm;display:flex;justify-content:space-between;border-top:1px solid #d1d5db;padding-top:2mm;color:#6b7280!important;font-size:8pt}.report-footer:after{content:"Page " counter(page)}
-.table-wrap{overflow:visible!important;border:1px solid #d1d5db;border-radius:3px;background:#fff!important;max-height:none!important}.filterable-table-wrap{max-height:none!important}table{width:100%;border-collapse:collapse;font-size:7.4pt;table-layout:auto;min-width:0!important}thead{display:table-header-group}tfoot{display:table-footer-group}th{position:static;background:#f3f4f6!important;color:#111827!important;font-weight:800}th,td{padding:2mm;border-bottom:1px solid #d1d5db;vertical-align:top}tr{break-inside:avoid;page-break-inside:avoid}.table-sort{font-size:7.4pt;text-transform:none}.table-sort:after{content:""}.empty{border:1px dashed #d1d5db;background:#fff!important;color:#4b5563!important;padding:4mm}.print-skip-when-brief{display:none!important}#communication,#certificates,#trust{page:technical}#communicationTable table{font-size:6.8pt}#certificateTable table{font-size:7pt}details{display:block}summary{font-weight:800;margin-bottom:3mm}
+/* ==========================================================================
+   TLS Scan — premium report stylesheet (print / Save as PDF)
 
-/* Premium print readability pass */
-.report-cover{margin-bottom:18mm;padding:14mm}.executive-summary{margin-bottom:14mm}.summary-text{line-height:1.62}.kpi-row{margin-bottom:14mm;padding:5mm 0}.scan-info{margin-bottom:14mm}.report-chapter{margin:15mm 0}.report-chapter:before{content:"";display:block;height:.2mm;background:#d1d5db;margin-bottom:6mm}.chapter-heading{margin-bottom:7mm}.chapter-heading h2{font-size:17pt}.chapter-heading p:not(.eyebrow){font-size:9.5pt;color:#4b5563!important;line-height:1.5}.analytics-row{padding:9mm 0;gap:8mm}.section-heading{margin-bottom:6mm}.top-finding-row{padding:5.5mm 0}.finding-card{padding:8mm 0 8mm 5mm}.endpoint-card{padding:7mm 0}.trust-store-heading{margin-top:10mm!important;padding-top:6mm}
+   Loaded with media="print" only. It inherits the design tokens declared in
+   report.css and re-maps them to ink-on-paper values, then restates the
+   layout in millimetres so the PDF is typeset rather than screenshotted.
 
-/* Print findings polish */
-.finding-card{background:#fff!important;border:1px solid #cbd5e1!important;border-left:2mm solid #9ca3af!important;border-radius:3px;box-shadow:none!important}.finding-head{border-bottom:1px solid #e5e7eb;padding-bottom:4mm}.finding-name{font-size:12.5pt;font-weight:800}.finding-block{border:1px solid #e5e7eb!important;background:#fff!important;padding:3mm;border-radius:2px}.finding-block-evidence{font-family:"SFMono-Regular",Consolas,"Liberation Mono",monospace}.top-finding-description{display:block;color:#4b5563!important;font-size:8.5pt;line-height:1.35}.top-finding-row{border:1px solid #d1d5db;border-radius:2px;margin-bottom:2mm;padding:4mm}
+   Contents
+     1.  Page setup & token overrides
+     2.  Base & typography
+     3.  Chrome removal
+     4.  Cover & executive summary
+     5.  Analytics
+     6.  Findings
+     7.  Endpoints, trust, compliance, PQC
+     8.  Tables
+     9.  Footer & pagination
+   ========================================================================== */
+
+/* ==========================================================================
+   1. PAGE SETUP & TOKEN OVERRIDES
+   ========================================================================== */
+
+@page {
+  size: A4;
+  /* The bottom margin reserves the band the fixed footer is drawn into. */
+  margin: 14mm 12mm 22mm;
+}
+
+/* Wide technical inventories get their own landscape page context. */
+@page technical {
+  size: A4 landscape;
+  margin: 12mm;
+}
+
+:root {
+  /* Paper needs more contrast and less chroma than a screen. */
+  --ink: #0b1220;
+  --text: #16202f;
+  --copy: #38445a;
+  --muted: #5b6878;
+  --subtle: #78859a;
+  --border: #d5dbe4;
+  --border-strong: #b9c2d0;
+  --surface: #ffffff;
+  --surface-soft: #f4f6f9;
+  --surface-sunken: #eef1f5;
+
+  --critical: #8c1132;
+  --high: #b02d18;
+  --medium: #935a04;
+  --low: #755c0f;
+  --info: #17439c;
+  --ok: #0a6544;
+  --neutral: #4e5b6e;
+
+  /* Millimetre-based rhythm: the page, not the viewport, sets the scale. */
+  --space-1: 0.8mm;
+  --space-2: 1.2mm;
+  --space-3: 1.8mm;
+  --space-4: 2.4mm;
+  --space-5: 3.2mm;
+  --space-6: 4mm;
+  --space-7: 5mm;
+  --space-8: 6mm;
+  --space-9: 8mm;
+  --space-10: 10mm;
+  --space-11: 13mm;
+  --space-12: 16mm;
+
+  --text-2xs: 6.6pt;
+  --text-xs: 7.4pt;
+  --text-sm: 8.4pt;
+  --text-base: 9.4pt;
+  --text-md: 10pt;
+  --text-lg: 12pt;
+  --text-xl: 14pt;
+  --text-2xl: 17pt;
+  --text-3xl: 20pt;
+  --text-display: 26pt;
+
+  --radius-sm: 1mm;
+  --radius-md: 1.5mm;
+  --radius-lg: 2mm;
+  --radius-xl: 2.5mm;
+
+  --table-head-height: auto;
+}
+
+/* Elevation and motion do not exist on paper. */
+*,
+*::before,
+*::after {
+  box-shadow: none !important;
+  text-shadow: none !important;
+  animation: none !important;
+  transition: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* ==========================================================================
+   2. BASE & TYPOGRAPHY
+   ========================================================================== */
+
+html {
+  scroll-behavior: auto !important;
+}
+
+body {
+  margin: 0;
+  background: #fff !important;
+  background-image: none !important;
+  color: var(--text) !important;
+  font-size: var(--text-base);
+  line-height: 1.5;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+h1 {
+  max-width: none;
+  margin-bottom: var(--space-7);
+  font-size: var(--text-display);
+  line-height: 1.1;
+}
+
+h2 {
+  font-size: var(--text-2xl);
+}
+
+h3 {
+  font-size: var(--text-lg);
+}
+
+.eyebrow {
+  margin-bottom: var(--space-2);
+  color: var(--info) !important;
+  font-size: var(--text-2xs);
+}
+
+/* Truncation is a screen affordance: on paper there is no tooltip to
+   recover the hidden text, so every value wraps in full. */
+.truncate,
+.info-value,
+.finding-name,
+.top-finding-description {
+  white-space: normal !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  overflow-wrap: anywhere !important;
+  max-width: none !important;
+}
+
+/* ==========================================================================
+   3. CHROME REMOVAL
+   Anything that only exists to be clicked is dropped.
+   ========================================================================== */
+
+.no-print,
+.app-shell,
+.skip-link,
+.drawer,
+.drawer-backdrop,
+.filters,
+.copy-button,
+.button,
+.icon-button,
+.column-filter-row,
+.text-link,
+.text-button {
+  display: none !important;
+}
+
+.print-skip-when-brief {
+  display: none !important;
+}
+
+/* ==========================================================================
+   4. COVER & EXECUTIVE SUMMARY
+   ========================================================================== */
+
+.report-root {
+  width: auto;
+  max-width: none;
+  margin: 0;
+  padding: 0;
+}
+
+.report-cover {
+  display: flex;
+  min-height: 0;
+  margin: 0 0 var(--space-11);
+  padding: var(--space-10);
+  border-radius: var(--radius-lg);
+  /* A flat navy reproduces predictably across printer drivers. */
+  background: #0b1d35 !important;
+  color: #fff !important;
+  break-inside: avoid;
+}
+
+.report-cover::before,
+.report-cover::after {
+  display: none !important;
+}
+
+.brand-mark.large {
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.12) !important;
+}
+
+.cover-brand strong {
+  font-size: var(--text-2xl);
+}
+
+.cover-brand span,
+.cover-meta dt {
+  color: #cddcf0 !important;
+}
+
+.cover-meta {
+  gap: var(--space-3);
+}
+
+.cover-meta dd {
+  color: #fff !important;
+  font-size: var(--text-sm);
+}
+
+.cover-meta .cover-report-name {
+  font-size: var(--text-lg);
+}
+
+.executive-summary {
+  max-width: none;
+  margin-bottom: var(--space-10);
+  break-inside: avoid;
+}
+
+.summary-text {
+  max-width: none;
+  margin-top: var(--space-5);
+  font-size: var(--text-base);
+  line-height: 1.58;
+  color: var(--copy) !important;
+}
+
+.priority-strip {
+  gap: var(--space-3);
+  margin-top: var(--space-7);
+}
+
+.priority-item {
+  padding: var(--space-2) var(--space-4) var(--space-2) var(--space-2);
+  border: 1px solid var(--border-strong);
+  background: #fff !important;
+}
+
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  margin: 0 0 var(--space-10);
+  padding: var(--space-6) 0;
+  border: 0;
+  border-top: 1px solid var(--border-strong);
+  border-bottom: 1px solid var(--border-strong);
+  border-radius: 0;
+  background: #fff !important;
+  break-inside: avoid;
+}
+
+.kpi-item {
+  display: block;
+  padding: 0 var(--space-5);
+  border-right: 1px solid var(--border);
+}
+
+.kpi-item:last-child {
+  border-right: 0;
+}
+
+.kpi-item svg {
+  display: none;
+}
+
+.kpi-label {
+  display: block;
+  font-size: var(--text-2xs);
+  color: var(--muted) !important;
+}
+
+.kpi-value {
+  display: block;
+  font-size: var(--text-lg);
+  color: var(--ink) !important;
+}
+
+.scan-info {
+  margin-bottom: var(--space-10);
+  break-inside: avoid;
+}
+
+.scan-info-grid {
+  grid-template-columns: repeat(3, 1fr);
+  border: 0;
+  border-top: 1px solid var(--border-strong);
+  border-bottom: 1px solid var(--border-strong);
+  border-radius: 0;
+}
+
+.info-item {
+  padding: var(--space-4) var(--space-5);
+  border-right: 1px solid var(--border);
+  border-top: 1px solid var(--border);
+}
+
+.info-item:nth-child(3n) {
+  border-right: 0;
+}
+
+.info-item:nth-child(-n + 3) {
+  border-top: 0;
+}
+
+/* ==========================================================================
+   5. ANALYTICS
+   ========================================================================== */
+
+.report-chapter,
+.panel {
+  margin: var(--space-11) 0;
+}
+
+.report-chapter::before {
+  height: 0.2mm;
+  margin-bottom: var(--space-7);
+  background: var(--border-strong);
+}
+
+.chapter-heading {
+  margin-bottom: var(--space-8);
+}
+
+.chapter-heading h2 {
+  font-size: var(--text-2xl);
+}
+
+.chapter-heading p:not(.eyebrow) {
+  margin-top: var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--copy) !important;
+}
+
+.section-heading {
+  margin-bottom: var(--space-6);
+  break-after: avoid;
+}
+
+.section-count {
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--border-strong);
+  background: #fff !important;
+  font-size: var(--text-2xs);
+}
+
+.analytics-row {
+  grid-template-columns: 38mm 1fr 50mm;
+  gap: var(--space-8);
+  align-items: start;
+  margin: 0 0 var(--space-6);
+  padding: var(--space-7) var(--space-6);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: #fff !important;
+  break-inside: avoid;
+}
+
+.analytics-row + .analytics-row {
+  margin-top: 0;
+}
+
+.analytics-head {
+  display: block;
+}
+
+.analytics-icon {
+  display: none;
+}
+
+.analytics-head p,
+.analytics-insight p,
+.pqc-empty-state p {
+  font-size: var(--text-xs);
+  color: var(--copy) !important;
+}
+
+.analytics-insight,
+.pqc-empty-state {
+  padding: var(--space-5);
+  border: 1px solid var(--border-strong);
+  border-left: 0.8mm solid var(--tone, var(--neutral));
+  border-radius: var(--radius-sm);
+  background: #fff !important;
+}
+
+.analytics-insight strong {
+  font-size: var(--text-2xs);
+}
+
+.compliance-visual {
+  grid-template-columns: 28mm 1fr;
+  gap: var(--space-7);
+}
+
+.donut {
+  width: 28mm;
+  height: 28mm;
+}
+
+.donut::after {
+  inset: 6mm;
+  background: #fff !important;
+}
+
+.donut-center strong {
+  font-size: var(--text-lg);
+}
+
+.donut-center span {
+  font-size: var(--text-2xs);
+}
+
+.status-list {
+  gap: var(--space-2);
+}
+
+.status-line {
+  padding-bottom: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.status-line strong {
+  font-size: var(--text-sm);
+}
+
+.bars-compact {
+  gap: var(--space-4);
+}
+
+.bar-label,
+.bar-value {
+  font-size: var(--text-sm);
+}
+
+.bar-track {
+  height: 2.2mm;
+  background: var(--surface-sunken) !important;
+}
+
+/* Flat fills survive greyscale printing better than gradients. */
+.bar-fill { background: var(--neutral) !important; }
+.bar-fill.success { background: var(--ok) !important; }
+.bar-fill.warning { background: var(--medium) !important; }
+.bar-fill.danger { background: var(--high) !important; }
+.bar-fill.info { background: var(--info) !important; }
+
+/* ==========================================================================
+   6. FINDINGS
+   ========================================================================== */
+
+.badge {
+  padding: var(--space-1) var(--space-3) var(--space-1) var(--space-2);
+  border: 1px solid var(--tone-line, var(--border-strong)) !important;
+  background: #fff !important;
+  font-size: var(--text-2xs);
+  color: var(--tone, var(--ink)) !important;
+}
+
+.badge::before {
+  width: 2.4mm;
+  height: 2.4mm;
+}
+
+.top-finding-row {
+  grid-template-columns: 9mm 26mm 1fr 34mm;
+  gap: var(--space-5);
+  align-items: start;
+  margin-bottom: var(--space-3);
+  padding: var(--space-5);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #fff !important;
+  break-inside: avoid;
+}
+
+.top-finding-row + .top-finding-row {
+  margin-top: 0;
+}
+
+.rank {
+  font-size: var(--text-lg);
+}
+
+.top-finding-title {
+  font-size: var(--text-md);
+}
+
+.top-finding-description {
+  font-size: var(--text-xs);
+  color: var(--copy) !important;
+}
+
+.top-finding-impact {
+  text-align: right;
+  color: var(--copy) !important;
+}
+
+.finding-card {
+  gap: var(--space-5);
+  margin-bottom: var(--space-5);
+  padding: var(--space-7);
+  border: 1px solid var(--border-strong);
+  border-left: 1.4mm solid var(--tone, var(--neutral));
+  border-radius: var(--radius-sm);
+  background: #fff !important;
+  break-inside: avoid;
+}
+
+.finding-head {
+  padding-bottom: var(--space-4);
+}
+
+.finding-name {
+  font-size: var(--text-lg);
+}
+
+.impact-count strong {
+  font-size: var(--text-xl);
+}
+
+.finding-body {
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+}
+
+.finding-block {
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #fff !important;
+}
+
+.finding-block-evidence {
+  grid-column: 1 / -1;
+}
+
+.finding-block .truncate {
+  font-size: var(--text-sm);
+  line-height: 1.5;
+}
+
+.finding-foot {
+  display: none;
+}
+
+/* ==========================================================================
+   7. ENDPOINTS, TRUST, COMPLIANCE, PQC
+   ========================================================================== */
+
+#endpointTable {
+  gap: var(--space-3);
+}
+
+.endpoint-card {
+  padding: var(--space-6);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #fff !important;
+  break-inside: avoid;
+}
+
+.endpoint-main {
+  grid-template-columns: 1.2fr 1fr 0.8fr;
+  gap: var(--space-6);
+}
+
+.endpoint-host {
+  font-size: var(--text-md);
+}
+
+.endpoint-address,
+.endpoint-cert,
+.endpoint-risk .truncate {
+  font-size: var(--text-xs);
+}
+
+.host-port-list {
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.trust-definition-item {
+  padding: var(--space-2) var(--space-3) var(--space-2) var(--space-2);
+  border: 1px solid var(--border-strong);
+  background: #fff !important;
+}
+
+.trust-definition-item .truncate {
+  font-size: var(--text-xs);
+}
+
+.trust-store-heading {
+  margin-top: var(--space-9) !important;
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--border-strong);
+}
+
+.policy-card,
+.pqc-detail-item {
+  padding: var(--space-6);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #fff !important;
+  break-inside: avoid;
+}
+
+.progress {
+  height: 2.2mm;
+  margin: var(--space-4) 0 var(--space-3);
+  background: var(--surface-sunken) !important;
+}
+
+.progress span {
+  background: var(--info) !important;
+}
+
+.section-grid {
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-4);
+}
+
+.pqc-detail-item strong {
+  font-size: var(--text-xl);
+}
+
+.empty {
+  padding: var(--space-6);
+  border: 1px dashed var(--border-strong);
+  background: #fff !important;
+  color: var(--copy) !important;
+}
+
+/* ==========================================================================
+   8. TABLES
+   ========================================================================== */
+
+.table-wrap {
+  overflow: visible !important;
+  max-height: none !important;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: #fff !important;
+}
+
+.filterable-table-wrap {
+  max-height: none !important;
+}
+
+table {
+  border-collapse: collapse;
+  font-size: var(--text-xs);
+  /* Auto layout lets the printer distribute columns to the paper width
+     instead of honouring the screen's fixed pixel widths. */
+  table-layout: auto;
+  min-width: 0 !important;
+}
+
+thead {
+  display: table-header-group;
+}
+
+tfoot {
+  display: table-footer-group;
+}
+
+th {
+  position: static;
+  height: auto;
+  padding: var(--space-3);
+  background: var(--surface-soft) !important;
+  color: var(--ink) !important;
+  font-size: var(--text-2xs);
+  white-space: normal;
+}
+
+td {
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+tbody tr:nth-child(even) td,
+tbody tr:hover td {
+  background: #fff !important;
+}
+
+tr {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.table-sort::after {
+  display: none;
+}
+
+/* Reset the screen's fixed column widths for both wide inventories. */
+#communicationTable table,
+#certificateTable table {
+  min-width: 0 !important;
+}
+
+#communicationTable th,
+#communicationTable td,
+#certificateTable th,
+#certificateTable td {
+  width: auto !important;
+}
+
+#communicationTable table {
+  font-size: 6.4pt;
+}
+
+#certificateTable table {
+  font-size: 6.8pt;
+}
+
+/* Wide inventories are unreadable on portrait A4. */
+#communication,
+#certificates,
+#trust {
+  page: technical;
+}
+
+details {
+  display: block;
+}
+
+summary {
+  padding: 0 0 var(--space-4);
+  font-weight: 700;
+}
+
+/* ==========================================================================
+   9. FOOTER & PAGINATION
+   ========================================================================== */
+
+.report-footer {
+  position: fixed;
+  left: 12mm;
+  right: 12mm;
+  bottom: 8mm;
+  display: flex;
+  justify-content: space-between;
+  margin: 0;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--border);
+  color: var(--muted) !important;
+  font-size: var(--text-2xs);
+}
+
+/* No page number here on purpose: `counter(page)` does not increment inside a
+   position:fixed element in Blink, so it would print "Page 0" on every sheet.
+   Browsers add their own page numbers in the print dialog instead. */

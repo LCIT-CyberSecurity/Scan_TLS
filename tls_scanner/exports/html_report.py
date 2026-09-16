@@ -68,7 +68,12 @@ def build_html_report_from_model(model: ReportModel):
     summary = html.escape(build_executive_summary(model))
     cover = (
         '    <section class="report-cover" aria-label="Report header"><div class="cover-brand"><div class="brand-mark large" aria-hidden="true">TS</div><div><strong>TLS Scan</strong><span>Trust. Visibility. Stronger TLS.</span></div></div>'
-        f'<div class="cover-meta"><span>REPORT</span><strong>{report_name}</strong><span>Produced by TLS Scan by LCIT Cybersecurity</span><span>Generated on {report_date}</span><span>v{scanner_version}</span></div></section>'
+        '<dl class="cover-meta">'
+        f'<div><dt>Report</dt><dd class="cover-report-name">{report_name}</dd></div>'
+        '<div><dt>Produced by</dt><dd>TLS Scan by LCIT Cybersecurity</dd></div>'
+        f'<div><dt>Generated on</dt><dd>{report_date}</dd></div>'
+        f'<div><dt>Scanner version</dt><dd>{scanner_version}</dd></div>'
+        '</dl></section>'
     )
     parts = [
         "<!doctype html>", '<html lang="en">', "<head>",
@@ -96,7 +101,7 @@ def build_html_report_from_model(model: ReportModel):
         '    <section class="panel report-chapter" id="pqc"><div class="section-heading"><div><p class="eyebrow">PQC Details</p><h2>Post-Quantum Cryptography</h2></div></div><div id="pqcReadiness" class="section-grid"></div></section>',
         '    <section class="panel"><details><summary>Complete Technical Details</summary><div id="technicalDetails"></div></details></section>',
         '    <footer class="report-footer" aria-label="Report footer"><span>TLS Scan | TLS Security Report</span><span id="pageFooterMeta"></span></footer>',
-        '  </main><aside class="drawer" id="endpointDrawer" aria-hidden="true" aria-labelledby="drawerTitle"><button class="icon-button no-print" type="button" id="closeDrawer" aria-label="Close endpoint details">x</button><div id="drawerContent"></div></aside><div class="drawer-backdrop no-print" id="drawerBackdrop"></div>',
+        '  </main><aside class="drawer" id="endpointDrawer" aria-hidden="true" aria-labelledby="drawerTitle"><button class="icon-button no-print" type="button" id="closeDrawer" aria-label="Close endpoint details">&times;</button><div id="drawerContent"></div></aside><div class="drawer-backdrop no-print" id="drawerBackdrop"></div>',
         f'  <script id="report-data" type="application/json">{data}</script>',
         '  <script src="assets/js/report.js"></script>', "</body>", "</html>",
     ]
