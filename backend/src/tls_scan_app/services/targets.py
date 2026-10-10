@@ -29,9 +29,10 @@ def normalize_target(raw: str) -> tuple[str, str]:
         return str(ipaddress.ip_address(value)), "ip"
     except ValueError:
         pass
+    value = value.rstrip(".")  # "example.org." is the absolute form of "example.org"
     if not FQDN_RE.match(value):
         raise TargetError(f"invalid target: {raw!r}")
-    return value.lower().rstrip("."), "fqdn"
+    return value.lower(), "fqdn"
 
 
 def normalize_ports(raw: str) -> str:
