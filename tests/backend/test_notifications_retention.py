@@ -45,3 +45,31 @@ def test_retention_settings_validation(admin):
     ok = {"reports_days": 90, "runs_days": 365, "audit_days": 730}
     assert admin.put("/api/admin/settings/retention", json={"value": ok}).status_code == 200
     assert admin.get("/api/admin/settings").json()["retention"] == ok
+
+
+def test_retention_purges_old_report_files_and_audit_but_keeps_recent(admin, user, catalog):
+    import os
+    from datetime import UTC, datetime, timedelta
+    from pathlib import Path
+
+    from sqlalchemy import create_engine, text
+    from sqlalchemy.orm import Session
+
+    from tls_scan_app.services import retention
+
+    definition = make_definition(user, catalog, [LAB], name="retention", ports="443")
+    old = wait_final(user, user.post(f"/api/scan-definitions/{definition['id']}/run").json()["run_id"])
+    recent = wait_final(user, user.post(f"/api/scan-definitions/{definition['id']}/run").json()["run_id"])
+    assert user.get(f"/api/scan-runs/{old['id']}/reports/csv").status_code == 200
+    admin.put("/api/admin/settings/retention", json={"value": {"reports_days": 30, "runs_days": 3650, "audit_days": 3650}})
+    engine = create_engine(os.environ["TLS_SCAN_DATABASE_URL"])
+    with engine.begin() as db:
+        db.execute(text("update scan_runs set finished_at = :t where id = :id"), {"t": datetime.now(UTC) - timedelta(days=90), "id": old["id"]})
+    with Session(engine) as db:
+        counts = retention.purge(db, Path(os.environ["TLS_SCAN_STORAGE_ROOT"]))
+    assert counts["report_files"] >= 1
+    assert user.get(f"/api/scan-runs/{old['id']}/reports/csv").status_code == 404  # files purged
+    assert user.get(f"/api/scan-runs/{old['id']}").json()["endpoints"]  # structured history kept (runs_days not reached)
+    assert user.get(f"/api/scan-runs/{recent['id']}/reports/csv").status_code == 200  # recent report untouched
+    actions = {e["action"] for e in admin.get("/api/admin/audit", params={"limit": 50}).json()}
+    assert "retention.purge" in actions
