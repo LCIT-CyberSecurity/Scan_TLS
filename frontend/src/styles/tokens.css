@@ -1,0 +1,321 @@
+/* Design tokens copied from LCIT-Sign (GPL-3.0) so both products share one identity. */
+/* ===========================================================================
+   LCIT Sign — design tokens, shared with EARE's design system.
+   Two independent settings: an *appearance* (light, dark or system, carried by
+   data-appearance="dark") and a *style* (data-theme: violet, blue, aurora,
+   azure, studio). Every style works in both appearances.
+   =========================================================================== */
+
+:root {
+  color-scheme: light;
+
+  /* Canvas and surfaces, from the page backwards to the frontmost overlay. */
+  --background: #f7f8fa;
+  --canvas-wash: none;
+  --surface: #ffffff;
+  --surface-secondary: #f1f3f6;
+  --surface-raised: #ffffff;
+  --surface-sunken: #fbfcfd;
+  --rail: #ffffff;
+  --chrome: rgba(255, 255, 255, 0.78);
+
+  /* Lines. `hairline` separates rows inside a surface, `border` draws its edge. */
+  --border: #e3e6eb;
+  --border-strong: #c7ccd6;
+  --hairline: rgba(16, 24, 40, 0.06);
+
+  /* Text, from the value a user reads first to the label they read last. */
+  --text-primary: #101828;
+  --text-secondary: #475467;
+  --text-muted: #526071;
+  --text-faint: #5d6778;
+  --text-on-accent: #ffffff;
+
+  /* Accent. `soft` fills, `line` outlines, `edge` is the pressed/active rail. */
+  --primary: #2545d3;
+  --primary-hover: #1b36ae;
+  --primary-soft: #eaeefc;
+  --primary-line: #c9d3f7;
+  --primary-edge: #2545d3;
+  --accent-wash: #2545d3;
+
+  /* Feedback. Every tone is a triplet so a component never mixes registers. */
+  --success: #12805c;
+  --success-soft: #e4f5ee;
+  --success-line: #bce0d2;
+  --warning: #b5720a;
+  --warning-soft: #fbf0dd;
+  --warning-line: #ecd4a4;
+  --danger: #c1352b;
+  --danger-soft: #fbeae8;
+  --danger-line: #f0c7c1;
+  --info: #2e6fbe;
+  --info-soft: #e9f1fb;
+  --info-line: #c3d9f3;
+
+  /* Geometry. One scale, used by every surface and control. */
+  --radius-xs: 6px;
+  --radius-sm: 8px;
+  --radius: 11px;
+  --radius-lg: 14px;
+  --radius-xl: 18px;
+  --control-height: 40px;
+  --control-height-sm: 32px;
+  --space-panel: 24px;
+  --space-panel-compact: 18px;
+  --space-section: 24px;
+  --space-table-x: 18px;
+  --space-table-y: 13px;
+
+  /* Depth. Light stacks two shadows: a contact edge and a soft cast. */
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.05);
+  --shadow-md: 0 2px 6px rgba(16, 24, 40, 0.05), 0 12px 28px -10px rgba(16, 24, 40, 0.16);
+  --shadow-lg: 0 1px 2px rgba(13, 20, 36, 0.06), 0 24px 56px -20px rgba(13, 20, 36, 0.26);
+  --shadow-overlay: 0 1px 2px rgba(13, 20, 36, 0.06), 0 32px 72px -24px rgba(13, 20, 36, 0.34);
+  --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+
+  /* Focus. One ring, everywhere, always visible against its own surface. */
+  --ring: 0 0 0 3px color-mix(in srgb, var(--primary) 22%, transparent);
+  --ring-width: 2px;
+
+  /* Overlays. */
+  --scrim: rgba(13, 20, 36, 0.38);
+  --scrim-blur: blur(3px);
+
+  /* Motion. Referenced by every transition so reduced-motion has one switch. */
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --fast: 110ms;
+  --normal: 180ms;
+  --slow: 280ms;
+}
+
+/* Dark is authored, not inverted: the canvas recedes, surfaces lift towards the
+   viewer, and depth comes from lighter edges because a shadow reads as nothing
+   on a dark field. */
+:root[data-appearance="dark"] {
+  color-scheme: dark;
+
+  --background: #0a0c11;
+  --canvas-wash: radial-gradient(1200px 520px at 12% -12%, rgba(53, 88, 226, 0.16), transparent 62%),
+    radial-gradient(1000px 460px at 92% -8%, rgba(46, 111, 190, 0.12), transparent 60%);
+  --surface: #14171f;
+  --surface-secondary: #1b1f29;
+  --surface-raised: #191d26;
+  --surface-sunken: #10131a;
+  --rail: #11141b;
+  --chrome: rgba(17, 20, 27, 0.82);
+
+  --border: rgba(255, 255, 255, 0.1);
+  --border-strong: rgba(255, 255, 255, 0.2);
+  --hairline: rgba(255, 255, 255, 0.06);
+
+  --text-primary: #e9ebf1;
+  --text-secondary: #aeb6c6;
+  --text-muted: #96a0b2;
+  --text-faint: #8590a3;
+  --text-on-accent: #ffffff;
+
+  --primary: #7b9bf7;
+  --primary-hover: #97b1fa;
+  --primary-soft: rgba(123, 155, 247, 0.16);
+  --primary-line: rgba(123, 155, 247, 0.34);
+  --primary-edge: #7b9bf7;
+  --accent-wash: linear-gradient(135deg, #3558e2 0%, #2a48c8 100%);
+
+  --success: #4cc79b;
+  --success-soft: rgba(76, 199, 155, 0.14);
+  --success-line: rgba(76, 199, 155, 0.32);
+  --warning: #e4ab4a;
+  --warning-soft: rgba(228, 171, 74, 0.14);
+  --warning-line: rgba(228, 171, 74, 0.32);
+  --danger: #f0847a;
+  --danger-soft: rgba(240, 132, 122, 0.14);
+  --danger-line: rgba(240, 132, 122, 0.32);
+  --info: #6aa8f0;
+  --info-soft: rgba(106, 168, 240, 0.14);
+  --info-line: rgba(106, 168, 240, 0.32);
+
+  --shadow-sm: 0 1px 0 rgba(255, 255, 255, 0.04), 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 1px 0 rgba(255, 255, 255, 0.04), 0 12px 30px -14px rgba(0, 0, 0, 0.8);
+  --shadow-lg: 0 1px 0 rgba(255, 255, 255, 0.05), 0 26px 60px -22px rgba(0, 0, 0, 0.9);
+  --shadow-overlay: 0 1px 0 rgba(255, 255, 255, 0.06), 0 36px 80px -26px rgba(0, 0, 0, 0.95);
+  --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+
+  --scrim: rgba(3, 5, 9, 0.62);
+}
+
+
+
+
+:root { --neutral-soft: #eef0f3; }
+:root[data-appearance="dark"] { --neutral-soft: rgba(255, 255, 255, 0.07); }
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--text-primary);
+  font-family: "Inter Variable", system-ui, sans-serif;
+}
+
+a {
+  color: inherit;
+}
+
+/* ===== Interface styles (EARE): each is a token set ===== */
+/* ===========================================================================
+   3. THEMES — each interface style is a token set, nothing more.
+   =========================================================================== */
+
+/* Blue is the default and needs no override: it is the token set above. */
+.style-swatch.default { background: linear-gradient(115deg, #fff 0 42%, #f1f3f7 42% 72%, #4a4fd4 72%); }
+.style-swatch.azure { background: linear-gradient(115deg, #f2f7fd 0 42%, #e2ecfa 42% 72%, #2f5fbb 72%); }
+.style-swatch.violet { background: linear-gradient(115deg, #f7f8fd 0 42%, #efe9f8 42% 72%, #7657a9 72%); }
+.style-swatch.studio { background: linear-gradient(115deg, #fff 0 42%, #f4f4f7 42% 72%, #3f3f4a 72%); }
+
+/* Aurora: the redesign's original indigo palette, kept as a style of its own. */
+:root[data-theme="aurora"]:not([data-appearance="dark"]) {
+  --background: #f4f5f8;
+  --surface-secondary: #f1f3f7;
+  --surface-sunken: #f7f8fb;
+  --border: #e2e5ec;
+  --border-strong: #c6ccd8;
+  --hairline: rgba(12, 18, 32, 0.07);
+  --text-primary: #0d1424;
+  --text-secondary: #46536b;
+  --text-muted: #5c6a80;
+  --text-faint: #6b788c;
+  --primary: #4a4fd4;
+  --primary-hover: #3b3fb3;
+  --primary-soft: #eceefc;
+  --primary-line: #ccd1f7;
+  --primary-edge: #4a4fd4;
+  --accent-wash: linear-gradient(135deg, #5257de 0%, #6d55d8 100%);
+  --shadow-sm: 0 1px 2px rgba(13, 20, 36, 0.05), 0 1px 3px -1px rgba(13, 20, 36, 0.04);
+  --shadow-md: 0 1px 2px rgba(13, 20, 36, 0.05), 0 10px 26px -12px rgba(13, 20, 36, 0.18);
+  --canvas-wash: none;
+}
+:root[data-appearance="dark"][data-theme="aurora"] {
+  --canvas-wash: radial-gradient(1200px 520px at 12% -12%, rgba(88, 92, 226, 0.16), transparent 62%),
+    radial-gradient(1000px 460px at 92% -8%, rgba(120, 88, 214, 0.12), transparent 60%);
+  --primary: #8b8ef5;
+  --primary-hover: #a1a3fa;
+  --primary-soft: rgba(139, 142, 245, 0.16);
+  --primary-line: rgba(139, 142, 245, 0.34);
+  --primary-edge: #8b8ef5;
+  --accent-wash: linear-gradient(135deg, #5a5ee0 0%, #8055d8 100%);
+}
+/* Azure — the sign-in blue used as a tint, never as a field. */
+:root[data-theme="azure"]:not([data-appearance="dark"]) {
+  --background: #e9f0fa;
+  --canvas-wash: radial-gradient(1100px 460px at 14% -12%, rgba(47, 95, 187, 0.13), transparent 60%),
+    radial-gradient(900px 420px at 94% -8%, rgba(90, 150, 220, 0.11), transparent 58%);
+  --surface-secondary: #eef4fc;
+  --surface-sunken: #f4f8fd;
+  --rail: #f5f9fe;
+  --chrome: rgba(247, 250, 254, 0.8);
+  --border: #d7e2f2;
+  --border-strong: #b4c6e2;
+  --hairline: rgba(19, 36, 60, 0.07);
+  --text-primary: #13243c;
+  --text-secondary: #465873;
+  --text-muted: #536682;
+  --text-faint: #66768f;
+  --primary: #2f5fbb;
+  --primary-hover: #254c9b;
+  --primary-soft: #e2ecfb;
+  --primary-line: #c2d6f4;
+  --primary-edge: #2f5fbb;
+  --accent-wash: linear-gradient(135deg, #2f5fbb 0%, #3f7cc9 100%);
+}
+:root[data-appearance="dark"][data-theme="azure"] {
+  --background: #070b12;
+  --canvas-wash: radial-gradient(1100px 480px at 14% -12%, rgba(47, 95, 187, 0.22), transparent 62%);
+  --surface: #121722;
+  --surface-secondary: #19202d;
+  --surface-raised: #161c28;
+  --surface-sunken: #0e131c;
+  --rail: #0f141e;
+  --chrome: rgba(15, 20, 30, 0.84);
+  --primary: #79a6ee;
+  --primary-hover: #93b8f4;
+  --primary-soft: rgba(121, 166, 238, 0.16);
+  --primary-line: rgba(121, 166, 238, 0.34);
+  --primary-edge: #79a6ee;
+  --accent-wash: linear-gradient(135deg, #2f5fbb 0%, #4a80cf 100%);
+}
+
+/* Violet — the LCIT sign-in palette carried into the application. */
+:root[data-theme="violet"]:not([data-appearance="dark"]) {
+  --background: #ebeef8;
+  --canvas-wash: radial-gradient(1200px 460px at 16% -14%, rgba(118, 87, 169, 0.14), transparent 62%),
+    radial-gradient(1000px 420px at 92% -10%, rgba(16, 43, 74, 0.1), transparent 60%);
+  --surface-secondary: #f1f2f9;
+  --surface-sunken: #f7f7fc;
+  --rail: #f8f8fd;
+  --chrome: rgba(250, 251, 254, 0.8);
+  --border: #dee3ee;
+  --border-strong: #c5cfdd;
+  --hairline: rgba(21, 35, 57, 0.07);
+  --text-primary: #152339;
+  --text-secondary: #4d5c73;
+  --text-muted: #58677e;
+  --text-faint: #6a7488;
+  --primary: #65449c;
+  --primary-hover: #553888;
+  --primary-soft: #efe9f8;
+  --primary-line: #ddd2ef;
+  --primary-edge: #7657a9;
+  --accent-wash: linear-gradient(135deg, #65459b 0%, #8257b0 100%);
+}
+:root[data-appearance="dark"][data-theme="violet"] {
+  --background: #0a0810;
+  --canvas-wash: radial-gradient(1200px 480px at 16% -14%, rgba(118, 87, 169, 0.24), transparent 62%);
+  --surface: #17141f;
+  --surface-secondary: #1f1b2a;
+  --surface-raised: #1b1725;
+  --surface-sunken: #130f1a;
+  --rail: #140f1c;
+  --chrome: rgba(20, 15, 28, 0.84);
+  --primary: #b79bec;
+  --primary-hover: #c8b0f2;
+  --primary-soft: rgba(183, 155, 236, 0.16);
+  --primary-line: rgba(183, 155, 236, 0.34);
+  --primary-edge: #b79bec;
+  --accent-wash: linear-gradient(135deg, #65459b 0%, #8b5cc0 100%);
+}
+
+/* Studio — near monochrome, one accent, drawn edges instead of shadows. */
+:root[data-theme="studio"]:not([data-appearance="dark"]) {
+  --background: #fbfbfd;
+  --canvas-wash: none;
+  --surface-secondary: #f4f4f7;
+  --surface-sunken: #fafafc;
+  --rail: #ffffff;
+  --chrome: #ffffff;
+  --border: rgba(17, 17, 26, 0.1);
+  --border-strong: rgba(17, 17, 26, 0.2);
+  --hairline: rgba(17, 17, 26, 0.06);
+  --text-primary: #0f0f14;
+  --text-secondary: #55555f;
+  --text-muted: #62626f;
+  --text-faint: #6f6f7d;
+  --primary: #3f3f4a;
+  --primary-hover: #26262e;
+  --primary-soft: rgba(17, 17, 26, 0.055);
+  --primary-line: rgba(17, 17, 26, 0.14);
+  --primary-edge: #0f0f14;
+  --accent-wash: linear-gradient(135deg, #2b2b33 0%, #45454f 100%);
+  --radius-xs: 5px;
+  --radius-sm: 6px;
+  --radius: 8px;
+  --radius-lg: 9px;
+  --radius-xl: 12px;
+  --control-height: 32px;
+  --shadow-sm: none;
+  --shadow-md: 0 1px 2px rgba(17, 17, 26, 0.05), 0 12px 32px -14px rgba(17, 17, 26, 0.2);
+}
+/* Studio's geometry: a tighter grid than the other styles, stated once. */

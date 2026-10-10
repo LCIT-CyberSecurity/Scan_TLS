@@ -1,0 +1,11 @@
+@import "./tokens.css";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body { @apply bg-background text-fg antialiased; background-image: var(--canvas-wash); }
+  :focus-visible { outline: none; box-shadow: var(--ring); }
+  h1 { @apply text-2xl font-semibold tracking-tight; }
+  h2 { @apply text-lg font-semibold; }
+}
