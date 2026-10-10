@@ -5,6 +5,29 @@ ranges for TLS versions, certificate validity, and cipher suites. It checks
 the detected configuration against current security standards and flags weak
 or outdated protocols.
 
+## Two ways to run it
+
+| | **Standalone CLI** (historical) | **WebUI** (new) |
+|---|---|---|
+| Source of truth | YAML files in `config/` | PostgreSQL |
+| Run | `python3 tls_scan.py ...`, cron | web interface, worker, built-in scheduler |
+| Needs | Python 3, Nmap | Docker Compose (see [installation](docs/admin/install.md)) |
+| Users / roles / SSO | none | AUDITOR, USER, OPERATOR, ADMIN, local admin, OIDC / Entra ID |
+| Results | files (HTML, Markdown, CSV, CBOM) | same files + history, comparison, notifications, audit |
+
+Both modes run the **same scan engine** (`tls_scanner/`); the WebUI adds no second engine. The
+Standalone mode keeps its commands, YAML files, formats and cron usage unchanged and works without
+PostgreSQL or a web server. YAML files and the database are never synchronised: in WebUI mode you
+manage everything in the interface and may import/export policies as YAML.
+
+WebUI documentation: [architecture](docs/architecture/overview.md) ·
+[data model](docs/architecture/data-model.md) · [installation](docs/admin/install.md) ·
+[operations](docs/admin/operations.md) · [user guide](docs/user/guide.md) ·
+[policies and profiles](docs/user/policies-and-profiles.md) · [reports](docs/user/reports.md) ·
+[Entra ID SSO](docs/integrations/entra-sso.md) · [notifications](docs/integrations/notifications.md) ·
+[tests](docs/dev/testing.md) · [CrashTest](docs/dev/crashtest.md) · [contributing](docs/dev/contributing.md) ·
+[**limitations and V2**](docs/limitations.md).
+
 ## Features
 
 - Scans common TCP ports by default for TLS versions, certificate validity,
