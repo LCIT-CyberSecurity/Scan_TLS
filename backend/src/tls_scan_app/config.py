@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     local_admin_password_file: str = ""
     initial_password_path: str = "/var/lib/tls-scan/initial-admin-password"
     session_secret_file: str = ""
+    smtp_password: str = ""  # noqa: S105
+    smtp_password_file: str = ""
 
     # OIDC (Entra ID or generic). Empty issuer = SSO disabled.
     oidc_provider: Literal["", "entra", "generic"] = ""
@@ -45,7 +47,7 @@ class Settings(BaseSettings):
     storage_root: str = "/var/lib/tls-scan"
     max_concurrent_scans: int = 2
     max_scan_duration_seconds: int = 3600
-    max_targets_per_scan: int = 1024
+    max_targets_per_scan: int = 4096  # total addresses (CIDRs expanded) per scan
     max_scan_workers: int = 8
     worker_poll_seconds: float = 2.0
     scheduler_poll_seconds: float = 15.0
@@ -56,6 +58,8 @@ class Settings(BaseSettings):
     def _load_files(self) -> Settings:
         if self.session_secret_file:
             self.session_secret = Path(self.session_secret_file).read_text(encoding="utf-8").strip()
+        if self.smtp_password_file:
+            self.smtp_password = Path(self.smtp_password_file).read_text(encoding="utf-8").strip()
         if self.local_admin_password_file:
             self.local_admin_password = Path(self.local_admin_password_file).read_text(encoding="utf-8").strip()
         return self

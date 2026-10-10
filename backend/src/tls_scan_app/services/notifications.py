@@ -3,7 +3,10 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session as DbSession
 
-from tls_scan_app.models import Notification, ScanRun, ScanRunRequester
+from tls_scan_app.models import Notification, ScanRun, ScanRunRequester, User
+
+DEFAULT_EVENTS = {"scan_completed", "scan_failed", "scan_cancelled"}
+ALL_EVENTS = DEFAULT_EVENTS | {"new_noncompliance", "certificate_expiring", "schedule_problem"}
 
 EVENT_BY_STATUS = {"completed": "scan_completed", "partial": "scan_completed", "failed": "scan_failed",
                    "cancelled": "scan_cancelled", "expired": "scan_failed"}
@@ -20,5 +23,9 @@ def notify_run_finished(db: DbSession, run: ScanRun) -> None:
         f"Critical findings: {summary.get('critical_findings', 0)}\nRun: /scans/{run.id}\n"
     )
     for requester in db.query(ScanRunRequester).filter_by(run_id=run.id):
+        user = db.get(User, requester.user_id)
+        wanted = set(user.notify_events.split(",")) if user and user.notify_events is not None else DEFAULT_EVENTS
+        if event not in wanted:
+            continue
         db.add(Notification(user_id=requester.user_id, event=event, run_id=run.id,
                             subject=f"[TLS Scan] {run.name}: {run.status}", body=body))

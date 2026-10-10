@@ -156,3 +156,29 @@ def failed_runs(db: DbSession = Depends(get_db), _: User = Depends(require_role(
     """Execution errors, for OPERATOR+ troubleshooting."""
     rows = db.execute(select(ScanRun).where(ScanRun.status.in_(("failed", "expired", "partial"))).order_by(ScanRun.queued_at.desc()).limit(100)).scalars()
     return [{"id": str(r.id), "name": r.name, "status": r.status, "error": r.error, "phase": r.phase, "queued_at": r.queued_at} for r in rows]
+
+
+class SmtpTestBody(BaseModel):
+    to: str | None = None
+
+
+@router.post("/notifications/test")
+def test_notifications(body: SmtpTestBody, request: Request, db: DbSession = Depends(get_db), actor: User = Depends(admin_only)) -> list[dict]:
+    from tls_scan_app.services import mail
+
+    cfg = mail.smtp_config(db)
+    if cfg is None:
+        raise HTTPException(409, "No SMTP connector configured (host and from address are required)")
+    steps = mail.diagnose(cfg, request.app.state.settings.smtp_password, body.to)
+    audit.record(db, "notifications.test", actor=actor, resource_type="settings", outcome="success" if all(s["status"] == "ok" for s in steps) else "failure")
+    db.commit()
+    return steps
+
+
+@router.get("/notifications")
+def notification_log(db: DbSession = Depends(get_db), _: User = Depends(admin_only)) -> list[dict]:
+    from tls_scan_app.models import Notification
+
+    rows = db.execute(select(Notification).order_by(Notification.created_at.desc()).limit(100)).scalars()
+    return [{"id": str(n.id), "event": n.event, "subject": n.subject, "status": n.status, "error": n.error, "created_at": n.created_at,
+             "sent_at": n.sent_at, "run_id": str(n.run_id) if n.run_id else None} for n in rows]

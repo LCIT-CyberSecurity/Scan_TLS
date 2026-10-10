@@ -16,7 +16,7 @@ from pathlib import Path
 from tls_scan_app.config import Settings, get_settings
 from tls_scan_app.database import make_engine, make_session_factory
 from tls_scan_app.models import ScanRun
-from tls_scan_app.services import runs
+from tls_scan_app.services import mail, retention, runs
 from tls_scan_app.services.logs import configure_logging, scrub_text
 from tls_scan_app.services.notifications import notify_run_finished
 
@@ -129,9 +129,14 @@ def main() -> None:
     import threading
 
     active: dict = {}
+    last_purge = 0.0
     while not stop["flag"]:
         with session_factory() as db:
             runs.recover_stale(db)
+            mail.deliver_pending(db, settings)
+            if time.monotonic() - last_purge > 3600:
+                last_purge = time.monotonic()
+                retention.purge(db, Path(settings.storage_root))
             for run_id in [r for r, t in active.items() if not t.is_alive()]:
                 active.pop(run_id)
             run = None

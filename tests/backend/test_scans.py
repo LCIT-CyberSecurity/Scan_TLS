@@ -42,7 +42,7 @@ def test_no_tls_service_is_not_an_error_nor_compliant(user, catalog):
 
 def test_cancel_stops_run_and_only_owner_or_operator_can(user, user2, operator, catalog):
     # a CIDR over unreachable space keeps nmap busy long enough to cancel
-    definition = make_definition(user, catalog, ["10.255.255.0/24"], name="slow")
+    definition = make_definition(user, catalog, ["10.255.0.0/20"], name="slow")
     run = user.post(f"/api/scan-definitions/{definition['id']}/run").json()
     wait_for(lambda: user.get(f"/api/scan-runs/{run['run_id']}").json()["status"] == "running", 60)
     assert user2.post(f"/api/scan-runs/{run['run_id']}/cancel").status_code == 403

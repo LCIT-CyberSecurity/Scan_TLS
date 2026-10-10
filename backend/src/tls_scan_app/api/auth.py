@@ -30,7 +30,7 @@ def user_payload(user: User) -> dict:
     return {
         "id": str(user.id), "email": user.email, "display_name": user.display_name, "role": str(user.role),
         "must_change_password": user.must_change_password, "locale": user.locale, "theme": user.theme,
-        "palette": user.palette, "local_account": user.password_hash is not None,
+        "palette": user.palette, "notify_events": (user.notify_events.split(",") if user.notify_events else []) if user.notify_events is not None else None, "local_account": user.password_hash is not None,
     }
 
 
@@ -112,6 +112,7 @@ class PreferencesBody(BaseModel):
     locale: str | None = None
     theme: str | None = None
     palette: str | None = None
+    notify_events: list[str] | None = None
 
 
 @router.patch("/preferences")
@@ -124,6 +125,12 @@ def preferences(body: PreferencesBody, user: User = Depends(get_current_user), d
         if body.theme not in ("light", "dark", "system"):
             raise HTTPException(422, "Unsupported theme")
         user.theme = body.theme
+    if body.notify_events is not None:
+        from tls_scan_app.services.notifications import ALL_EVENTS
+
+        if set(body.notify_events) - ALL_EVENTS:
+            raise HTTPException(422, "Unknown notification event")
+        user.notify_events = ",".join(sorted(body.notify_events))
     if body.palette is not None:
         user.palette = body.palette[:20]
     db.commit()

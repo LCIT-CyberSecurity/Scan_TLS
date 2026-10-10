@@ -6,7 +6,7 @@ from collections.abc import Callable
 
 from fastapi import FastAPI, Request, Response
 
-from tls_scan_app.api import admin, auth, catalog, definitions, health, policies, runs
+from tls_scan_app.api import admin, auth, catalog, definitions, health, policies, runs, sso
 from tls_scan_app.config import Settings, get_settings
 from tls_scan_app.database import make_engine, make_session_factory
 from tls_scan_app.services.bootstrap import ensure_bootstrap
@@ -42,7 +42,7 @@ def make_app(settings: Settings | None = None, bootstrap: bool = True) -> FastAP
         response.headers["X-Request-ID"] = request_id
         return response
 
-    for module in (health, auth, catalog, policies, definitions, runs, admin):
+    for module in (health, auth, sso, catalog, policies, definitions, runs, admin):
         app.include_router(module.router)
 
     if bootstrap:
