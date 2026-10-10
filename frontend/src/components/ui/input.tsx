@@ -10,11 +10,14 @@ export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSel
 Select.displayName = "Select";
 
 export function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
+  // The hint stays outside <label> so the control's accessible name is just its label.
   return (
-    <label className="block space-y-1.5">
-      <span className="text-[13px] font-medium text-fg-2">{label}</span>
-      {children}
+    <div className="space-y-1.5">
+      <label className="block space-y-1.5">
+        <span className="text-[13px] font-medium text-fg-2">{label}</span>
+        {children}
+      </label>
       {hint && <span className="block text-xs text-muted">{hint}</span>}
-    </label>
+    </div>
   );
 }

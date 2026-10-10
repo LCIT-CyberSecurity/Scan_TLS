@@ -16,6 +16,8 @@ from fastapi import FastAPI, Form, HTTPException
 from fastapi.responses import JSONResponse, RedirectResponse
 
 ISSUER = os.environ.get("MOCK_OIDC_ISSUER", "http://mock-oidc:8080")
+# Browser-facing address of /authorize (differs from ISSUER when the browser is outside the Docker network).
+PUBLIC = os.environ.get("MOCK_OIDC_PUBLIC_BASE_URL", ISSUER)
 KEY = JsonWebKey.generate_key("RSA", 2048, is_private=True, options={"kid": "mock-1"})
 CODES: dict[str, dict] = {}
 app = FastAPI()
@@ -23,7 +25,7 @@ app = FastAPI()
 
 @app.get("/.well-known/openid-configuration")
 def discovery():
-    return {"issuer": ISSUER, "authorization_endpoint": f"{ISSUER}/authorize", "token_endpoint": f"{ISSUER}/token", "jwks_uri": f"{ISSUER}/jwks.json"}
+    return {"issuer": ISSUER, "authorization_endpoint": f"{PUBLIC}/authorize", "token_endpoint": f"{ISSUER}/token", "jwks_uri": f"{ISSUER}/jwks.json"}
 
 
 @app.get("/jwks.json")

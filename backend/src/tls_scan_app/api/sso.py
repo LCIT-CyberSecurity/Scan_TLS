@@ -27,7 +27,7 @@ def _redirect_uri(request: Request) -> str:
 @router.get("/providers")
 def providers(request: Request) -> dict:
     s = request.app.state.settings
-    return {"local": True, "sso": {"enabled": bool(s.oidc_issuer), "provider": s.oidc_provider or "generic"} if s.oidc_issuer else {"enabled": False}}
+    return {"local": True, "crashtest": s.crashtest, "sso": {"enabled": bool(s.oidc_issuer), "provider": s.oidc_provider or "generic"} if s.oidc_issuer else {"enabled": False}}
 
 
 @router.get("/sso/login")

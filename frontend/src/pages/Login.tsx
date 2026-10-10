@@ -14,9 +14,10 @@ export default function Login() {
   const [next, setNext] = useState("");
   const [error, setError] = useState<unknown>();
   const [sso, setSso] = useState(false);
+  const [crashtest, setCrashtest] = useState(false);
   const mustChange = !!user?.must_change_password;
 
-  useEffect(() => { api<{ sso: { enabled: boolean } }>("/auth/providers").then((p) => setSso(p.sso.enabled)).catch(() => undefined); }, []);
+  useEffect(() => { api<{ sso: { enabled: boolean }; crashtest?: boolean }>("/auth/providers").then((p) => { setSso(p.sso.enabled); setCrashtest(!!p.crashtest); }).catch(() => undefined); }, []);
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -31,6 +32,7 @@ export default function Login() {
     <div className="grid min-h-screen place-items-center px-4">
       <form onSubmit={submit} className="w-full max-w-sm space-y-4 rounded-xl border border-border bg-surface p-7 shadow-md">
         <div className="flex items-center gap-3"><img src="/lcit-mark.png" alt="" className="size-9" /><h1 className="text-xl">TLS Scan</h1></div>
+        {crashtest && <p className="rounded-sm border border-warning-line bg-warning-soft px-3 py-2 text-xs text-warning">CrashTest environment: demo accounts and fictional data. Not for production.</p>}
         {mustChange ? (
           <>
             <p className="rounded-sm border border-warning-line bg-warning-soft px-3 py-2 text-sm text-warning">{t("login.mustChange")}</p>
