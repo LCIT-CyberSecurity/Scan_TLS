@@ -1,0 +1,40 @@
+# Integration/dev stack. Run on the integration VM with a dedicated project name and ports >= 5000.
+name: tlsscan-dev
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: tls_scan
+      POSTGRES_PASSWORD: ${DEV_DB_PASSWORD:?set DEV_DB_PASSWORD}
+      POSTGRES_DB: tls_scan
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tls_scan"]
+      interval: 3s
+      retries: 20
+  api:
+    build: {context: ../.., dockerfile: ops/docker/backend.Dockerfile, args: {WITH_DEV: "true"}}
+    environment: &env
+      TLS_SCAN_DATABASE_URL: postgresql+psycopg://tls_scan:${DEV_DB_PASSWORD}@postgres:5432/tls_scan
+      TLS_SCAN_ENVIRONMENT: development
+      TLS_SCAN_COOKIE_SECURE: "false"
+      TLS_SCAN_SESSION_SECRET: ${DEV_SESSION_SECRET:-dev-only-insecure-secret-change-me}
+      TLS_SCAN_STORAGE_ROOT: /var/lib/tls-scan
+    volumes: [data:/var/lib/tls-scan]
+    depends_on: {postgres: {condition: service_healthy}}
+    ports: ["5001:8000"]
+    command: sh -c "cd backend && alembic upgrade head && cd .. && uvicorn --factory tls_scan_app.app:create_app --host 0.0.0.0 --port 8000"
+  worker:
+    build: {context: ../.., dockerfile: ops/docker/backend.Dockerfile, args: {WITH_DEV: "true"}}
+    environment: *env
+    volumes: [data:/var/lib/tls-scan]
+    depends_on: [api]
+    command: python -m tls_scan_app.workers.worker
+  scheduler:
+    build: {context: ../.., dockerfile: ops/docker/backend.Dockerfile, args: {WITH_DEV: "true"}}
+    environment: *env
+    depends_on: [api]
+    command: python -m tls_scan_app.scheduler.scheduler
+volumes:
+  pgdata:
+  data:

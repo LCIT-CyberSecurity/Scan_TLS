@@ -1,0 +1,50 @@
+# Isolated automated-test stack (no published ports; everything on its own network).
+name: tlsscan-test
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment: {POSTGRES_USER: tls_scan, POSTGRES_PASSWORD: "${TEST_DB_PASSWORD:?}", POSTGRES_DB: tls_scan}
+    tmpfs: [/var/lib/postgresql/data]
+    healthcheck: {test: ["CMD-SHELL", "pg_isready -U tls_scan"], interval: 2s, retries: 30}
+  lab-tls:
+    build: {context: ../.., dockerfile: tests/lab/lab-tls.Dockerfile}
+  api:
+    build: &build {context: ../.., dockerfile: ops/docker/backend.Dockerfile, args: {WITH_DEV: "true"}}
+    environment: &env
+      TLS_SCAN_DATABASE_URL: postgresql+psycopg://tls_scan:${TEST_DB_PASSWORD}@postgres:5432/tls_scan
+      TLS_SCAN_ENVIRONMENT: test
+      TLS_SCAN_COOKIE_SECURE: "false"
+      TLS_SCAN_SESSION_SECRET: crashtest-only-session-secret
+      TLS_SCAN_LOCAL_ADMIN_PASSWORD: ${TEST_ADMIN_PASSWORD:?}
+      TLS_SCAN_RATE_LIMIT_ENABLED: "false"
+      TLS_SCAN_SCHEDULER_POLL_SECONDS: "2"
+      TLS_SCAN_WORKER_POLL_SECONDS: "1"
+      TLS_SCAN_MAX_SCAN_DURATION_SECONDS: "${TEST_MAX_DURATION:-300}"
+      TLS_SCAN_STORAGE_ROOT: /var/lib/tls-scan
+    volumes: [data:/var/lib/tls-scan]
+    depends_on: {postgres: {condition: service_healthy}}
+    command: sh -c "cd backend && alembic upgrade head && cd .. && uvicorn --factory tls_scan_app.app:create_app --host 0.0.0.0 --port 8000"
+    healthcheck: {test: ["CMD", "curl", "-fs", "http://localhost:8000/api/health/ready"], interval: 2s, retries: 40}
+  worker:
+    build: *build
+    environment: *env
+    volumes: [data:/var/lib/tls-scan]
+    depends_on: {api: {condition: service_healthy}}
+    command: python -m tls_scan_app.workers.worker
+  scheduler:
+    build: *build
+    environment: *env
+    depends_on: {api: {condition: service_healthy}}
+    command: python -m tls_scan_app.scheduler.scheduler
+  tests:
+    build: *build
+    environment:
+      <<: *env
+      TEST_API_URL: http://api:8000
+      TEST_LAB_HOST: lab-tls
+    volumes: [data:/var/lib/tls-scan, "../../tests:/app/tests:ro"]
+    depends_on: {api: {condition: service_healthy}, worker: {condition: service_started}, lab-tls: {condition: service_started}}
+    profiles: [tests]
+    command: pytest -x -q tests/backend
+volumes:
+  data:

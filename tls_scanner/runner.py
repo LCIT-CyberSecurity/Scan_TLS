@@ -122,8 +122,11 @@ def collect_job_results(job, targets, logger, nmap, tqdm, cancel_event=None, on_
     return results, findings
 
 
-def execute_scan(job: ScanJob, cancel_event=None, on_event: Hook | None = None) -> ScanOutcome:
+def execute_scan(job: ScanJob, cancel_event=None, on_event: Hook | None = None, passes: list[tuple[str, str]] | None = None) -> ScanOutcome:
     """Run a validated `ScanJob` and write its exports. Never prints, never exits.
+
+    `passes` (optional) is a list of (targets, ports) executed one after the other with the same job
+    settings, used when targets carry their own ports; results are merged into one report.
 
     Raises ConfigError (invalid input / export path) or PQCPrerequisiteError; other exceptions
     from nmap propagate to the caller, which records them as an execution failure.
@@ -132,6 +135,9 @@ def execute_scan(job: ScanJob, cancel_event=None, on_event: Hook | None = None) 
 
     emit = on_event or (lambda name, data: None)
     validate_scan_input(job)
+    pass_list = passes or [(job.targets, job.ports)]
+    for pass_targets, pass_ports in pass_list:
+        validate_scan_input(ScanJob(targets=pass_targets, ports=pass_ports, crypto=job.crypto, ip=job.ip))
     start = time.monotonic()
     logger = configure_logging(job)
     scan_timestamp = local_scan_timestamp()
@@ -151,7 +157,17 @@ def execute_scan(job: ScanJob, cancel_event=None, on_event: Hook | None = None) 
         emit("host_done", {"host": host, "scanned": was_scanned})
 
     logger.info("scan_start targets=%s ports=%s workers=%s crypto=%s", targets, job.ports, job.workers, job.crypto)
-    results, findings = collect_job_results(job, targets, logger, nmap, QuietProgress, cancel_event, on_event, host_done)
+    results, findings = [], {}
+    for pass_targets, pass_ports in pass_list:
+        if cancel_event is not None and cancel_event.is_set():
+            skipped.extend(normalize_targets(pass_targets).split())
+            continue
+        pass_job = ScanJob(**{**job.__dict__, "targets": pass_targets, "ports": pass_ports})
+        pass_results, pass_findings = collect_job_results(
+            pass_job, normalize_targets(pass_targets), logger, nmap, QuietProgress, cancel_event, on_event, host_done
+        )
+        results.extend(pass_results)
+        findings.update(pass_findings)
     cancelled = bool(cancel_event is not None and cancel_event.is_set())
     duration = round(time.monotonic() - start, 2)
 

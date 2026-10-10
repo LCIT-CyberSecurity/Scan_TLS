@@ -1,0 +1,9 @@
+.git
+.venv
+scan_reports
+logs
+**/__pycache__
+frontend/node_modules
+*.csv
+*.cbom.json
+.env

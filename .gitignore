@@ -6,3 +6,7 @@ logs/
 *.csv
 *.cbom.json
 scan_reports/
+.env
+ops/dev/.env
+frontend/node_modules/
+frontend/dist/

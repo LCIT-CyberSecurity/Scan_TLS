@@ -1,0 +1,245 @@
+"""Scan runs, schedules, reports, comparison, dashboard."""
+from __future__ import annotations
+
+import uuid
+from datetime import UTC, datetime
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import FileResponse
+from pydantic import BaseModel
+from sqlalchemy import func, or_, select
+from sqlalchemy.orm import Session as DbSession
+
+from tls_scan_app.api.common import get_or_404, can_modify, ids_matching_filter
+from tls_scan_app.deps import get_db, require_role
+from tls_scan_app.models import (
+    Role, RunEndpoint, RunFinding, ScanDefinition, ScanRun, ScanRunRequester, ScanSchedule, ScheduleTrigger, User,
+)
+from tls_scan_app.models.scan import ACTIVE_STATUSES, FINAL_STATUSES
+from tls_scan_app.models.user import role_at_least
+from tls_scan_app.services import audit, comparison, runs
+from tls_scan_app.services.schedule_calc import ScheduleError, next_after, validate
+
+router = APIRouter(prefix="/api", tags=["runs"])
+auditor = require_role(Role.AUDITOR)
+user_only = require_role(Role.USER)
+MEDIA = {"html": "text/html", "md": "text/markdown", "csv": "text/csv", "findings_csv": "text/csv", "cbom": "application/json", "metadata": "application/json"}
+
+
+def run_out(r: ScanRun, detail: bool = False) -> dict:
+    data = {
+        "id": str(r.id), "name": r.name, "definition_id": str(r.definition_id) if r.definition_id else None,
+        "schedule_id": str(r.schedule_id) if r.schedule_id else None, "initiated_by": str(r.initiated_by) if r.initiated_by else None,
+        "status": r.status, "phase": r.phase, "queued_at": r.queued_at, "started_at": r.started_at, "finished_at": r.finished_at,
+        "duration_seconds": r.duration_seconds, "cancel_requested": r.cancel_requested, "error": r.error,
+        "progress": r.progress, "summary": r.summary, "policy_versions": r.policy_versions,
+        "reports": [{"format": f["format"], "size": f["size"], "sha256": f["sha256"]} for f in (r.report_files or [])],
+    }
+    if detail:
+        data |= {"config_snapshot": r.config_snapshot, "scanned_hosts": r.scanned_hosts, "skipped_hosts": r.skipped_hosts, "worker_id": r.worker_id}
+    return data
+
+
+# ---------- runs ----------
+@router.get("/scan-runs")
+def list_runs(mine: bool = False, status: str | None = None, definition_id: uuid.UUID | None = None, tag: str | None = None,
+              si: uuid.UUID | None = None, limit: int = 100, db: DbSession = Depends(get_db), user: User = Depends(auditor)) -> list[dict]:
+    stmt = select(ScanRun).order_by(ScanRun.queued_at.desc()).limit(min(limit, 500))
+    if mine:
+        stmt = stmt.where(or_(ScanRun.initiated_by == user.id, ScanRun.id.in_(select(ScanRunRequester.run_id).where(ScanRunRequester.user_id == user.id))))
+    if status:
+        stmt = stmt.where(ScanRun.status == status)
+    if definition_id:
+        stmt = stmt.where(ScanRun.definition_id == definition_id)
+    allowed = ids_matching_filter(db, "definition", tag, si)
+    if allowed is not None:
+        stmt = stmt.where(ScanRun.definition_id.in_(allowed))
+    return [run_out(r) for r in db.execute(stmt).scalars()]
+
+
+@router.get("/scan-runs/{run_id}")
+def get_run(run_id: uuid.UUID, db: DbSession = Depends(get_db), user: User = Depends(auditor)) -> dict:
+    r = get_or_404(db, ScanRun, run_id, "Scan run")
+    out = run_out(r, detail=role_at_least(user.role, Role.OPERATOR))
+    out["endpoints"] = [
+        {"endpoint_id": e.endpoint_id, "hostname": e.hostname, "ip_address": e.ip_address, "port": e.port, "grade": e.grade,
+         "compliance_status": e.compliance_status, "highest_severity": e.highest_severity, "tls_versions": e.supported_tls_versions,
+         "certificate": e.certificate, "errors": e.errors, "untested_checks": e.untested_checks}
+        for e in db.execute(select(RunEndpoint).where(RunEndpoint.run_id == r.id).order_by(RunEndpoint.endpoint_id)).scalars()
+    ]
+    out["findings"] = [
+        {"finding_id": f.finding_id, "title": f.title, "severity": f.severity, "status": f.status, "category": f.category,
+         "evidence": f.evidence, "remediation": f.remediation, "affected_endpoint_ids": f.affected_endpoint_ids}
+        for f in db.execute(select(RunFinding).where(RunFinding.run_id == r.id)).scalars()
+    ]
+    return out
+
+
+@router.post("/scan-runs/{run_id}/cancel")
+def cancel_run(run_id: uuid.UUID, db: DbSession = Depends(get_db), user: User = Depends(user_only)) -> dict:
+    r = get_or_404(db, ScanRun, run_id, "Scan run")
+    if r.status not in ACTIVE_STATUSES:
+        raise HTTPException(409, "The scan is not active")
+    owners = {r.initiated_by}
+    if not (role_at_least(user.role, Role.OPERATOR) or user.id in owners):
+        raise HTTPException(403, "Only the initiator or an operator can cancel this scan")
+    runs.request_cancel(db, r, user)
+    return run_out(r)
+
+
+@router.delete("/scan-runs/{run_id}", status_code=204)
+def delete_run(run_id: uuid.UUID, request: Request, db: DbSession = Depends(get_db), user: User = Depends(require_role(Role.OPERATOR))) -> None:
+    r = get_or_404(db, ScanRun, run_id, "Scan run")
+    if r.status in ACTIVE_STATUSES:
+        raise HTTPException(409, "Cancel the scan first")
+    root = Path(request.app.state.settings.storage_root)
+    for f in r.report_files or []:
+        _remove_report_tree(root, f["path"])
+    audit.record(db, "scan.delete", actor=user, resource_type="scan_run", resource_id=r.id)
+    db.delete(r)
+    db.commit()
+
+
+def _remove_report_tree(root: Path, rel: str) -> None:
+    import shutil
+
+    path = (root / rel).resolve()
+    parts = Path(rel).parts
+    if len(parts) >= 2 and parts[0] == "reports" and path.is_relative_to(root.resolve()):
+        shutil.rmtree((root / parts[0] / parts[1]).resolve(), ignore_errors=True)
+
+
+@router.get("/scan-runs/{run_id}/reports/{fmt}")
+def download_report(run_id: uuid.UUID, fmt: str, request: Request, inline: bool = False, db: DbSession = Depends(get_db),
+                    user: User = Depends(auditor)) -> FileResponse:
+    r = get_or_404(db, ScanRun, run_id, "Scan run")
+    entry = next((f for f in (r.report_files or []) if f["format"] == fmt), None)
+    if entry is None:
+        raise HTTPException(404, "No such report for this run")
+    root = Path(request.app.state.settings.storage_root).resolve()
+    path = (root / entry["path"]).resolve()
+    if not path.is_relative_to(root) or not path.is_file():
+        raise HTTPException(404, "Report file is missing")
+    import hashlib
+
+    if hashlib.sha256(path.read_bytes()).hexdigest() != entry["sha256"]:
+        audit.record(db, "report.integrity_failure", actor=user, resource_type="scan_run", resource_id=r.id, outcome="failure", detail={"format": fmt})
+        db.commit()
+        raise HTTPException(500, "Report integrity check failed")
+    audit.record(db, "report.download", actor=user, resource_type="scan_run", resource_id=r.id, detail={"format": fmt})
+    db.commit()
+    headers = {"X-Content-Type-Options": "nosniff", "Content-Security-Policy": "sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:; script-src 'unsafe-inline'"}
+    return FileResponse(path, media_type=MEDIA.get(fmt, "application/octet-stream"), filename=None if inline and fmt == "html" else path.name, headers=headers)
+
+
+@router.get("/scan-runs/{run_id}/compare")
+def compare(run_id: uuid.UUID, with_run: uuid.UUID | None = None, db: DbSession = Depends(get_db), user: User = Depends(user_only)) -> dict:
+    new = get_or_404(db, ScanRun, run_id, "Scan run")
+    old = get_or_404(db, ScanRun, with_run, "Scan run") if with_run else comparison.previous_comparable(db, new)
+    if old is None:
+        raise HTTPException(404, "No comparable earlier run")
+    if old.finished_at and new.finished_at and old.finished_at > new.finished_at:
+        old, new = new, old
+    return comparison.compare_runs(db, old, new)
+
+
+# ---------- schedules ----------
+class ScheduleBody(BaseModel):
+    definition_id: uuid.UUID
+    kind: str
+    params: dict
+    timezone: str = "UTC"
+    active: bool = True
+
+
+def schedule_out(db: DbSession, s: ScanSchedule, history: bool = False) -> dict:
+    last = db.execute(select(ScanRun).where(ScanRun.schedule_id == s.id).order_by(ScanRun.queued_at.desc()).limit(1)).scalar_one_or_none()
+    d = {"id": str(s.id), "definition_id": str(s.definition_id), "owner_id": str(s.owner_id) if s.owner_id else None, "kind": s.kind,
+         "params": s.params, "timezone": s.timezone, "active": s.active, "next_run_at": s.next_run_at, "last_run_at": s.last_run_at,
+         "last_run": {"id": str(last.id), "status": last.status, "duration_seconds": last.duration_seconds} if last else None}
+    if history:
+        d["triggers"] = [{"due_at": t.due_at, "outcome": t.outcome, "reason": t.reason, "run_id": str(t.run_id) if t.run_id else None}
+                         for t in db.execute(select(ScheduleTrigger).where(ScheduleTrigger.schedule_id == s.id).order_by(ScheduleTrigger.due_at.desc()).limit(50)).scalars()]
+    return d
+
+
+def _check_schedule(body: ScheduleBody) -> datetime | None:
+    try:
+        validate(body.kind, body.params, body.timezone)
+        return next_after(body.kind, body.params, body.timezone, datetime.now(UTC))
+    except (ScheduleError, ValueError) as error:
+        raise HTTPException(422, str(error)) from error
+
+
+@router.get("/schedules")
+def list_schedules(mine: bool = False, db: DbSession = Depends(get_db), user: User = Depends(user_only)) -> list[dict]:
+    stmt = select(ScanSchedule).order_by(ScanSchedule.next_run_at)
+    if mine or not role_at_least(user.role, Role.OPERATOR):
+        # USER consults their own schedules; OPERATOR/ADMIN see all.
+        stmt = stmt.where(ScanSchedule.owner_id == user.id)
+    return [schedule_out(db, s) for s in db.execute(stmt).scalars()]
+
+
+@router.get("/schedules/{schedule_id}")
+def get_schedule(schedule_id: uuid.UUID, db: DbSession = Depends(get_db), user: User = Depends(user_only)) -> dict:
+    s = get_or_404(db, ScanSchedule, schedule_id, "Schedule")
+    if not can_modify(user, s.owner_id):
+        raise HTTPException(403, "Not your schedule")
+    return schedule_out(db, s, history=True)
+
+
+@router.post("/schedules", status_code=201)
+def create_schedule(body: ScheduleBody, db: DbSession = Depends(get_db), user: User = Depends(user_only)) -> dict:
+    get_or_404(db, ScanDefinition, body.definition_id, "Scan definition")
+    nxt = _check_schedule(body)
+    s = ScanSchedule(definition_id=body.definition_id, owner_id=user.id, kind=body.kind, params=body.params, timezone=body.timezone,
+                     active=body.active and nxt is not None, next_run_at=nxt)
+    db.add(s)
+    db.flush()
+    audit.record(db, "schedule.create", actor=user, resource_type="schedule", resource_id=s.id, detail={"kind": s.kind})
+    db.commit()
+    return schedule_out(db, s)
+
+
+@router.put("/schedules/{schedule_id}")
+def update_schedule(schedule_id: uuid.UUID, body: ScheduleBody, db: DbSession = Depends(get_db), user: User = Depends(user_only)) -> dict:
+    s = get_or_404(db, ScanSchedule, schedule_id, "Schedule")
+    if not can_modify(user, s.owner_id):
+        raise HTTPException(403, "Only the owner or an operator can modify this schedule")
+    nxt = _check_schedule(body)
+    s.kind, s.params, s.timezone, s.active, s.next_run_at = body.kind, body.params, body.timezone, body.active and nxt is not None, nxt
+    audit.record(db, "schedule.update", actor=user, resource_type="schedule", resource_id=s.id)
+    db.commit()
+    return schedule_out(db, s)
+
+
+@router.delete("/schedules/{schedule_id}", status_code=204)
+def delete_schedule(schedule_id: uuid.UUID, db: DbSession = Depends(get_db), user: User = Depends(user_only)) -> None:
+    s = get_or_404(db, ScanSchedule, schedule_id, "Schedule")
+    if not can_modify(user, s.owner_id):
+        raise HTTPException(403, "Only the owner or an operator can delete this schedule")
+    audit.record(db, "schedule.delete", actor=user, resource_type="schedule", resource_id=s.id)
+    db.delete(s)
+    db.commit()
+
+
+# ---------- dashboard ----------
+@router.get("/dashboard")
+def dashboard(tag: str | None = None, si: uuid.UUID | None = None, scope: str = "mine", db: DbSession = Depends(get_db),
+              user: User = Depends(auditor)) -> dict:
+    stmt = select(ScanRun)
+    if scope == "mine" or not role_at_least(user.role, Role.OPERATOR):
+        stmt = stmt.where(or_(ScanRun.initiated_by == user.id, ScanRun.id.in_(select(ScanRunRequester.run_id).where(ScanRunRequester.user_id == user.id))))
+    allowed = ids_matching_filter(db, "definition", tag, si)
+    if allowed is not None:
+        stmt = stmt.where(ScanRun.definition_id.in_(allowed))
+    recent = db.execute(stmt.order_by(ScanRun.queued_at.desc()).limit(10)).scalars().all()
+    counts = dict(db.execute(select(ScanRun.status, func.count()).where(ScanRun.id.in_(stmt.with_only_columns(ScanRun.id).order_by(None))).group_by(ScanRun.status)).all())
+    finished = db.execute(stmt.where(ScanRun.status.in_(("completed", "partial")), ScanRun.summary.is_not(None)).order_by(ScanRun.finished_at.desc()).limit(20)).scalars().all()
+    trend = [{"run_id": str(r.id), "name": r.name, "finished_at": r.finished_at,
+              "compliant": (r.summary or {}).get("compliant_endpoints", 0), "non_compliant": (r.summary or {}).get("non_compliant_endpoints", 0)}
+             for r in reversed(finished)]
+    upcoming = db.execute(select(ScanSchedule).where(ScanSchedule.active.is_(True), ScanSchedule.owner_id == user.id).order_by(ScanSchedule.next_run_at).limit(5)).scalars().all()
+    return {"counts": counts, "recent": [run_out(r) for r in recent], "compliance_trend": trend,
+            "upcoming": [schedule_out(db, s) for s in upcoming]}
