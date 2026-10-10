@@ -25,12 +25,11 @@ class Settings(BaseSettings):
     session_idle_timeout_minutes: int = 60
     session_absolute_timeout_hours: int = 12
 
-    # Local administrator: created at first start with a generated one-time password
-    # (written to a file, never logged) unless one is provided; must be changed at first login.
+    # Local administrator: created at first start with the deployment default password
+    # ("SecretPassword") unless one is provided; must be changed at first login.
     local_admin_username: str = "admin"
     local_admin_password: str = ""  # noqa: S105
     local_admin_password_file: str = ""
-    initial_password_path: str = "/var/lib/tls-scan/initial-admin-password"
     session_secret_file: str = ""
     smtp_password: str = ""  # noqa: S105
     graph_client_secret: str = ""  # noqa: S105

@@ -17,8 +17,9 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="tls_scan_app.cli")
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("bootstrap", help="create the organisation row and the initial local administrator")
-    reset = sub.add_parser("reset-admin-password", help="issue a new one-time password for the local administrator")
+    reset = sub.add_parser("reset-admin-password", help="reset the local administrator password (random one-time value, or the deployment default with --default)")
     reset.add_argument("--username", default=None)
+    reset.add_argument("--default", action="store_true", help="reset to the deployment default password")
     args = parser.parse_args(argv)
     settings = get_settings()
     factory = make_session_factory(make_engine(settings.database_url))
@@ -34,7 +35,9 @@ def main(argv: list[str] | None = None) -> int:
         if user is None:
             print("no such local administrator", file=sys.stderr)
             return 1
-        password = secrets.token_urlsafe(18)
+        from tls_scan_app.services.bootstrap import DEFAULT_ADMIN_PASSWORD
+
+        password = DEFAULT_ADMIN_PASSWORD if args.default else secrets.token_urlsafe(18)
         user.password_hash, user.must_change_password, user.active = hash_password(password), True, True
         db.commit()
         print(password)  # shown once, on the operator's terminal only

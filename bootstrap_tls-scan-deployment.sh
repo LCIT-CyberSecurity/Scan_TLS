@@ -8,7 +8,7 @@
 #   status         container and health status
 #   backup [DIR]   PostgreSQL dump + report files into DIR (default ./backups)
 #   restore FILE   restore a backup (asks for explicit confirmation)
-#   reset-admin    issue a new one-time password for the local administrator
+#   reset-admin    reset the local administrator to a new one-time password (--default: SecretPassword) for the local administrator
 #   logs [SERVICE] follow technical logs
 #   reinstall      stop and rebuild images, KEEPING data volumes
 #   uninstall      remove containers and images; volumes only if you also confirm data deletion
@@ -73,14 +73,9 @@ wait_healthy() {
 }
 
 show_admin_password() {
-  local pw; pw="$(dc exec -T api cat /var/lib/tls-scan/initial-admin-password 2>/dev/null || true)"
-  if [ -n "$pw" ]; then
-    say ""; say "${BOLD}Initial administrator${RESET}"
-    say "  user:      admin"
-    say "  password:  $pw   (one-time: you must change it at first sign-in)"
-    say "  The password file is removed from the server once displayed here."
-    dc exec -T api rm -f /var/lib/tls-scan/initial-admin-password >/dev/null 2>&1 || true
-  fi
+  say ""; say "${BOLD}Initial administrator${RESET}"
+  say "  user:      admin"
+  say "  password:  SecretPassword   (default: you must change it at first sign-in)"
 }
 
 cmd_install() {
@@ -128,7 +123,7 @@ cmd_restore() {
   ok "Restore complete."
 }
 
-cmd_reset_admin() { preflight; say "New one-time password:"; dc exec -T api python -m tls_scan_app.cli reset-admin-password; }
+cmd_reset_admin() { preflight; say "New password:"; dc exec -T api python -m tls_scan_app.cli reset-admin-password "$@"; }
 cmd_logs() { dc logs -f --tail 100 "${1:-}"; }
 
 cmd_reinstall() { preflight; warn "Images are rebuilt, containers recreated. Data volumes are kept."; dc down; cmd_install; }
@@ -145,7 +140,7 @@ cmd_uninstall() {
 case "${1:-}" in
   install) cmd_install ;; update) cmd_update ;; status) cmd_status ;;
   backup) shift; cmd_backup "$@" ;; restore) shift; cmd_restore "$@" ;;
-  reset-admin) cmd_reset_admin ;; logs) shift; cmd_logs "$@" ;;
+  reset-admin) shift; cmd_reset_admin "$@" ;; logs) shift; cmd_logs "$@" ;;
   reinstall) cmd_reinstall ;; uninstall) cmd_uninstall ;;
   *) sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'; exit 1 ;;
 esac

@@ -1,11 +1,13 @@
 import { useEffect, useState, type FormEvent } from "react";
+import { LockKeyhole, ShieldCheck } from "lucide-react";
 import { api, ApiError } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { ErrorNote } from "../components/common";
-import { Button } from "../components/ui/button";
-import { Field, Input } from "../components/ui/input";
 import { useI18n, LOCALES } from "../i18n";
+import "../styles/login.css";
 
+/** Sign-in, laid out like LCIT Sign: introduction panel on the left, sign-in card on the right.
+ *  Also handles the forced password change (e.g. the deployment default password). */
 export default function Login() {
   const { user, login, refresh } = useAuth();
   const { t, locale, setLocale } = useI18n();
@@ -29,29 +31,53 @@ export default function Login() {
   }
 
   return (
-    <div className="grid min-h-screen place-items-center px-4">
-      <form onSubmit={submit} className="w-full max-w-sm space-y-4 rounded-xl border border-border bg-surface p-7 shadow-md">
-        <div className="flex items-center gap-3"><img src="/lcit-mark.png" alt="" className="size-9" /><h1 className="text-xl">TLS Scan</h1></div>
-        {crashtest && <p className="rounded-sm border border-warning-line bg-warning-soft px-3 py-2 text-xs text-warning">CrashTest environment: demo accounts and fictional data. Not for production.</p>}
-        {mustChange ? (
-          <>
-            <p className="rounded-sm border border-warning-line bg-warning-soft px-3 py-2 text-sm text-warning">{t("login.mustChange")}</p>
-            <Field label={t("login.currentPassword")}><Input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required /></Field>
-            <Field label={t("login.newPassword")} hint={t("login.passwordHint")}><Input type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} required minLength={12} /></Field>
-          </>
-        ) : (
-          <>
-            <Field label={t("login.username")}><Input autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} required autoFocus /></Field>
-            <Field label={t("login.password")}><Input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required /></Field>
-          </>
-        )}
-        <ErrorNote error={error} />
-        <Button type="submit" className="w-full">{mustChange ? t("login.changeAndContinue") : t("login.submit")}</Button>
-        {sso && !mustChange && <Button type="button" variant="outline" className="w-full" onClick={() => { window.location.href = "/api/auth/sso/login"; }}>{t("login.sso")}</Button>}
-        <div className="flex justify-center gap-3 pt-1 text-xs text-muted">
-          {LOCALES.map((l) => <button type="button" key={l} onClick={() => setLocale(l)} className={l === locale ? "font-semibold text-primary" : "hover:text-fg"}>{l.toUpperCase()}</button>)}
-        </div>
-      </form>
+    <div className="login-page">
+      <div className="auth-layout">
+        <aside className="auth-intro">
+          <div className="auth-product">
+            <span className="auth-product-icon"><ShieldCheck size={22} strokeWidth={1.8} aria-hidden="true" /></span>
+            <span><strong>TLS SCAN</strong><small>{t("login.product")}</small></span>
+          </div>
+          <div className="auth-message"><h2>{t("login.tagline")}</h2></div>
+          <div className="auth-foot">{t("login.vendor")} <strong>LCIT Cybersecurity</strong></div>
+        </aside>
+
+        <main className="auth-form-wrap">
+          <div className="auth-form-content">
+            <div className="auth-company">
+              <img src="/lcit-logo.png" alt="LCIT" width={100} height={76} />
+              <div><strong>LCIT Cybersecurity</strong><span>{t("login.space")}</span></div>
+            </div>
+
+            <form className="login-card" onSubmit={submit}>
+              <span className="auth-eyebrow">{t("login.eyebrow")}</span>
+              <h1>{mustChange ? t("login.changeTitle") : t("login.title")}</h1>
+              <p>{mustChange ? t("login.mustChange") : t("login.intro")}</p>
+              {crashtest && <p className="login-notice">{t("login.crashtest")}</p>}
+              {mustChange ? (
+                <>
+                  <label>{t("login.currentPassword")}<input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required /></label>
+                  <label>{t("login.newPassword")}<input type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} required minLength={12} /></label>
+                  <span className="hint">{t("login.passwordHint")}</span>
+                </>
+              ) : (
+                <>
+                  <label>{t("login.username")}<input autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} required autoFocus /></label>
+                  <label>{t("login.password")}<input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required /></label>
+                </>
+              )}
+              <ErrorNote error={error} />
+              <button type="submit" className="login-submit">{mustChange ? t("login.changeAndContinue") : t("login.submit")}</button>
+              {sso && !mustChange && <button type="button" className="login-sso" onClick={() => { window.location.href = "/api/auth/sso/login"; }}>{t("login.sso")}</button>}
+              <div className="login-lang">
+                {LOCALES.map((l) => <button type="button" key={l} onClick={() => setLocale(l)} aria-current={l === locale}>{l.toUpperCase()}</button>)}
+              </div>
+            </form>
+
+            <p className="auth-form-foot"><LockKeyhole size={12} aria-hidden="true" /> {t("login.foot")}</p>
+          </div>
+        </main>
+      </div>
     </div>
   );
 }

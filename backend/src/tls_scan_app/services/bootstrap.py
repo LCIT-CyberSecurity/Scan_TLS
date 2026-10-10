@@ -1,10 +1,7 @@
-"""First-start initialisation: single organisation row, local admin with a generated password."""
+"""First-start initialisation: single organisation row, local admin with the default password (changed at first sign-in)."""
 from __future__ import annotations
 
 import logging
-import os
-import secrets
-from pathlib import Path
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DbSession
@@ -16,6 +13,7 @@ from tls_scan_app.services import audit
 
 logger = logging.getLogger(__name__)
 LOCAL_ISSUER = "builtin:local"
+DEFAULT_ADMIN_PASSWORD = "SecretPassword"  # noqa: S105  deployment default, must be changed at first sign-in (as in LCIT-Sign)
 
 
 def ensure_bootstrap(db: DbSession, settings: Settings) -> None:
@@ -25,7 +23,7 @@ def ensure_bootstrap(db: DbSession, settings: Settings) -> None:
         select(User).where(User.issuer == LOCAL_ISSUER, User.subject == settings.local_admin_username)
     ).scalar_one_or_none()
     if admin is None:
-        password = settings.local_admin_password or secrets.token_urlsafe(18)
+        password = settings.local_admin_password or DEFAULT_ADMIN_PASSWORD
         admin = User(
             issuer=LOCAL_ISSUER,
             subject=settings.local_admin_username,
@@ -37,14 +35,5 @@ def ensure_bootstrap(db: DbSession, settings: Settings) -> None:
         )
         db.add(admin)
         audit.record(db, "user.bootstrap_admin", actor_label="system", resource_type="user", detail={"username": admin.subject})
-        if not settings.local_admin_password:
-            _write_initial_password(Path(settings.initial_password_path), password)
-            logger.warning("Initial administrator created; its one-time password is in %s", settings.initial_password_path)
     db.commit()
 
-
-def _write_initial_password(path: Path, password: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w") as handle:
-        handle.write(password + "\n")

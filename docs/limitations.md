@@ -1,7 +1,7 @@
 # Scope, limitations and V2
 
 ## Implemented and verified (see [tests](dev/testing.md))
-Local admin with generated one-time password; local users; OIDC SSO (mock-tested); LDAP and Entra directory lookup with pre-provisioning; four global roles enforced
+Local admin with the default password `SecretPassword` (change forced at first sign-in); local users; OIDC SSO (mock-tested); LDAP and Entra directory lookup with pre-provisioning; four global roles enforced
 server-side; targets (FQDN/IP/CIDR, ports, ranges), groups, SI/sub-SI, tags, import/export; versioned policies and
 profiles, YAML policy import/export; report templates (formats); scan definitions; manual and scheduled runs;
 dedicated worker with process isolation, cancellation with partial results, timeouts, crash recovery; run

@@ -1,0 +1,52 @@
+/* Sign-in page: same layout and look as LCIT Sign (intro panel on the left, card on the right). */
+.login-page { display:grid; place-items:center; min-height:100vh; padding:24px; background:#081a30; }
+html:has(.login-page), body:has(.login-page) { background:#081a30; }
+.auth-layout { width:min(1240px,100%); min-height:min(790px,calc(100vh - 48px)); display:grid; grid-template-columns:minmax(0,1.2fr) minmax(430px,.8fr); overflow:hidden; border:1px solid #243a56; border-radius:20px; background:#f5f7fb; box-shadow:0 28px 80px rgba(0,8,20,.28); }
+.auth-intro { position:relative; display:flex; flex-direction:column; justify-content:space-between; gap:44px; padding:clamp(36px,4.5vw,68px); overflow:hidden; color:#fff; background:#102b4a; }
+.auth-intro::before { content:""; position:absolute; width:480px; height:480px; right:-300px; top:-300px; border:1px solid rgba(185,157,229,.2); border-radius:50%; box-shadow:0 0 0 80px rgba(185,157,229,.035),0 0 0 160px rgba(185,157,229,.025); pointer-events:none; }
+.auth-product { position:relative; display:flex; align-items:center; gap:13px; }
+.auth-product-icon { width:44px; height:44px; display:grid; place-items:center; border:1px solid rgba(215,199,239,.35); border-radius:11px; color:#d9c7f2; background:rgba(255,255,255,.06); }
+.auth-product strong, .auth-product small { display:block; }
+.auth-product strong { color:#fff; font-size:17px; letter-spacing:.08em; }
+.auth-product small { margin-top:2px; color:#b8c8de; font-size:12.5px; }
+.auth-message { position:relative; max-width:620px; }
+.auth-message h2 { margin:21px 0; color:#fff; font-size:clamp(39px,4.5vw,65px); line-height:1.08; letter-spacing:-.055em; font-weight:660; }
+.auth-message p { max-width:490px; color:#c6d4e5; font-size:16.5px; line-height:1.65; }
+.auth-foot { position:relative; color:#90a7c3; font-size:12.5px; }
+.auth-foot strong { color:#c6d4e5; font-weight:600; }
+.auth-eyebrow { color:#62469a; font-size:12.5px; font-weight:750; letter-spacing:.14em; }
+.auth-form-wrap { display:grid; align-items:stretch; padding:clamp(34px,4.3vw,66px); background:#f5f7fb; }
+.auth-form-content { width:100%; max-width:420px; min-height:100%; display:flex; flex-direction:column; justify-self:center; }
+.auth-company { display:flex; align-items:center; gap:14px; padding-bottom:24px; border-bottom:1px solid #dce2ec; }
+.auth-company img { width:100px; height:76px; object-fit:contain; flex:none; }
+.auth-company strong, .auth-company span { display:block; }
+.auth-company strong { color:#1b2942; font-size:19px; line-height:1.2; letter-spacing:-.02em; }
+.auth-company span { margin-top:5px; color:#68768b; font-size:13.5px; }
+.login-card { width:100%; display:grid; gap:18px; margin:auto 0; padding:38px 0; color:#14233a; }
+.login-card h1 { margin:-4px 0 -11px; color:#152339; font-size:34px; line-height:1.16; letter-spacing:-.04em; font-weight:650; }
+.login-card > p { margin:0 0 14px; color:#607087; font-size:15.5px; line-height:1.5; }
+.login-card label { display:grid; gap:8px; color:#344054; font-size:14.5px; font-weight:650; }
+.login-card input { width:100%; min-height:48px; padding:0 14px; border:1px solid #c5cfdd; border-radius:9px; background:#fff; color:#14233a; font-size:15.5px; box-shadow:0 1px 2px rgba(16,35,68,.03); }
+.login-card input:hover { border-color:#9eabc0; }
+.login-card input:focus-visible { outline:3px solid #e1d8f3; outline-offset:0; border-color:#7657a9; }
+.login-card .hint { color:#68768b; font-size:13px; font-weight:400; }
+.login-card .login-submit { min-height:49px; margin-top:9px; border:0; border-radius:9px; background:#65459b; color:#fff; font-size:15.5px; font-weight:600; cursor:pointer; box-shadow:0 6px 16px rgba(79,48,134,.18); }
+.login-card .login-submit:hover { background:#553888; }
+.login-card .login-sso { min-height:49px; display:flex; align-items:center; justify-content:center; border:1px solid #c5cfdd; border-radius:9px; background:#fff; color:#14233a; font-size:15.5px; font-weight:600; cursor:pointer; }
+.login-card .login-sso:hover { border-color:#65459b; }
+.login-card .login-notice { margin:0; padding:11px 13px; border:1px solid #f1d9a4; border-radius:8px; background:#fff8e6; color:#8a5a00; font-size:14px; }
+.login-card .form-error, .login-card [role="alert"] { margin:0; padding:11px 13px; border:1px solid #f0c8c4; border-radius:8px; background:#fff2f0; color:#a22720; font-size:14.5px; }
+.login-lang { display:flex; justify-content:center; gap:14px; padding-top:6px; font-size:12.5px; }
+.login-lang button { color:#8793a5; background:none; border:0; cursor:pointer; }
+.login-lang button[aria-current="true"] { color:#65449c; font-weight:750; }
+.auth-form-foot { margin:0; padding-top:18px; border-top:1px solid #dce2ec; color:#8793a5; font-size:12.5px; }
+@media (max-width:900px) {
+  .login-page { padding:0; }
+  .auth-layout { min-height:100vh; grid-template-columns:1fr; border:0; border-radius:0; box-shadow:none; }
+  .auth-intro { gap:22px; padding:25px 24px 29px; }
+  .auth-message h2 { margin:13px 0 8px; font-size:clamp(31px,8vw,42px); }
+  .auth-message p { font-size:15.5px; line-height:1.5; }
+  .auth-foot { display:none; }
+  .auth-form-wrap { padding:30px 24px; }
+  .auth-company img { width:78px; height:60px; }
+}
