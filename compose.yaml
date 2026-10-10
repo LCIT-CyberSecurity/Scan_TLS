@@ -1,0 +1,75 @@
+# TLS Scan WebUI deployment. Use ./bootstrap_tls-scan-deployment.sh rather than calling compose by hand.
+name: ${TLS_SCAN_PROJECT:-tls-scan}
+
+x-backend: &backend
+  build: {context: ., dockerfile: ops/docker/backend.Dockerfile}
+  image: tls-scan-backend:${TLS_SCAN_VERSION:-local}
+  restart: unless-stopped
+  env_file: .env
+  environment:
+    TLS_SCAN_ENVIRONMENT: production
+    TLS_SCAN_DATABASE_URL: postgresql+psycopg://tls_scan:${POSTGRES_PASSWORD}@postgres:5432/tls_scan
+    TLS_SCAN_STORAGE_ROOT: /var/lib/tls-scan
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: [ALL]
+  networks: [backend]
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment: {POSTGRES_USER: tls_scan, POSTGRES_DB: tls_scan, POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?run the bootstrap}"}
+    volumes: [pgdata:/var/lib/postgresql/data]
+    networks: [backend]
+    healthcheck: {test: ["CMD-SHELL", "pg_isready -U tls_scan"], interval: 5s, retries: 20}
+
+  api:
+    <<: *backend
+    command: sh -c "cd backend && alembic upgrade head && cd .. && uvicorn --factory tls_scan_app.app:create_app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips='*'"
+    volumes: [data:/var/lib/tls-scan]
+    depends_on: {postgres: {condition: service_healthy}}
+    read_only: true
+    tmpfs: [/tmp]
+    healthcheck: {test: ["CMD", "curl", "-fs", "http://localhost:8000/api/health/ready"], interval: 10s, retries: 10, start_period: 20s}
+    networks: [backend]
+
+  # Runs the scans. Egress to the networks being scanned goes through the `scan` network only; the
+  # database network is internal. The engine subprocess it spawns gets a stripped environment (no secrets).
+  worker:
+    <<: *backend
+    command: python -m tls_scan_app.workers.worker
+    volumes: [data:/var/lib/tls-scan]
+    depends_on: {api: {condition: service_healthy}}
+    networks: [backend, scan]
+    read_only: true
+    tmpfs: [/tmp]
+    mem_limit: ${TLS_SCAN_WORKER_MEMORY:-2g}
+    cpus: ${TLS_SCAN_WORKER_CPUS:-2}
+    pids_limit: 512
+
+  scheduler:
+    <<: *backend
+    command: python -m tls_scan_app.scheduler.scheduler
+    depends_on: {api: {condition: service_healthy}}
+    read_only: true
+    tmpfs: [/tmp]
+
+  webui:
+    build: {context: ., dockerfile: ops/docker/frontend.Dockerfile}
+    image: tls-scan-webui:${TLS_SCAN_VERSION:-local}
+    restart: unless-stopped
+    environment: {TLS_SCAN_HTTPS_PORT: "${TLS_SCAN_HTTPS_PORT:-8443}"}
+    volumes: ["${TLS_SCAN_CERT_DIR:-./data/certs}:/certs:ro"]
+    ports: ["${TLS_SCAN_HTTPS_PORT:-8443}:443", "${TLS_SCAN_HTTP_PORT:-8080}:80"]
+    depends_on: {api: {condition: service_healthy}}
+    networks: [backend, frontend]
+    healthcheck: {test: ["CMD", "wget", "-qO-", "--no-check-certificate", "https://localhost/"], interval: 15s, retries: 5}
+
+networks:
+  backend: {internal: true}
+  frontend: {}
+  scan: {}
+
+volumes:
+  pgdata:
+  data:
