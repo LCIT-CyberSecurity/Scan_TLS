@@ -1,0 +1,16 @@
+defaults:
+  scan: {ports: "443,8443,8444,8445", crypto: standard, resolve_dns: true, workers: 2}
+  logging: {level: info, file: null}
+  export: {directory: /out, formats: [csv, cbom, md, html], filename_template: "{report_name}"}
+  checks:
+    certificate:
+      enabled: true
+      expires_within_days: 30
+      trust: {enabled: true, public_store: {enabled: true}, custom_stores: []}
+      revocation: {enabled: false}
+reports:
+  - name: lab_regression
+    run_by_default: true
+    frequency: manual
+    target_groups: [lab]
+    encryption_policies: {mode: strict_all, names: [anssi_encryption_policy]}

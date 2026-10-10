@@ -1,0 +1,7 @@
+name: lab
+description: Lab TLS endpoints (tests/lab) for the Standalone regression comparison.
+targets:
+  fqdn:
+    - lab-tls
+  ip: []
+  subnets: []
