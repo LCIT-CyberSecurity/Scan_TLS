@@ -31,6 +31,7 @@ from .exports.paths import build_export_paths, local_report_timestamp, local_sca
 from .logging_config import configure_logging
 from .models import ConfigError, PQCPrerequisiteError
 from .network import normalize_targets, parse_ports, resolve_target_fqdns
+from .runner import collect_job_results
 from .pqc import check_pqc_prerequisites
 from .scanner import (
     collect_scan_results,
@@ -414,64 +415,14 @@ def run_job(job, show_banner=True):
     nmap, PrettyTable, tqdm = load_dependencies()
     logger.info("dependencies_loaded")
     print("Initializing TLS information scan...")
-    results = []
-    findings = {}
-    fqdn_cache = resolve_target_fqdns(targets)
-    logger.debug("fqdn_cache_entries=%s", len(fqdn_cache))
-    tls_arguments = (
-        "-sV --version-light --script ssl-cert,ssl-enum-ciphers"
-    )
-    logger.debug("tls_scan_arguments=%s", tls_arguments)
+    def print_phase(name, data):
+        if name == "phase" and data["phase"] == "discovery":
+            scan_label = "common" if job.ports == "fast" else "all"
+            print(f"Discovering open TCP ports ({scan_label} ports)...")
+        elif name == "phase" and data["phase"] == "tls_scan" and job.ports in ["fast", "all"]:
+            print(f"Scanning TLS services with {job.workers} worker(s)...")
 
-    # Discovery modes first identify open ports, then run TLS scripts on them.
-    if job.ports in ["fast", "all"]:
-        scan_label = "common" if job.ports == "fast" else "all"
-        logger.info("port_discovery_start mode=%s targets=%s", job.ports, targets)
-        print(f"Discovering open TCP ports ({scan_label} ports)...")
-        open_ports = discover_open_tcp_ports(
-            nmap,
-            tqdm,
-            targets,
-            job.ports,
-        )
-        discovered_count = sum(len(ports) for ports in open_ports.values())
-        logger.info(
-            "port_discovery_done hosts=%s open_ports=%s",
-            len(open_ports),
-            discovered_count,
-        )
-        print(f"Scanning TLS services with {job.workers} worker(s)...")
-        results, findings = scan_tls_hosts_parallel(
-            nmap,
-            tqdm,
-            open_ports,
-            job,
-            fqdn_cache,
-            tls_arguments,
-            logger,
-        )
-    else:
-        scanner = nmap.PortScanner()
-        logger.info("tls_scan_start targets=%s ports=%s", targets, job.ports)
-        run_scan_with_progress(
-            scanner,
-            tqdm,
-            "TLS scan",
-            hosts=targets,
-            ports=job.ports,
-            arguments=tls_arguments,
-        )
-        collect_scan_results(
-            scanner,
-            job,
-            results,
-            findings,
-            fqdn_cache,
-        )
-        logger.info("tls_scan_done targets=%s ports=%s", targets, job.ports)
-
-    apply_endpoint_grades(results, findings)
-    logger.info("scan_results endpoints=%s rows=%s", len(findings), len(results))
+    results, findings = collect_job_results(job, targets, logger, nmap, tqdm, on_event=print_phase)
 
     if not results:
         logger.warning("no_tls_service_found ports=%s", job.ports)

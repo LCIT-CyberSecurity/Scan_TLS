@@ -260,11 +260,28 @@ def scan_tls_host(nmap, tqdm, host, ports, job, fqdn_cache, tls_arguments):
     return host_results, host_findings
 
 
-def scan_tls_hosts_parallel(nmap, tqdm, open_ports, job, fqdn_cache, tls_arguments, logger):
+def scan_tls_hosts_parallel(nmap, tqdm, open_ports, job, fqdn_cache, tls_arguments, logger, cancel_event=None, on_host_done=None):
+    """Scan hosts, one nmap run per host.
+
+    `cancel_event` (threading.Event-like) and `on_host_done(host, scanned)` are optional hooks
+    used by the WebUI runner: once the event is set, hosts not yet started are skipped
+    (`scanned=False`) and the results gathered so far are returned. Omitted, behaviour is unchanged.
+    """
     if not open_ports:
         return [], {}
 
     items = sorted(open_ports.items())
+    host_scanner = scan_tls_host
+    if cancel_event is not None or on_host_done is not None:
+        def host_scanner(nmap, tqdm, host, ports, job, fqdn_cache, tls_arguments):
+            if cancel_event is not None and cancel_event.is_set():
+                if on_host_done:
+                    on_host_done(host, False)
+                return [], {}
+            outcome = scan_tls_host(nmap, tqdm, host, ports, job, fqdn_cache, tls_arguments)
+            if on_host_done:
+                on_host_done(host, True)
+            return outcome
     if job.workers == 1:
         results = []
         findings = {}
@@ -274,7 +291,7 @@ def scan_tls_hosts_parallel(nmap, tqdm, open_ports, job, fqdn_cache, tls_argumen
                 host,
                 ",".join(str(port) for port in ports),
             )
-            host_results, host_findings = scan_tls_host(
+            host_results, host_findings = host_scanner(
                 nmap,
                 tqdm,
                 host,
@@ -300,7 +317,7 @@ def scan_tls_hosts_parallel(nmap, tqdm, open_ports, job, fqdn_cache, tls_argumen
                 ",".join(str(port) for port in ports),
             )
             futures[executor.submit(
-                scan_tls_host,
+                host_scanner,
                 nmap,
                 tqdm,
                 host,
