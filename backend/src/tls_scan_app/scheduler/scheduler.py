@@ -52,6 +52,10 @@ def tick(db: DbSession, settings: Settings, now: datetime | None = None) -> int:
         schedule.next_run_at = nxt
         if nxt is None:
             schedule.active = False  # one-shot done
+        if outcome in ("skipped_late", "error"):
+            from tls_scan_app.services.notifications import notify_schedule_problem
+
+            notify_schedule_problem(db, schedule, outcome, reason)
         fired += outcome == "triggered"
         db.commit()
     return fired

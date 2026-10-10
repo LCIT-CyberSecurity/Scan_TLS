@@ -33,6 +33,11 @@ class Settings(BaseSettings):
     initial_password_path: str = "/var/lib/tls-scan/initial-admin-password"
     session_secret_file: str = ""
     smtp_password: str = ""  # noqa: S105
+    graph_client_secret: str = ""  # noqa: S105
+    graph_client_secret_file: str = ""
+    # Overridable only so tests can point at a mock; defaults are the public Microsoft endpoints.
+    graph_login_url: str = "https://login.microsoftonline.com"
+    graph_base_url: str = "https://graph.microsoft.com/v1.0"
     smtp_password_file: str = ""
 
     # OIDC (Entra ID or generic). Empty issuer = SSO disabled.
@@ -58,6 +63,8 @@ class Settings(BaseSettings):
     def _load_files(self) -> Settings:
         if self.session_secret_file:
             self.session_secret = Path(self.session_secret_file).read_text(encoding="utf-8").strip()
+        if self.graph_client_secret_file:
+            self.graph_client_secret = Path(self.graph_client_secret_file).read_text(encoding="utf-8").strip()
         if self.smtp_password_file:
             self.smtp_password = Path(self.smtp_password_file).read_text(encoding="utf-8").strip()
         if self.local_admin_password_file:

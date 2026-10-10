@@ -251,5 +251,15 @@ export const en = {
   "tasks.upcoming": "My upcoming operations",
   "tpl.formats": "Formats",
   "tpl.none": "No template.",
+  "pref.ev.new_noncompliance": "New non-compliance found",
+  "pref.ev.certificate_expiring": "Certificate expired or expiring",
+  "pref.ev.schedule_problem": "Schedule problem",
+  "admin.connector": "Notification connector",
+  "admin.connectorNone": "None",
+  "admin.graphTenant": "Tenant ID",
+  "admin.graphClient": "Client (application) ID",
+  "admin.graphSender": "Sender mailbox",
+  "admin.graphSecretHint": "The client secret is read from TLS_SCAN_GRAPH_CLIENT_SECRET(_FILE), never stored here. Needs the application permission Mail.Send.",
+  "admin.testConnector": "Test connection",
 } as const;
 export type Messages = Record<keyof typeof en, string>;

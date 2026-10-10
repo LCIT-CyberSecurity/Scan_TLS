@@ -36,6 +36,7 @@ def test_smtp_diagnostics_notification_and_preferences(admin, user, operator, ca
     time.sleep(5)
     assert len(httpx.get(SINK).json()) == before
     assert user.patch("/api/auth/preferences", json={"notify_events": ["bogus"]}).status_code == 422
+    user.patch("/api/auth/preferences", json={"notify_events": ["scan_completed", "scan_failed", "scan_cancelled", "new_noncompliance", "certificate_expiring", "schedule_problem"]})  # restore
     assert operator.get("/api/admin/notifications").status_code == 403
     assert any(n["status"] == "sent" for n in admin.get("/api/admin/notifications").json())
 
@@ -73,3 +74,74 @@ def test_retention_purges_old_report_files_and_audit_but_keeps_recent(admin, use
     assert user.get(f"/api/scan-runs/{recent['id']}/reports/csv").status_code == 200  # recent report untouched
     actions = {e["action"] for e in admin.get("/api/admin/audit", params={"limit": 50}).json()}
     assert "retention.purge" in actions
+
+
+def test_graph_connector_diagnostics_and_delivery(admin, user, catalog):
+    import httpx
+
+    graph = {"tenant_id": "contoso-test", "client_id": "app-1", "sender": "tls-scan@contoso.example"}
+    admin.put("/api/admin/settings/notifications", json={"value": {"connector": "graph", "graph": graph}})
+    steps = admin.post("/api/admin/notifications/test", json={"to": "someone@example.com"}).json()
+    assert [(s["step"], s["status"]) for s in steps] == [("token", "ok"), ("send", "ok")]
+    # permission problem is explained
+    admin.put("/api/admin/settings/notifications", json={"value": {"connector": "graph", "graph": {**graph, "sender": "forbidden@contoso.example"}}})
+    steps = admin.post("/api/admin/notifications/test", json={"to": "someone@example.com"}).json()
+    assert steps[-1]["status"] == "fail" and "Mail.Send" in steps[-1]["detail"]
+    # a scan result is delivered through Graph, with a link and no attachment
+    admin.put("/api/admin/settings/notifications", json={"value": {"connector": "graph", "graph": graph}})
+    definition = make_definition(user, catalog, [LAB], name="graph-notify", ports="443")
+    final = wait_final(user, user.post(f"/api/scan-definitions/{definition['id']}/run").json()["run_id"])
+    mails = wait_for(lambda: [m for m in httpx.get("http://mock-graph:8080/messages").json() if final["id"] in m["body"]], 60)
+    assert mails[0]["to"] == [user.user["email"]] and mails[0]["sender"] == graph["sender"] and "Report:" in mails[0]["body"]
+    admin.put("/api/admin/settings/notifications", json={"value": {"connector": "smtp", "smtp": {"host": "smtp-sink", "port": 1025, "starttls": False, "from": "tls-scan@example.com"}}})
+
+
+def test_certificate_expiry_and_new_noncompliance_events(admin, user, operator, catalog):
+    """The lab's 8445 certificate expires in 10 days (< 30-day window); a second scan with an extra port brings new findings."""
+    import httpx
+
+    admin.put("/api/admin/settings/notifications", json={"value": {"connector": "smtp", "smtp": {"host": "smtp-sink", "port": 1025, "starttls": False, "from": "tls-scan@example.com"}}})
+    assert user.patch("/api/auth/preferences", json={"notify_events": ["certificate_expiring", "new_noncompliance"]}).status_code == 200
+    d1 = make_definition(user, catalog, [LAB], name="expiry-a", ports="8445")
+    final1 = wait_final(user, user.post(f"/api/scan-definitions/{d1['id']}/run").json()["run_id"])
+    try:
+        mails = wait_for(lambda: [m for m in httpx.get(SINK).json() if final1["id"] in m["body"] and "expiring" in m["subject"]], 40)
+    except AssertionError:
+        raise AssertionError(f"no expiry mail; summary={ {k: v for k, v in final1['summary'].items() if 'cert' in k} }; subjects={[m['subject'] for m in httpx.get(SINK).json()]}") from None
+    assert "day(s) left" in mails[0]["body"] or "EXPIRED" in mails[0]["body"]
+    # same definition re-targeted: add the legacy port -> new findings relative to the previous comparable run
+    user.post("/api/targets", json={"value": LAB, "ports": "8443"})  # 409 if it already exists
+    ids = [t["id"] for t in user.get("/api/targets", params={"q": LAB}).json() if t["ports"] in ("8445", "8443")]
+    assert len(ids) == 2
+    body = {**d1, "target_ids": ids, "policy_ids": [catalog["policy"]], "profile_id": catalog["profile"]}
+    assert user.put(f"/api/scan-definitions/{d1['id']}", json=body).status_code == 200
+    final2 = wait_final(user, user.post(f"/api/scan-definitions/{d1['id']}/run").json()["run_id"])
+    try:
+        mails = wait_for(lambda: [m for m in httpx.get(SINK).json() if final2["id"] in m["body"] and "new non-compliance" in m["subject"]], 40)
+    except AssertionError:
+        cmp = user.get(f"/api/scan-runs/{final2['id']}/compare")
+        raise AssertionError(f"no mail; compare={cmp.status_code} {str(cmp.json())[:300]}; subjects={[m['subject'] for m in httpx.get(SINK).json() if final2['id'] in m['body']]}") from None
+    assert "New since the previous scan" in mails[0]["body"]
+    user.patch("/api/auth/preferences", json={"notify_events": ["scan_completed", "scan_failed", "scan_cancelled", "new_noncompliance", "certificate_expiring", "schedule_problem"]})
+
+
+def test_schedule_problem_event_is_sent(admin, user, catalog):
+    import os
+    import time
+    import uuid
+    from datetime import UTC, datetime, timedelta
+
+    import httpx
+    from sqlalchemy import create_engine, text
+
+    admin.put("/api/admin/settings/notifications", json={"value": {"connector": "smtp", "smtp": {"host": "smtp-sink", "port": 1025, "starttls": False, "from": "tls-scan@example.com"}}})
+    definition = make_definition(user, catalog, [LAB], name="late-schedule", ports="443")
+    sched = user.post("/api/schedules", json={"definition_id": definition["id"], "kind": "daily", "params": {"time": "03:00"}, "timezone": "UTC"}).json()
+    # simulate downtime: the occurrence was due two hours ago
+    engine = create_engine(os.environ["TLS_SCAN_DATABASE_URL"])
+    with engine.begin() as db:
+        db.execute(text("update scan_schedules set next_run_at = :t where id = :id"), {"t": datetime.now(UTC) - timedelta(hours=2), "id": sched["id"]})
+    mails = wait_for(lambda: [m for m in httpx.get(SINK).json() if "schedule problem" in m["subject"] and sched["id"] in m["body"]], 60)
+    assert "skipped_late" in mails[0]["subject"]
+    triggers = user.get(f"/api/schedules/{sched['id']}").json()["triggers"]
+    assert triggers[0]["outcome"] == "skipped_late"

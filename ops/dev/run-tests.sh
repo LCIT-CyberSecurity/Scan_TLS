@@ -4,6 +4,6 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 ops/dev/vm.sh "cd ops/dev && export TEST_MAX_DURATION="${TEST_MAX_DURATION:-300}" TEST_DB_PASSWORD=\$(openssl rand -hex 8) TEST_ADMIN_PASSWORD=\$(openssl rand -base64 18 | tr -d '/+=') && \
-  docker compose -f compose.test.yaml --profile tests build >/dev/null 2>&1 && docker compose -f compose.test.yaml up -d --build postgres lab-tls mock-oidc smtp-sink api worker scheduler >/dev/null 2>&1 && \
+  docker compose -f compose.test.yaml --profile tests build >/dev/null 2>&1 && docker compose -f compose.test.yaml up -d --build postgres lab-tls mock-oidc mock-graph smtp-sink api worker scheduler >/dev/null 2>&1 && \
   docker compose -f compose.test.yaml run --rm tests pytest -p no:cacheprovider -x -q ${*:-tests/backend}; rc=\$?; \
   docker compose -f compose.test.yaml down -v >/dev/null 2>&1; exit \$rc"

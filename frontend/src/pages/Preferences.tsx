@@ -8,7 +8,7 @@ import { Field, Input, Select } from "../components/ui/input";
 import { LOCALES, useI18n, type Locale } from "../i18n";
 import { APPEARANCES, THEMES, applyAppearance, applyTheme, readAppearance, readTheme, type Appearance, type ThemeId } from "../theme";
 
-const EVENTS = ["scan_completed", "scan_failed", "scan_cancelled"] as const;
+const EVENTS = ["scan_completed", "scan_failed", "scan_cancelled", "new_noncompliance", "certificate_expiring", "schedule_problem"] as const;
 
 export default function Preferences() {
   const { t, locale, setLocale } = useI18n();

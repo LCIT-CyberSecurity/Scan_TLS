@@ -27,20 +27,29 @@ def scope_of(run: ScanRun) -> set[str]:
 def compare_runs(db: DbSession, old: ScanRun, new: ScanRun) -> dict[str, Any]:
     old_f, new_f = _findings(db, old), _findings(db, new)
     old_e, new_e = _endpoints(db, old), _endpoints(db, new)
-    tested_new = {e.ip_address for e in new_e.values()} | scope_of(new)
 
-    def affected_hosts(f: RunFinding) -> set[str]:
-        return {i.split(":")[0] for i in f.affected_endpoint_ids}
+    # Findings are generic ("CERTIFICATE_SELF_SIGNED") and apply to endpoints, so compare (finding, endpoint) pairs.
+    def pairs(findings: dict[str, RunFinding]) -> dict[tuple[str, str], RunFinding]:
+        return {(fid, ep): f for fid, f in findings.items() for ep in f.affected_endpoint_ids}
 
-    new_findings = [f for fid, f in new_f.items() if fid not in old_f]
-    persistent = [f for fid, f in new_f.items() if fid in old_f]
-    fixed, not_retested = [], []
-    for fid, f in old_f.items():
-        if fid in new_f:
+    old_p, new_p = pairs(old_f), pairs(new_f)
+
+    def group(keys: list[tuple[str, str]], source: dict[tuple[str, str], RunFinding]) -> list[dict]:
+        grouped: dict[str, dict] = {}
+        for fid, ep in sorted(keys):
+            f = source[(fid, ep)]
+            entry = grouped.setdefault(fid, {"finding_id": fid, "title": f.title, "severity": f.severity, "affected": []})
+            entry["affected"].append(ep)
+        return list(grouped.values())
+
+    new_keys = [k for k in new_p if k not in old_p]
+    persistent_keys = [k for k in new_p if k in old_p]
+    fixed_keys, not_retested_keys = [], []
+    for key in old_p:
+        if key in new_p:
             continue
-        hosts = affected_hosts(f)
-        # fixed only when every affected host was effectively tested again and answered
-        (fixed if hosts and hosts <= tested_new else not_retested).append(f)
+        # Fixed only when that very endpoint was observed again in the new run; otherwise we simply do not know.
+        (fixed_keys if key[1] in new_e else not_retested_keys).append(key)
 
     endpoint_changes = []
     for eid in sorted(set(old_e) & set(new_e)):
@@ -72,16 +81,13 @@ def compare_runs(db: DbSession, old: ScanRun, new: ScanRun) -> dict[str, Any]:
     if old.skipped_hosts or new.skipped_hosts:
         warnings.append("incomplete_runs")
 
-    def brief(f: RunFinding) -> dict:
-        return {"finding_id": f.finding_id, "title": f.title, "severity": f.severity, "affected": f.affected_endpoint_ids}
-
     return {
         "old_run_id": str(old.id), "new_run_id": str(new.id), "warnings": warnings,
-        "new": [brief(f) for f in new_findings], "fixed": [brief(f) for f in fixed],
-        "persistent": [brief(f) for f in persistent], "not_retested": [brief(f) for f in not_retested],
+        "new": group(new_keys, new_p), "fixed": group(fixed_keys, old_p),
+        "persistent": group(persistent_keys, new_p), "not_retested": group(not_retested_keys, old_p),
         "endpoints_added": sorted(set(new_e) - set(old_e)), "endpoints_removed": sorted(set(old_e) - set(new_e)),
         "endpoint_changes": endpoint_changes,
-        "counts": {"new": len(new_findings), "fixed": len(fixed), "persistent": len(persistent), "not_retested": len(not_retested)},
+        "counts": {"new": len(new_keys), "fixed": len(fixed_keys), "persistent": len(persistent_keys), "not_retested": len(not_retested_keys)},
     }
 
 

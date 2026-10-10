@@ -25,7 +25,8 @@ admin_only = require_role(Role.ADMIN)
 
 DEFAULT_SETTINGS = {
     "retention": {"reports_days": 365, "runs_days": 730, "audit_days": 1095},
-    "notifications": {"connector": "none", "smtp": {"host": "", "port": 587, "starttls": True, "username": "", "from": ""}},
+    "notifications": {"connector": "none", "smtp": {"host": "", "port": 587, "starttls": True, "username": "", "from": ""},
+                      "graph": {"tenant_id": "", "client_id": "", "sender": ""}},
 }
 
 
@@ -166,10 +167,9 @@ class SmtpTestBody(BaseModel):
 def test_notifications(body: SmtpTestBody, request: Request, db: DbSession = Depends(get_db), actor: User = Depends(admin_only)) -> list[dict]:
     from tls_scan_app.services import mail
 
-    cfg = mail.smtp_config(db)
-    if cfg is None:
-        raise HTTPException(409, "No SMTP connector configured (host and from address are required)")
-    steps = mail.diagnose(cfg, request.app.state.settings.smtp_password, body.to)
+    if mail.build_sender(db, request.app.state.settings) is None:
+        raise HTTPException(409, "No complete notification connector configured")
+    steps = mail.diagnose(db, request.app.state.settings, body.to)
     audit.record(db, "notifications.test", actor=actor, resource_type="settings", outcome="success" if all(s["status"] == "ok" for s in steps) else "failure")
     db.commit()
     return steps

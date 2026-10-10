@@ -64,19 +64,25 @@ function Audit() {
   );
 }
 
-interface Settings { retention: { reports_days: number; runs_days: number; audit_days: number }; notifications: { connector: string; smtp: { host: string; port: number; starttls: boolean; username: string; from: string } } }
+interface Smtp { host: string; port: number; starttls: boolean; username: string; from: string }
+interface Graph { tenant_id: string; client_id: string; sender: string }
+interface Settings { retention: { reports_days: number; runs_days: number; audit_days: number }; notifications: { connector: string; smtp: Smtp; graph?: Graph } }
 interface Step { step: string; status: string; detail: string }
 function SettingsTab() {
   const { t } = useI18n();
   const { data, reload } = useLoad(() => api<Settings>("/admin/settings"));
   const [ret, setRet] = useState<Settings["retention"] | null>(null);
-  const [smtp, setSmtp] = useState<Settings["notifications"]["smtp"] | null>(null);
+  const [smtp, setSmtp] = useState<Smtp | null>(null);
+  const [graph, setGraph] = useState<Graph | null>(null);
+  const [connector, setConnector] = useState<string | null>(null);
   const [steps, setSteps] = useState<Step[]>([]);
   const [to, setTo] = useState("");
   const [err, setErr] = useState<unknown>();
   const [saved, setSaved] = useState("");
   const retention = ret ?? data?.retention;
   const smtpCfg = smtp ?? data?.notifications.smtp;
+  const graphCfg = graph ?? data?.notifications.graph ?? { tenant_id: "", client_id: "", sender: "" };
+  const conn = connector ?? data?.notifications.connector ?? "none";
   const save = async (key: string, value: unknown) => { try { await api(`/admin/settings/${key}`, { method: "PUT", body: { value } }); setSaved(key); setErr(undefined); await reload(); } catch (e) { setErr(e); } };
   return (
     <div className="grid max-w-3xl gap-6">
@@ -90,19 +96,36 @@ function SettingsTab() {
         </CardContent></Card>
       )}
       {smtpCfg && (
-        <Card><CardHeader><CardTitle>SMTP</CardTitle></CardHeader><CardContent className="space-y-4">
-          <p className="text-xs text-muted">{t("admin.smtpPasswordHint")}</p>
-          <div className="grid gap-4 sm:grid-cols-2">
-            <Field label="Host"><Input value={smtpCfg.host} onChange={(e) => setSmtp({ ...smtpCfg, host: e.target.value })} /></Field>
-            <Field label="Port"><Input type="number" value={smtpCfg.port} onChange={(e) => setSmtp({ ...smtpCfg, port: Number(e.target.value) })} /></Field>
-            <Field label={t("admin.smtpUser")}><Input value={smtpCfg.username} onChange={(e) => setSmtp({ ...smtpCfg, username: e.target.value })} /></Field>
-            <Field label={t("admin.smtpFrom")}><Input value={smtpCfg.from} onChange={(e) => setSmtp({ ...smtpCfg, from: e.target.value })} /></Field>
-          </div>
-          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={smtpCfg.starttls} onChange={(e) => setSmtp({ ...smtpCfg, starttls: e.target.checked })} />STARTTLS</label>
+        <Card><CardHeader><CardTitle>{t("admin.connector")}</CardTitle></CardHeader><CardContent className="space-y-4">
+          <Field label={t("admin.connector")}><Select value={conn} onChange={(e) => setConnector(e.target.value)}><option value="none">{t("admin.connectorNone")}</option><option value="smtp">SMTP</option><option value="graph">Microsoft Graph</option></Select></Field>
+          {conn === "smtp" && (
+            <>
+              <p className="text-xs text-muted">{t("admin.smtpPasswordHint")}</p>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Host"><Input value={smtpCfg.host} onChange={(e) => setSmtp({ ...smtpCfg, host: e.target.value })} /></Field>
+                <Field label="Port"><Input type="number" value={smtpCfg.port} onChange={(e) => setSmtp({ ...smtpCfg, port: Number(e.target.value) })} /></Field>
+                <Field label={t("admin.smtpUser")}><Input value={smtpCfg.username} onChange={(e) => setSmtp({ ...smtpCfg, username: e.target.value })} /></Field>
+                <Field label={t("admin.smtpFrom")}><Input value={smtpCfg.from} onChange={(e) => setSmtp({ ...smtpCfg, from: e.target.value })} /></Field>
+              </div>
+              <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={smtpCfg.starttls} onChange={(e) => setSmtp({ ...smtpCfg, starttls: e.target.checked })} />STARTTLS</label>
+            </>
+          )}
+          {conn === "graph" && (
+            <>
+              <p className="text-xs text-muted">{t("admin.graphSecretHint")}</p>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label={t("admin.graphTenant")}><Input value={graphCfg.tenant_id} onChange={(e) => setGraph({ ...graphCfg, tenant_id: e.target.value })} /></Field>
+                <Field label={t("admin.graphClient")}><Input value={graphCfg.client_id} onChange={(e) => setGraph({ ...graphCfg, client_id: e.target.value })} /></Field>
+                <Field label={t("admin.graphSender")}><Input type="email" value={graphCfg.sender} onChange={(e) => setGraph({ ...graphCfg, sender: e.target.value })} /></Field>
+              </div>
+            </>
+          )}
           <div className="flex flex-wrap items-end gap-3">
-            <Button onClick={() => void save("notifications", { connector: "smtp", smtp: smtpCfg })}>{t("action.save")}</Button>
-            <Field label={t("admin.testTo")}><Input type="email" value={to} onChange={(e) => setTo(e.target.value)} /></Field>
-            <Button variant="outline" onClick={async () => { try { setSteps(await api<Step[]>("/admin/notifications/test", { method: "POST", body: { to: to || null } })); setErr(undefined); } catch (e) { setErr(e); } }}>{t("admin.testSmtp")}</Button>
+            <Button onClick={() => void save("notifications", { connector: conn, smtp: smtpCfg, graph: graphCfg })}>{t("action.save")}</Button>
+            {conn !== "none" && <>
+              <Field label={t("admin.testTo")}><Input type="email" value={to} onChange={(e) => setTo(e.target.value)} /></Field>
+              <Button variant="outline" onClick={async () => { try { setSteps(await api<Step[]>("/admin/notifications/test", { method: "POST", body: { to: to || null } })); setErr(undefined); } catch (e) { setErr(e); } }}>{t("admin.testConnector")}</Button>
+            </>}
           </div>
           {steps.map((s) => <div key={s.step} className={`rounded-sm border px-3 py-2 text-sm ${s.status === "ok" ? "border-success-line bg-success-soft text-success" : "border-danger-line bg-danger-soft text-danger"}`}><b>{s.step}</b> — {s.status}{s.detail && `: ${s.detail}`}</div>)}
         </CardContent></Card>
