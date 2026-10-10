@@ -73,10 +73,7 @@ def _fire(db, settings, schedule, due_at, now):
     run, dedup = runs.create_run(db, snapshot, fingerprint(snapshot), definition=definition, user=None, schedule_id=schedule.id)
     owner = schedule.owner_id
     if owner:
-        from tls_scan_app.models import ScanRunRequester
-
-        if db.get(ScanRunRequester, (run.id, owner)) is None:
-            db.add(ScanRunRequester(run_id=run.id, user_id=owner))
+        runs.add_requester(db, run.id, owner)
     return ("skipped_overlap", "merged into an equivalent active run", run.id) if dedup else ("triggered", "", run.id)
 
 

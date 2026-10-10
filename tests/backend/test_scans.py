@@ -113,3 +113,24 @@ def test_policy_versions_are_immutable(operator, catalog):
     assert versions[published["version"]]["content"]["minimum_rsa_bits"] == 2048  # untouched
     assert versions[published["version"] + 1]["status"] == "draft"
     assert operator.post("/api/policies", json={"name": "bad", "content": {"allowed_versions": []}}).status_code == 422
+
+
+def test_pqc_profile_distinguishes_hybrid_ml_kem_from_classical(operator, user, catalog):
+    """Needs OpenSSL >= 3.5 in the worker image (trixie) and the lab's 8447 (X25519MLKEM768) / 8448 (classical)."""
+    import uuid
+
+    from conftest import POLICY
+
+    profile = operator.post("/api/profiles", json={"name": f"pqc-{uuid.uuid4().hex[:5]}", "content": {
+        "scan": {"ports": "8447,8448", "crypto": "pqc", "workers": 2}, "checks": {"certificate": {"revocation": {"enabled": False}}}}}).json()
+    assert operator.post(f"/api/profiles/{profile['id']}/publish").status_code == 200
+    definition = make_definition(user, {**catalog, "profile": profile["id"]}, [LAB], name="pqc", ports="")
+    final = wait_final(user, user.post(f"/api/scan-definitions/{definition['id']}/run").json()["run_id"])
+    assert final["status"] in ("completed", "partial"), final["error"]
+    by_port = {e["port"]: e for e in final["endpoints"]}
+    assert {"8447", "8448"} <= set(by_port), by_port.keys()
+    def titles(port):
+        return {f["title"] for f in final["findings"] if any(a.endswith(f":{port}/tcp") for a in f["affected_endpoint_ids"])}
+
+    assert "Hybrid ML-KEM Group Not Supported" in titles("8448")  # classical-only endpoint is flagged
+    assert "Hybrid ML-KEM Group Not Supported" not in titles("8447")  # X25519MLKEM768 endpoint is not

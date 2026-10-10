@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from sqlalchemy import func, select, text
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DbSession
 
@@ -17,6 +18,11 @@ from tls_scan_app.services import audit
 
 STALE_HEARTBEAT_SECONDS = 120
 CLAIM_LOCK_KEY = 727301  # pg advisory lock serialising queue claims (global concurrency cap)
+
+
+def add_requester(db: DbSession, run_id: uuid.UUID, user_id: uuid.UUID) -> None:
+    """Idempotent and race-free: the same user may attach to the same run from several simultaneous requests."""
+    db.execute(pg_insert(ScanRunRequester).values(run_id=run_id, user_id=user_id).on_conflict_do_nothing())
 
 
 def create_run(
@@ -57,13 +63,13 @@ def create_run(
                 raise
     if existing is None:
         if user:
-            db.add(ScanRunRequester(run_id=run.id, user_id=user.id))
+            add_requester(db, run.id, user.id)
         audit.record(db, "scan.queued", actor=user, actor_label="scheduler" if not user else "",
                      resource_type="scan_run", resource_id=run.id, detail={"definition": snapshot["definition"]["name"]})
         db.commit()
         return run, False
-    if user and db.get(ScanRunRequester, (existing.id, user.id)) is None:
-        db.add(ScanRunRequester(run_id=existing.id, user_id=user.id))
+    if user:
+        add_requester(db, existing.id, user.id)
     audit.record(db, "scan.deduplicated", actor=user, actor_label="scheduler" if not user else "",
                  resource_type="scan_run", resource_id=existing.id)
     db.commit()
