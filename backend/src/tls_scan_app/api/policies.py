@@ -180,10 +180,24 @@ class TemplateBody(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     description: str = ""
     export_formats: list[str]
+    organization_name: str = ""
+    accent_color: str = ""
+    logo: str = ""  # data URI; kept out of list responses (only `has_logo`)
 
 
 def template_out(t: ReportTemplate) -> dict:
-    return {"id": str(t.id), "name": t.name, "description": t.description, "export_formats": t.export_formats}
+    b = t.branding or {}
+    return {"id": str(t.id), "name": t.name, "description": t.description, "export_formats": t.export_formats,
+            "organization_name": b.get("organization_name", ""), "accent_color": b.get("accent_color", ""), "has_logo": bool(b.get("logo")), "logo": b.get("logo", "")}
+
+
+def _branding(body: TemplateBody) -> dict:
+    from tls_scan_app.services import report_branding
+
+    try:
+        return report_branding.validate({"organization_name": body.organization_name, "accent_color": body.accent_color, "logo": body.logo})
+    except (report_branding.BrandingError, ValueError) as error:
+        raise HTTPException(422, str(error)) from error
 
 
 def _check_formats(formats: list[str]) -> None:
@@ -199,7 +213,7 @@ def list_templates(db: DbSession = Depends(get_db), _: User = Depends(reader)) -
 @router.post("/report-templates", status_code=201)
 def create_template(body: TemplateBody, db: DbSession = Depends(get_db), user: User = Depends(operator)) -> dict:
     _check_formats(body.export_formats)
-    template = ReportTemplate(name=body.name.strip(), description=body.description, export_formats=body.export_formats, created_by=user.id)
+    template = ReportTemplate(name=body.name.strip(), description=body.description, export_formats=body.export_formats, branding=_branding(body), created_by=user.id)
     db.add(template)
     try:
         db.flush()
@@ -216,6 +230,7 @@ def update_template(template_id: uuid.UUID, body: TemplateBody, db: DbSession = 
     template = get_or_404(db, ReportTemplate, template_id)
     _check_formats(body.export_formats)
     template.name, template.description, template.export_formats = body.name.strip(), body.description, body.export_formats
+    template.branding = _branding(body)
     audit.record(db, "report_template.update", actor=user, resource_type="report_template", resource_id=template.id)
     db.commit()
     return template_out(template)

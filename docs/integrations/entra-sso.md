@@ -1,8 +1,8 @@
 # SSO with Microsoft Entra ID (and generic OIDC)
 
 TLS Scan implements OpenID Connect *Authorization Code + PKCE* with ID-token validation (issuer, audience,
-nonce, signature via JWKS). **Authentication and directory are separate**: SSO only identifies people; no
-directory connector (LDAP/AD/Google/Graph directory sync) is implemented in V1 — users are provisioned at first
+nonce, signature via JWKS). **Authentication and directory are separate**: SSO only identifies people; optional [directory
+connectors](directory.md) help an administrator pre-provision people with a role. Users are otherwise provisioned at first
 sign-in and managed in *Administration → Users*.
 
 ## Entra ID

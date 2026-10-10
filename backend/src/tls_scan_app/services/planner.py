@@ -126,6 +126,7 @@ def build_snapshot(db: DbSession, definition: ScanDefinition, max_addresses: int
         "policy_mode": definition.policy_mode,
         "policies": policies,
         "export_formats": formats,
+        "branding": (template.branding if template else None) or {},
     }
 
 

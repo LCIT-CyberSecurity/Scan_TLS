@@ -134,3 +134,26 @@ def test_pqc_profile_distinguishes_hybrid_ml_kem_from_classical(operator, user, 
 
     assert "Hybrid ML-KEM Group Not Supported" in titles("8448")  # classical-only endpoint is flagged
     assert "Hybrid ML-KEM Group Not Supported" not in titles("8447")  # X25519MLKEM768 endpoint is not
+
+
+def test_report_template_branding_is_applied_to_the_html_report(operator, user, catalog):
+    import base64
+    import uuid
+
+    png = base64.b64encode(b"\x89PNG\r\n\x1a\n" + b"0" * 64).decode()
+    good = {"name": f"brand-{uuid.uuid4().hex[:5]}", "export_formats": ["html", "csv"], "organization_name": "ACME <Sec>", "accent_color": "#0a7f3f", "logo": f"data:image/png;base64,{png}"}
+    r = operator.post("/api/report-templates", json=good)
+    assert r.status_code == 201, r.text
+    tpl = r.json()
+    for bad in ({"accent_color": "red"}, {"logo": "data:text/html;base64,PHNjcmlwdD4="}, {"logo": f"data:image/jpeg;base64,{png}"}, {"organization_name": "x" * 200}):
+        assert operator.post("/api/report-templates", json={**good, "name": f"bad-{uuid.uuid4().hex[:5]}", **bad}).status_code == 422, bad
+    assert user.post("/api/report-templates", json=good).status_code == 403
+    ids = []
+    for value in (LAB,):
+        t = user.post("/api/targets", json={"value": value, "ports": "443"})
+        ids = [x["id"] for x in user.get("/api/targets", params={"q": value}).json() if x["ports"] == "443"]
+    d = user.post("/api/scan-definitions", json={"name": "branded", "target_ids": ids, "policy_ids": [catalog["policy"]], "profile_id": catalog["profile"], "report_template_id": tpl["id"]}).json()
+    final = wait_final(user, user.post(f"/api/scan-definitions/{d['id']}/run").json()["run_id"])
+    assert {r["format"] for r in final["reports"]} >= {"html", "csv"} and "md" not in {r["format"] for r in final["reports"]}  # template picks formats
+    html = user.get(f"/api/scan-runs/{final['id']}/reports/html").text  # integrity check passes on the branded file
+    assert "ACME &lt;Sec&gt;" in html and "--brand-600:#0a7f3f" in html and f"data:image/png;base64,{png}" in html and "<Sec>" not in html

@@ -28,3 +28,21 @@ async def send_mail(sender: str, request: Request, authorization: str = Header("
 @app.get("/messages")
 def messages():
     return MESSAGES
+
+
+PEOPLE = [
+    {"id": "u-1", "displayName": "Alice Directory", "mail": "alice.directory@contoso.example", "userPrincipalName": "alice.directory@contoso.example"},
+    {"id": "u-2", "displayName": "Bob Directory", "mail": None, "userPrincipalName": "bob.directory@contoso.example"},
+    {"id": "u-3", "displayName": "Carol Other", "mail": "carol@contoso.example", "userPrincipalName": "carol@contoso.example"},
+]
+
+
+@app.get("/v1.0/users")
+def users(request: Request, authorization: str = Header(""), top: int = 25):
+    if not authorization.startswith("Bearer tok-"):
+        raise HTTPException(401, "bad token")
+    if "tok-denied" in authorization:
+        return JSONResponse({"error": {"code": "Authorization_RequestDenied"}}, status_code=403)
+    search = request.query_params.get("$search", "")
+    needle = search.split(":")[1].split('"')[0].lower() if ":" in search else ""
+    return {"value": [p for p in PEOPLE if not needle or needle in p["displayName"].lower() or needle in (p["mail"] or "")][:top]}

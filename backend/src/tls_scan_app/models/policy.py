@@ -76,5 +76,7 @@ class ReportTemplate(Base):
     description: Mapped[str] = mapped_column(Text, default="")
     # Only what the engine really supports: the export formats to produce (html, md, csv, cbom).
     export_formats: Mapped[list] = mapped_column(JsonType)
+    # Applied to the HTML report after generation (see services/report_branding.py): organization_name, accent_color, logo (data URI).
+    branding: Mapped[dict | None] = mapped_column(JsonType)
     created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

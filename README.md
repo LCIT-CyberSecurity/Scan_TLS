@@ -24,7 +24,7 @@ WebUI documentation: [architecture](docs/architecture/overview.md) ·
 [data model](docs/architecture/data-model.md) · [installation](docs/admin/install.md) ·
 [operations](docs/admin/operations.md) · [user guide](docs/user/guide.md) ·
 [policies and profiles](docs/user/policies-and-profiles.md) · [reports](docs/user/reports.md) ·
-[Entra ID SSO](docs/integrations/entra-sso.md) · [notifications](docs/integrations/notifications.md) ·
+[Entra ID SSO](docs/integrations/entra-sso.md) · [directory connectors](docs/integrations/directory.md) · [notifications](docs/integrations/notifications.md) ·
 [tests](docs/dev/testing.md) · [CrashTest](docs/dev/crashtest.md) · [contributing](docs/dev/contributing.md) ·
 [**limitations and V2**](docs/limitations.md).
 

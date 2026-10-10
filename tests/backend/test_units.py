@@ -152,3 +152,13 @@ class TestSecurityHelpers:
     def test_role_hierarchy(self):
         assert role_at_least(Role.ADMIN, Role.OPERATOR) and role_at_least(Role.USER, Role.AUDITOR)
         assert not role_at_least(Role.AUDITOR, Role.USER) and not role_at_least(Role.OPERATOR, Role.ADMIN)
+
+
+def test_rate_limiter_counts_without_consuming():
+    from tls_scan_app.services.rate_limit import SlidingWindowLimiter
+
+    lim = SlidingWindowLimiter()
+    assert lim.count("k", 60) == 0 and lim.count("k", 60) == 0  # reading does not record
+    for _ in range(3):
+        lim.hit("k")
+    assert lim.count("k", 60) == 3

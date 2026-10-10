@@ -10,6 +10,9 @@ services:
     build: {context: ../.., dockerfile: tests/lab/lab-tls.Dockerfile}
   smtp-sink:
     build: {context: ../.., dockerfile: tests/lab/smtp_sink/Dockerfile}
+  openldap:
+    image: osixia/openldap:1.5.0
+    environment: {LDAP_ORGANISATION: Example, LDAP_DOMAIN: example.org, LDAP_ADMIN_PASSWORD: ldap-test-admin-pw, LDAP_TLS_VERIFY_CLIENT: never}
   mock-graph:
     build: {context: ../.., dockerfile: tests/lab/mock_graph/Dockerfile}
   mock-oidc:
@@ -31,13 +34,15 @@ services:
       TLS_SCAN_GRAPH_LOGIN_URL: http://mock-graph:8080
       TLS_SCAN_GRAPH_BASE_URL: http://mock-graph:8080/v1.0
       TLS_SCAN_GRAPH_CLIENT_SECRET: graph-test-secret
+      TLS_SCAN_DIRECTORY_CLIENT_SECRET: graph-test-secret
+      TLS_SCAN_LDAP_BIND_PASSWORD: ldap-test-admin-pw
       TLS_SCAN_RATE_LIMIT_ENABLED: "false"
       TLS_SCAN_SCHEDULER_POLL_SECONDS: "2"
       TLS_SCAN_WORKER_POLL_SECONDS: "1"
       TLS_SCAN_MAX_SCAN_DURATION_SECONDS: "${TEST_MAX_DURATION:-300}"
       TLS_SCAN_STORAGE_ROOT: /var/lib/tls-scan
     volumes: [data:/var/lib/tls-scan]
-    depends_on: {postgres: {condition: service_healthy}, mock-oidc: {condition: service_started}, mock-graph: {condition: service_started}}
+    depends_on: {postgres: {condition: service_healthy}, mock-oidc: {condition: service_started}, mock-graph: {condition: service_started}, openldap: {condition: service_started}}
     command: sh -c "cd backend && alembic upgrade head && cd .. && uvicorn --factory tls_scan_app.app:create_app --host 0.0.0.0 --port 8000"
     healthcheck: {test: ["CMD", "curl", "-fs", "http://localhost:8000/api/health/ready"], interval: 2s, retries: 40}
   worker:

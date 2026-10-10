@@ -54,7 +54,8 @@ def open_session(db: DbSession, request: Request, response: Response, user: User
 def login(body: LoginBody, request: Request, response: Response, db: DbSession = Depends(get_db)) -> dict:
     limiter, settings, ip = request.app.state.limiter, request.app.state.settings, client_ip(request)
     name = body.username.strip().lower()
-    if settings.rate_limit_enabled and not (limiter.allow(f"login:ip:{ip}", 20, 300) and limiter.allow(f"login:user:{name}", 5, 300)):
+    # Only FAILED attempts count towards the limit: a legitimate user signing in often is never locked out.
+    if settings.rate_limit_enabled and (limiter.count(f"login:ip:{ip}", 300) >= 20 or limiter.count(f"login:user:{name}", 300) >= 5):
         audit.record(db, "auth.login", actor_label=name, outcome="blocked", ip_address=ip)
         db.commit()
         raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "Too many attempts, try again later")
@@ -65,6 +66,8 @@ def login(body: LoginBody, request: Request, response: Response, db: DbSession =
     ).scalars().first()
     ok = verify_password(body.password, user.password_hash if user else None)  # always one verification
     if not (user and user.active and ok):
+        limiter.hit(f"login:ip:{ip}")
+        limiter.hit(f"login:user:{name}")
         audit.record(db, "auth.login", actor_label=name, outcome="failure", ip_address=ip)
         db.commit()
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Invalid credentials")

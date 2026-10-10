@@ -48,3 +48,17 @@ test("operator can publish a policy version; user cannot see the buttons", async
   await user.getByRole("link", { name: "Policies & profiles" }).click();
   await expect(user.getByRole("button", { name: "New" })).toHaveCount(0);
 });
+
+test("admin: notification connector and directory settings screens", async ({ page }) => {
+  await login(page, "admin", ADMIN);
+  await page.getByRole("link", { name: "Administration" }).click();
+  await page.getByRole("tab", { name: "Settings" }).click();
+  await page.getByLabel("Notification connector").selectOption("graph");
+  await expect(page.getByLabel("Sender mailbox")).toBeVisible();
+  await page.getByLabel("Notification connector").selectOption("smtp");
+  await expect(page.getByLabel("Host")).toBeVisible();
+  await page.getByRole("tab", { name: "Directory" }).click();
+  await page.getByLabel("Directory type").selectOption("ldap");
+  await expect(page.getByLabel("Base DN")).toBeVisible();
+  await expect(page.getByLabel("Verify the server certificate")).toBeChecked();
+});

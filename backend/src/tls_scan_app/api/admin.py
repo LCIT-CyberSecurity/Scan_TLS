@@ -182,3 +182,82 @@ def notification_log(db: DbSession = Depends(get_db), _: User = Depends(admin_on
     rows = db.execute(select(Notification).order_by(Notification.created_at.desc()).limit(100)).scalars()
     return [{"id": str(n.id), "event": n.event, "subject": n.subject, "status": n.status, "error": n.error, "created_at": n.created_at,
              "sent_at": n.sent_at, "run_id": str(n.run_id) if n.run_id else None} for n in rows]
+
+
+# ---- directory connectors (read-only lookup to pre-provision users) ----
+class DirectoryBody(BaseModel):
+    kind: str
+    ldap: dict = Field(default_factory=dict)
+    entra: dict = Field(default_factory=dict)
+
+
+@router.get("/directory")
+def get_directory(db: DbSession = Depends(get_db), _: User = Depends(admin_only)) -> dict:
+    from tls_scan_app.connectors.registry import directory_config
+
+    return {"kind": "none", "ldap": {}, "entra": {}} | directory_config(db)
+
+
+@router.put("/directory")
+def put_directory(body: DirectoryBody, db: DbSession = Depends(get_db), actor: User = Depends(admin_only)) -> dict:
+    from tls_scan_app.connectors.registry import KINDS
+
+    if body.kind not in KINDS:
+        raise HTTPException(422, f"kind must be one of {KINDS}")
+    row = db.get(SystemSetting, "directory") or SystemSetting(key="directory", value={})
+    row.value = body.model_dump()
+    db.add(row)
+    audit.record(db, "directory.update", actor=actor, resource_type="settings", resource_id="directory", detail={"kind": body.kind})
+    db.commit()
+    return row.value
+
+
+@router.post("/directory/test")
+def test_directory(request: Request, db: DbSession = Depends(get_db), actor: User = Depends(admin_only)) -> list[dict]:
+    from tls_scan_app.connectors.registry import build_connector
+
+    connector = build_connector(db, request.app.state.settings)
+    if connector is None:
+        raise HTTPException(409, "No complete directory connector configured")
+    steps = [s.as_dict() for s in connector.diagnose()]
+    audit.record(db, "directory.test", actor=actor, resource_type="settings", outcome="success" if all(s["status"] == "ok" for s in steps) else "failure")
+    db.commit()
+    return steps
+
+
+@router.get("/directory/search")
+def search_directory(q: str, request: Request, db: DbSession = Depends(get_db), _: User = Depends(admin_only)) -> list[dict]:
+    from tls_scan_app.connectors.base import ConnectorError
+    from tls_scan_app.connectors.registry import build_connector
+
+    connector = build_connector(db, request.app.state.settings)
+    if connector is None:
+        raise HTTPException(409, "No directory connector configured")
+    if len(q.strip()) < 2:
+        raise HTTPException(422, "Type at least 2 characters")
+    try:
+        people = connector.search(q)
+    except ConnectorError as error:
+        raise HTTPException(502, str(error)) from error
+    existing = {u.email.lower() for u in db.execute(select(User)).scalars()}
+    return [{"external_id": p.external_id, "email": p.email, "display_name": p.display_name, "provisioned": p.email.lower() in existing} for p in people]
+
+
+class ProvisionBody(BaseModel):
+    email: EmailStr
+    display_name: str = ""
+    role: Role = Role.USER
+
+
+@router.post("/directory/provision", status_code=201)
+def provision(body: ProvisionBody, db: DbSession = Depends(get_db), actor: User = Depends(admin_only)) -> dict:
+    """Create the account in advance with the chosen role; the person's first SSO sign-in adopts it by e-mail."""
+    email = body.email.lower()
+    if db.execute(select(User).where(func.lower(User.email) == email)).first():
+        raise HTTPException(409, "A user with this e-mail already exists")
+    user = User(issuer="directory:pending", subject=email, email=email, display_name=body.display_name or email, role=body.role)
+    db.add(user)
+    db.flush()
+    audit.record(db, "user.provision", actor=actor, resource_type="user", resource_id=user.id, detail={"email": email, "role": str(body.role)})
+    db.commit()
+    return user_payload(user)

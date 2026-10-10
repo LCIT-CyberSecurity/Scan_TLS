@@ -135,6 +135,75 @@ function SettingsTab() {
   );
 }
 
+
+interface Person { external_id: string; email: string; display_name: string; provisioned: boolean }
+interface DirCfg { kind: string; ldap: Record<string, string | boolean>; entra: Record<string, string> }
+function Directory() {
+  const { t } = useI18n();
+  const { data, reload } = useLoad(() => api<DirCfg>("/admin/directory"));
+  const [cfg, setCfg] = useState<DirCfg | null>(null);
+  const [steps, setSteps] = useState<Step[]>([]);
+  const [q, setQ] = useState("");
+  const [people, setPeople] = useState<Person[]>([]);
+  const [roles, setRoles] = useState<Record<string, Role>>({});
+  const [err, setErr] = useState<unknown>();
+  const c = cfg ?? data;
+  if (!c) return null;
+  const setL = (k: string, v: string | boolean) => setCfg({ ...c, ldap: { ...c.ldap, [k]: v } });
+  const setE = (k: string, v: string) => setCfg({ ...c, entra: { ...c.entra, [k]: v } });
+  const run = async (fn: () => Promise<void>) => { try { await fn(); setErr(undefined); } catch (e) { setErr(e); } };
+  return (
+    <div className="grid max-w-3xl gap-6">
+      <ErrorNote error={err} />
+      <Card><CardHeader><CardTitle>{t("admin.directory")}</CardTitle></CardHeader><CardContent className="space-y-4">
+        <p className="text-xs text-muted">{t("admin.directoryHint")}</p>
+        <Field label={t("admin.dirKind")}><Select value={c.kind} onChange={(e) => setCfg({ ...c, kind: e.target.value })}><option value="none">{t("admin.connectorNone")}</option><option value="ldap">LDAP / Active Directory</option><option value="entra">Microsoft Entra ID (Graph)</option></Select></Field>
+        {c.kind === "ldap" && (
+          <>
+            <p className="text-xs text-muted">{t("admin.ldapPasswordHint")}</p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label={t("admin.ldapUrl")}><Input value={String(c.ldap.server_url ?? "")} onChange={(e) => setL("server_url", e.target.value)} /></Field>
+              <Field label={t("admin.ldapBindDn")}><Input value={String(c.ldap.bind_dn ?? "")} onChange={(e) => setL("bind_dn", e.target.value)} /></Field>
+              <Field label={t("admin.ldapBase")}><Input value={String(c.ldap.base_dn ?? "")} onChange={(e) => setL("base_dn", e.target.value)} /></Field>
+              <Field label={t("admin.ldapFilter")}><Input value={String(c.ldap.user_filter ?? "(objectClass=person)")} onChange={(e) => setL("user_filter", e.target.value)} /></Field>
+            </div>
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={c.ldap.tls_verify !== false} onChange={(e) => setL("tls_verify", e.target.checked)} />{t("admin.ldapVerify")}</label>
+          </>
+        )}
+        {c.kind === "entra" && (
+          <>
+            <p className="text-xs text-muted">{t("admin.entraPasswordHint")}</p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label={t("admin.graphTenant")}><Input value={c.entra.tenant_id ?? ""} onChange={(e) => setE("tenant_id", e.target.value)} /></Field>
+              <Field label={t("admin.graphClient")}><Input value={c.entra.client_id ?? ""} onChange={(e) => setE("client_id", e.target.value)} /></Field>
+            </div>
+          </>
+        )}
+        <div className="flex gap-3">
+          <Button onClick={() => void run(async () => { await api("/admin/directory", { method: "PUT", body: c }); await reload(); setCfg(null); })}>{t("action.save")}</Button>
+          {c.kind !== "none" && <Button variant="outline" onClick={() => void run(async () => setSteps(await api<Step[]>("/admin/directory/test", { method: "POST" })))}>{t("admin.testConnector")}</Button>}
+        </div>
+        {steps.map((s) => <div key={s.step} className={`rounded-sm border px-3 py-2 text-sm ${s.status === "ok" ? "border-success-line bg-success-soft text-success" : "border-danger-line bg-danger-soft text-danger"}`}><b>{s.step}</b> — {s.status}{s.detail && `: ${s.detail}`}</div>)}
+      </CardContent></Card>
+      {c.kind !== "none" && (
+        <Card><CardContent className="space-y-3">
+          <div className="flex gap-3"><Input aria-label={t("admin.dirSearch")} placeholder={t("admin.dirSearch")} value={q} onChange={(e) => setQ(e.target.value)} />
+            <Button disabled={q.trim().length < 2} onClick={() => void run(async () => setPeople(await api<Person[]>("/admin/directory/search", { params: { q } })))}>{t("action.search")}</Button></div>
+          {people.map((p) => (
+            <div key={p.external_id} className="flex items-center justify-between gap-3 border-b border-hairline py-2 text-sm">
+              <span>{p.display_name}<span className="block text-xs text-muted">{p.email}</span></span>
+              {p.provisioned ? <Badge>{t("admin.dirExists")}</Badge> : (
+                <span className="flex gap-2"><Select aria-label={t("admin.role")} className="h-8 w-32" value={roles[p.email] ?? "USER"} onChange={(e) => setRoles({ ...roles, [p.email]: e.target.value as Role })}>{ROLES.map((r) => <option key={r}>{r}</option>)}</Select>
+                  <Button size="sm" onClick={() => void run(async () => { await api("/admin/directory/provision", { method: "POST", body: { email: p.email, display_name: p.display_name, role: roles[p.email] ?? "USER" } }); setPeople(await api<Person[]>("/admin/directory/search", { params: { q } })); })}>{t("admin.dirAdd")}</Button></span>
+              )}
+            </div>
+          ))}
+        </CardContent></Card>
+      )}
+    </div>
+  );
+}
+
 function Diagnostics() {
   const { t } = useI18n();
   const { data, error } = useLoad(() => api<Record<string, unknown>>("/admin/diagnostics"), [], 15000);
@@ -161,10 +230,11 @@ export default function Admin() {
     <>
       <PageHeader title={t("nav.admin")} />
       <Tabs defaultValue="users">
-        <TabsList><TabsTrigger value="users">{t("admin.users")}</TabsTrigger><TabsTrigger value="audit">{t("admin.audit")}</TabsTrigger><TabsTrigger value="settings">{t("admin.settings")}</TabsTrigger><TabsTrigger value="diag">{t("admin.diagnostics")}</TabsTrigger></TabsList>
+        <TabsList><TabsTrigger value="users">{t("admin.users")}</TabsTrigger><TabsTrigger value="audit">{t("admin.audit")}</TabsTrigger><TabsTrigger value="settings">{t("admin.settings")}</TabsTrigger><TabsTrigger value="directory">{t("admin.directory")}</TabsTrigger><TabsTrigger value="diag">{t("admin.diagnostics")}</TabsTrigger></TabsList>
         <TabsContent value="users"><Users /></TabsContent>
         <TabsContent value="audit"><Audit /></TabsContent>
         <TabsContent value="settings"><SettingsTab /></TabsContent>
+        <TabsContent value="directory"><Directory /></TabsContent>
         <TabsContent value="diag"><Diagnostics /></TabsContent>
       </Tabs>
     </>

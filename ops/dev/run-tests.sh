@@ -1,9 +1,6 @@
 #!/usr/bin/env bash
-# Run the backend test suite on the integration VM in the isolated tlsscan-test project.
-# Usage: ops/dev/run-tests.sh [pytest args...]   (from the repo root)
+# Run the backend test suite on the integration VM. Usage: ops/dev/run-tests.sh [pytest args...]  (from the repo root)
 set -euo pipefail
 cd "$(dirname "$0")/../.."
-ops/dev/vm.sh "cd ops/dev && export TEST_MAX_DURATION="${TEST_MAX_DURATION:-300}" TEST_DB_PASSWORD=\$(openssl rand -hex 8) TEST_ADMIN_PASSWORD=\$(openssl rand -base64 18 | tr -d '/+=') && \
-  docker compose -f compose.test.yaml --profile tests build >/dev/null 2>&1 && docker compose -f compose.test.yaml up -d --build postgres lab-tls mock-oidc mock-graph smtp-sink api worker scheduler >/dev/null 2>&1 && \
-  docker compose -f compose.test.yaml run --rm tests pytest -p no:cacheprovider -x -q ${*:-tests/backend}; rc=\$?; \
-  docker compose -f compose.test.yaml down -v >/dev/null 2>&1; exit \$rc"
+args=""; for a in "$@"; do args+=" $(printf '%q' "$a")"; done
+ops/dev/vm.sh "TEST_MAX_DURATION=${TEST_MAX_DURATION:-300} ops/dev/test-stack.sh$args"

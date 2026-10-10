@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     session_secret_file: str = ""
     smtp_password: str = ""  # noqa: S105
     graph_client_secret: str = ""  # noqa: S105
+    directory_client_secret: str = ""  # noqa: S105
+    directory_client_secret_file: str = ""
+    ldap_bind_password: str = ""  # noqa: S105
+    ldap_bind_password_file: str = ""
     graph_client_secret_file: str = ""
     # Overridable only so tests can point at a mock; defaults are the public Microsoft endpoints.
     graph_login_url: str = "https://login.microsoftonline.com"
@@ -63,6 +67,10 @@ class Settings(BaseSettings):
     def _load_files(self) -> Settings:
         if self.session_secret_file:
             self.session_secret = Path(self.session_secret_file).read_text(encoding="utf-8").strip()
+        for name in ("directory_client_secret", "ldap_bind_password"):
+            path = getattr(self, f"{name}_file")
+            if path:
+                setattr(self, name, Path(path).read_text(encoding="utf-8").strip())
         if self.graph_client_secret_file:
             self.graph_client_secret = Path(self.graph_client_secret_file).read_text(encoding="utf-8").strip()
         if self.smtp_password_file:

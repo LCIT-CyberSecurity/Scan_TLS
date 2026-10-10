@@ -124,7 +124,7 @@ function TemplatesTab() {
   const { t } = useI18n();
   const { atLeast } = useAuth();
   const { data, reload } = useLoad(() => api<Template[]>("/report-templates"));
-  const [form, setForm] = useState({ name: "", description: "", export_formats: ["html", "md", "csv", "cbom"] });
+  const [form, setForm] = useState({ name: "", description: "", export_formats: ["html", "md", "csv", "cbom"], organization_name: "", accent_color: "", logo: "" });
   const [err, setErr] = useState<unknown>();
   const toggle = (f: string) => setForm((s) => ({ ...s, export_formats: s.export_formats.includes(f) ? s.export_formats.filter((x) => x !== f) : [...s.export_formats, f] }));
   return (
@@ -132,9 +132,15 @@ function TemplatesTab() {
       {atLeast("OPERATOR") && <Card className="mb-4 p-4"><div className="flex flex-wrap items-end gap-3">
         <Field label={t("col.name")}><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
         <div className="flex gap-3 pb-2">{["html", "md", "csv", "cbom"].map((f) => <label key={f} className="flex items-center gap-1.5 text-sm"><input type="checkbox" checked={form.export_formats.includes(f)} onChange={() => toggle(f)} />{f.toUpperCase()}</label>)}</div>
-        <Button disabled={!form.name} onClick={async () => { try { await api("/report-templates", { method: "POST", body: form }); setForm({ ...form, name: "" }); await reload(); } catch (e) { setErr(e); } }}><Plus />{t("action.add")}</Button>
-      </div><div className="mt-2"><ErrorNote error={err} /></div></Card>}
-      <Card>{data?.length ? <Table><thead><tr><Th>{t("col.name")}</Th><Th>{t("tpl.formats")}</Th></tr></thead><tbody>{data.map((x) => <tr key={x.id}><Td className="font-medium">{x.name}</Td><Td>{x.export_formats.map((f) => <Badge key={f} className="mr-1">{f.toUpperCase()}</Badge>)}</Td></tr>)}</tbody></Table> : <Empty>{t("tpl.none")}</Empty>}</Card>
+      </div>
+      <div className="mt-3 flex flex-wrap items-end gap-3">
+        <Field label={t("tpl.org")}><Input value={form.organization_name} onChange={(e) => setForm({ ...form, organization_name: e.target.value })} /></Field>
+        <Field label={t("tpl.accent")}><input type="color" className="h-10 w-16 rounded-sm border border-border-strong bg-surface" value={form.accent_color || "#4b2d8a"} onChange={(e) => setForm({ ...form, accent_color: e.target.value })} /></Field>
+        <Field label={t("tpl.logo")}><input type="file" accept="image/png,image/jpeg,image/svg+xml" aria-label={t("tpl.logo")} onChange={(e) => { const f = e.target.files?.[0]; if (!f) return; const r = new FileReader(); r.onload = () => setForm((s) => ({ ...s, logo: String(r.result) })); r.readAsDataURL(f); }} /></Field>
+        <Button disabled={!form.name} onClick={async () => { try { await api("/report-templates", { method: "POST", body: form }); setForm({ ...form, name: "", logo: "" }); await reload(); } catch (e) { setErr(e); } }}><Plus />{t("action.add")}</Button>
+      </div>
+      <p className="mt-2 text-xs text-muted">{t("tpl.brandHint")}</p><div className="mt-2"><ErrorNote error={err} /></div></Card>}
+      <Card>{data?.length ? <Table><thead><tr><Th>{t("col.name")}</Th><Th>{t("tpl.formats")}</Th></tr></thead><tbody>{data.map((x) => <tr key={x.id}><Td className="font-medium">{x.name}</Td><Td>{x.export_formats.map((f) => <Badge key={f} className="mr-1">{f.toUpperCase()}</Badge>)}{x.organization_name && <span className="ml-2 text-xs text-muted">{x.organization_name}</span>}{x.accent_color && <i className="ml-2 inline-block size-3 rounded-full align-middle" style={{ background: x.accent_color }} />}{x.logo && <img alt="" src={x.logo} className="ml-2 inline h-5 align-middle" />}</Td></tr>)}</tbody></Table> : <Empty>{t("tpl.none")}</Empty>}</Card>
     </>
   );
 }

@@ -5,7 +5,7 @@ export interface Target { id: string; value: string; kind: string; ports: string
 export interface Group { id: string; name: string; description: string; owner_id: string | null; target_ids: string[]; tags: string[]; si_ids: string[] }
 export interface Version { id: string; version: number; status: "draft" | "published" | "archived"; content: Record<string, unknown>; published_at: string | null }
 export interface Versioned { id: string; name: string; description: string; archived: boolean; versions: Version[] }
-export interface Template { id: string; name: string; description: string; export_formats: string[] }
+export interface Template { id: string; name: string; description: string; export_formats: string[]; organization_name: string; accent_color: string; has_logo: boolean; logo: string }
 export interface Definition { id: string; name: string; description: string; owner_id: string | null; profile_id: string; report_template_id: string | null; policy_mode: string; tags: string[]; si_ids: string[]; target_ids: string[]; group_ids: string[]; policy_ids: string[] }
 export type RunStatus = "scheduled" | "queued" | "running" | "completed" | "partial" | "failed" | "cancelled" | "expired";
 export interface RunSummary { total_endpoints?: number; compliant_endpoints?: number; non_compliant_endpoints?: number; critical_findings?: number; high_findings?: number; overall_grade?: string; endpoints_with_errors?: number; checks_not_tested?: number }

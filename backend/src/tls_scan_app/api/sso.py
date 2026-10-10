@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import RedirectResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session as DbSession
 
 from tls_scan_app.api.auth import open_session
@@ -75,6 +75,12 @@ async def sso_callback(request: Request, code: str = Query(""), state: str = Que
         await fail("provider_unreachable", str(error))
 
     user = db.execute(select(User).where(User.issuer == claims.issuer, User.subject == claims.subject)).scalar_one_or_none()
+    if user is None:
+        # An administrator may have pre-provisioned this person (directory lookup): adopt that account by e-mail.
+        pending = db.execute(select(User).where(User.issuer == "directory:pending", func.lower(User.email) == claims.email.lower())).scalar_one_or_none()
+        if pending is not None:
+            pending.issuer, pending.subject = claims.issuer, claims.subject
+            user = pending
     if user is None:
         user = User(issuer=claims.issuer, subject=claims.subject, email=claims.email.lower(), display_name=claims.name or claims.email,
                     role=Role(s.oidc_default_role))
