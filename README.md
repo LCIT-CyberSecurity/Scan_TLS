@@ -12,6 +12,7 @@ or outdated protocols.
 | Source of truth | YAML files in `config/` | PostgreSQL |
 | Run | `python3 tls_scan.py ...`, cron | web interface, worker, built-in scheduler |
 | Needs | Python 3, Nmap | Docker Compose (see [installation](docs/admin/install.md)) |
+| Install | `./bootstrap_tls-scan-deployment.sh --mode standalone install` | `./bootstrap_tls-scan-deployment.sh --mode webui install` |
 | Users / roles / SSO | none | AUDITOR, USER, OPERATOR, ADMIN, local admin, OIDC / Entra ID |
 | Results | files (HTML, Markdown, CSV, CBOM) | same files + history, comparison, notifications, audit |
 
@@ -19,6 +20,10 @@ Both modes run the **same scan engine** (`tls_scanner/`); the WebUI adds no seco
 Standalone mode keeps its commands, YAML files, formats and cron usage unchanged and works without
 PostgreSQL or a web server. YAML files and the database are never synchronised: in WebUI mode you
 manage everything in the interface and may import/export policies as YAML.
+
+Both modes are installed and administered by one script, independently, on the same machine if you wish: run
+`./bootstrap_tls-scan-deployment.sh` for the interactive menu (Standalone / WebUI), or see
+[installation](docs/admin/install.md) for the non-interactive commands, backups and safety rules.
 
 WebUI documentation: [architecture](docs/architecture/overview.md) ·
 [data model](docs/architecture/data-model.md) · [installation](docs/admin/install.md) ·

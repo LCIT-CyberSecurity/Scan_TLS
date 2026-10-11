@@ -31,5 +31,9 @@
 and records `retention.purge` in the audit log. Deleting a run (OPERATOR) also removes its report files.
 
 ## Backup / restore
-`backup` = `pg_dump -Fc` + `reports/` and `logs/`. Keep `.env` and `data/certs` in your own secret backup (not in
-the dump). Restoring on a fresh host: `install`, then `restore <file>`.
+`./bootstrap_tls-scan-deployment.sh backup [dir]` writes one verified archive (`db.dump`, `data.tar` = reports and logs,
+`SHA256SUMS`, `MANIFEST.txt`; default `./backups`, mode 600). `restore <archive>` re-checks the sums and the dump,
+takes a safety backup, and replaces the data only after the typed confirmation (`RESTAURER`); a corrupted archive is refused
+before anything is modified. `update`, `reinstall` and `uninstall` offer a backup first and stop if it fails.
+Keep `.env` and `data/certs` in your own secret backup (not in the archive). Restoring on a fresh host: `install`, then
+`restore <file>`. Details: [installation](install.md).

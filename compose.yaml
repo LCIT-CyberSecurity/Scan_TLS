@@ -63,7 +63,7 @@ services:
     ports: ["${TLS_SCAN_HTTPS_PORT:-8443}:443", "${TLS_SCAN_HTTP_PORT:-8080}:80"]
     depends_on: {api: {condition: service_healthy}}
     networks: [backend, frontend]
-    healthcheck: {test: ["CMD", "wget", "-qO-", "--no-check-certificate", "https://localhost/"], interval: 15s, retries: 5}
+    healthcheck: {test: ["CMD", "wget", "-qO-", "--no-check-certificate", "https://127.0.0.1/"], interval: 15s, retries: 5}
 
 networks:
   backend: {internal: true}
