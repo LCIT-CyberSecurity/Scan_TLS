@@ -207,6 +207,22 @@
   :root[data-theme="studio"] .simple-table td { padding: 10px 14px; font-size: 15.5px; line-height: 21px; }
   :root[data-appearance="dark"][data-theme="studio"] .simple-table th { background: var(--surface); }
 
+  /* Sortable / filterable headers */
+  .th-inner { display: inline-flex; align-items: center; gap: 4px; }
+  .th-sort, .th-filter { display: inline-flex; align-items: center; gap: 5px; padding: 2px 4px; border: 0; border-radius: var(--radius-xs); background: transparent; color: inherit; font: inherit; letter-spacing: inherit; text-transform: inherit; cursor: pointer; }
+  .th-sort:hover, .th-filter:hover { background: var(--surface-secondary); color: var(--text-primary); }
+  .th-sort[aria-pressed], th[aria-sort] .th-sort { color: var(--primary); }
+  .th-idle { opacity: 0.45; }
+  .th-filter { padding: 3px; opacity: 0.6; }
+  .th-filter.active { opacity: 1; color: var(--primary); background: var(--primary-soft); }
+  .filter-pop { position: fixed; z-index: 60; display: grid; gap: 8px; width: 260px; padding: 10px; background: var(--surface-raised); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-overlay); text-transform: none; letter-spacing: 0; font-size: 14.5px; font-weight: 400; }
+  .filter-pop input[type="search"] { width: 100%; }
+  .filter-pop__list { display: grid; gap: 1px; max-height: 240px; overflow-y: auto; }
+  .filter-pop__list label { display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: var(--radius-xs); cursor: pointer; overflow-wrap: anywhere; }
+  .filter-pop__list label:hover { background: var(--surface-secondary); }
+  .filter-pop__foot { display: flex; justify-content: space-between; border-top: 1px solid var(--hairline); padding-top: 6px; }
+  .table-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 14px; border-top: 1px solid var(--border); color: var(--text-secondary); font-size: 13.5px; }
+
   /* ===== Badges ===== */
   .badge {
     display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border: 1px solid transparent; border-radius: 999px;

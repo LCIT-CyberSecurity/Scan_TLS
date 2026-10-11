@@ -35,6 +35,9 @@ def test_real_scan_end_to_end_and_standalone_parity(user, auditor, catalog):
     assert {r["format"] for r in final["reports"]} >= {"html", "md", "csv", "cbom"}
     html = auditor.get(f"/api/scan-runs/{run_id}/reports/html")
     assert html.status_code == 200 and LAB.encode() in html.content or b"lab" in html.content.lower()
+    # The served report is self-contained: CSS and JS are embedded (relative asset links would 404 and be blocked by the CSP).
+    assert b'href="assets/css/' not in html.content and b'src="assets/js/' not in html.content
+    assert b"<style>" in html.content and b'id="report-data"' in html.content and b"function" in html.content
     cbom = auditor.get(f"/api/scan-runs/{run_id}/reports/cbom")
     assert cbom.status_code == 200 and cbom.json()["bomFormat"] == "CycloneDX"
     web_csv = auditor.get(f"/api/scan-runs/{run_id}/reports/csv").text

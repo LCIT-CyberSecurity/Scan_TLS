@@ -1,7 +1,7 @@
-import { Play, Plus, Trash2, Pencil } from "lucide-react";
+import { FileText, Play, Plus, Trash2, Pencil } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { api } from "../api/client";
+import { api, downloadUrl } from "../api/client";
 import type { Definition, Group, Run, SI, Target, Template, Versioned } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { CheckList, ConfirmButton, Empty, ErrorNote, PageHeader, StatusBadge, TagList, TagsInput, useLoad } from "../components/common";
@@ -70,6 +70,7 @@ export default function Scans() {
   const navigate = useNavigate();
   const [mine, setMine] = useState(!atLeast("OPERATOR"));
   const [status, setStatus] = useState("");
+  const [tab, setTab] = useState("runs");
   const [editing, setEditing] = useState<Definition | "new" | null>(null);
   const [error, setError] = useState<unknown>();
   const { data: runs, reload } = useLoad(() => api<Run[]>("/scan-runs", { params: { mine, status } }), [mine, status], 5000);
@@ -84,7 +85,7 @@ export default function Scans() {
     <>
       <PageHeader title={t("nav.scans")} actions={<Button onClick={() => setEditing("new")}><Plus />{t("def.new")}</Button>} />
       <ErrorNote error={error} />
-      <Tabs defaultValue="runs">
+      <Tabs value={tab} onValueChange={setTab}>
         <TabsList><TabsTrigger value="runs">{t("scans.runs")}</TabsTrigger><TabsTrigger value="defs">{t("scans.definitions")}</TabsTrigger></TabsList>
         <TabsContent value="runs">
           <div className="mb-3 flex flex-wrap items-center gap-3">
@@ -97,7 +98,7 @@ export default function Scans() {
                 <tr key={r.id}><Td><Link className="row-link" to={`/scans/${r.id}`}>{r.name}</Link>{r.schedule_id && <span className="ml-2 text-xs text-muted">⏱</span>}</Td><Td><StatusBadge status={r.status} /></Td>
                   <Td className="text-muted">{r.status === "running" ? t(`phase.${r.phase}` as never) : ""}{r.progress ? ` ${r.progress.hosts_done}/${r.progress.hosts_total}` : ""}</Td>
                   <Td>{formatDate(r.queued_at, locale)}</Td><Td>{formatDuration(r.duration_seconds)}</Td><Td>{r.summary?.non_compliant_endpoints ?? "—"}</Td>
-                  <Td>{(r.status === "queued" || r.status === "running") && (r.initiated_by === user?.id || atLeast("OPERATOR")) && <ConfirmButton variant="outline" label={t("action.cancelScan")} confirm={t("confirm.cancelScan")} onConfirm={async () => { try { await api(`/scan-runs/${r.id}/cancel`, { method: "POST" }); void reload(); } catch (e) { setError(e); } }} />}</Td></tr>
+                  <Td><div className="row-actions">{r.reports.some((x) => x.format === "html") && <Button asChild size="sm" variant="outline"><a href={downloadUrl(r.id, "html", true)} target="_blank" rel="noreferrer"><FileText />{t("action.report")}</a></Button>}{(r.status === "queued" || r.status === "running") && (r.initiated_by === user?.id || atLeast("OPERATOR")) && <ConfirmButton variant="outline" label={t("action.cancelScan")} confirm={t("confirm.cancelScan")} onConfirm={async () => { try { await api(`/scan-runs/${r.id}/cancel`, { method: "POST" }); void reload(); } catch (e) { setError(e); } }} />}</div></Td></tr>
               ))}</tbody></Table>
           ) : <Empty>{t("scans.none")}</Empty>}</Card>
         </TabsContent>
@@ -115,7 +116,7 @@ export default function Scans() {
           ) : <Empty>{t("def.none")}</Empty>}</Card>
         </TabsContent>
       </Tabs>
-      {editing && <DefinitionDialog initial={editing === "new" ? undefined : editing} onClose={() => setEditing(null)} onSaved={() => void reloadDefs()} />}
+      {editing && <DefinitionDialog initial={editing === "new" ? undefined : editing} onClose={() => setEditing(null)} onSaved={() => { void reloadDefs(); setTab("defs"); }} />}
     </>
   );
 }

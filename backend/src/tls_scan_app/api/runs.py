@@ -1,20 +1,21 @@
 """Scan runs, schedules, reports, comparison, dashboard."""
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session as DbSession
 
-from tls_scan_app.api.common import get_or_404, can_modify, ids_matching_filter
+from tls_scan_app.api.common import can_modify, classification_of, get_or_404, ids_matching_filter
 from tls_scan_app.deps import get_db, require_role
 from tls_scan_app.models import (
-    Role, RunEndpoint, RunFinding, ScanDefinition, ScanRun, ScanRunRequester, ScanSchedule, ScheduleTrigger, User,
+    Role, RunEndpoint, Target, RunFinding, ScanDefinition, ScanRun, ScanRunRequester, ScanSchedule, ScheduleTrigger, User,
 )
 from tls_scan_app.models.scan import ACTIVE_STATUSES, FINAL_STATUSES
 from tls_scan_app.models.user import role_at_least
@@ -62,11 +63,21 @@ def list_runs(mine: bool = False, status: str | None = None, definition_id: uuid
 def get_run(run_id: uuid.UUID, db: DbSession = Depends(get_db), user: User = Depends(auditor)) -> dict:
     r = get_or_404(db, ScanRun, run_id, "Scan run")
     out = run_out(r, detail=role_at_least(user.role, Role.OPERATOR))
+    endpoints = db.execute(select(RunEndpoint).where(RunEndpoint.run_id == r.id).order_by(RunEndpoint.endpoint_id)).scalars().all()
+    # Tags are read live from the matching target(s): same value as the endpoint's hostname or address.
+    values = {v for e in endpoints for v in (e.hostname, e.ip_address) if v}
+    by_value: dict[str, set[str]] = {}
+    if values:
+        matched = db.execute(select(Target.id, Target.value).where(Target.value.in_(values))).all()
+        classes = classification_of(db, "target", [tid for tid, _ in matched])
+        for tid, value in matched:
+            by_value.setdefault(value, set()).update(classes[tid]["tags"])
     out["endpoints"] = [
         {"endpoint_id": e.endpoint_id, "hostname": e.hostname, "ip_address": e.ip_address, "port": e.port, "grade": e.grade,
          "compliance_status": e.compliance_status, "highest_severity": e.highest_severity, "tls_versions": e.supported_tls_versions,
-         "certificate": e.certificate, "errors": e.errors, "untested_checks": e.untested_checks}
-        for e in db.execute(select(RunEndpoint).where(RunEndpoint.run_id == r.id).order_by(RunEndpoint.endpoint_id)).scalars()
+         "certificate": e.certificate, "errors": e.errors, "untested_checks": e.untested_checks,
+         "tags": sorted(by_value.get(e.hostname, set()) | by_value.get(e.ip_address, set()))}
+        for e in endpoints
     ]
     out["findings"] = [
         {"finding_id": f.finding_id, "title": f.title, "severity": f.severity, "status": f.status, "category": f.category,
@@ -110,9 +121,32 @@ def _remove_report_tree(root: Path, rel: str) -> None:
         shutil.rmtree((root / parts[0] / parts[1]).resolve(), ignore_errors=True)
 
 
+_ASSET_TAGS = (
+    (re.compile(r'<link rel="stylesheet" href="(assets/css/[\w.-]+\.css)"( media="print")?>'), "style"),
+    (re.compile(r'<script src="(assets/js/[\w.-]+\.js)"></script>'), "script"),
+)
+
+
+def inline_report_assets(text: str, base: Path) -> str:
+    """The engine writes the HTML next to assets/{css,js}; served alone those relative links 404 (and the CSP forbids
+    them), so the page would render unstyled and empty. Embed them to make the served report self-contained."""
+    def embed(kind: str):
+        def replace(m: re.Match) -> str:
+            asset = (base / m.group(1)).resolve()
+            if not asset.is_relative_to(base.resolve()) or not asset.is_file():
+                return m.group(0)
+            body = asset.read_text(encoding="utf-8").replace("</" + kind, "<\\/" + kind)
+            media = ' media="print"' if kind == "style" and m.lastindex and m.lastindex > 1 and m.group(2) else ""
+            return f"<{kind}{media}>{body}</{kind}>"
+        return replace
+    for pattern, kind in _ASSET_TAGS:
+        text = pattern.sub(embed(kind), text)
+    return text
+
+
 @router.get("/scan-runs/{run_id}/reports/{fmt}")
 def download_report(run_id: uuid.UUID, fmt: str, request: Request, inline: bool = False, db: DbSession = Depends(get_db),
-                    user: User = Depends(auditor)) -> FileResponse:
+                    user: User = Depends(auditor)) -> Response:
     r = get_or_404(db, ScanRun, run_id, "Scan run")
     entry = next((f for f in (r.report_files or []) if f["format"] == fmt), None)
     if entry is None:
@@ -130,6 +164,10 @@ def download_report(run_id: uuid.UUID, fmt: str, request: Request, inline: bool 
     audit.record(db, "report.download", actor=user, resource_type="scan_run", resource_id=r.id, detail={"format": fmt})
     db.commit()
     headers = {"X-Content-Type-Options": "nosniff", "Content-Security-Policy": "sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:; script-src 'unsafe-inline'"}
+    if fmt == "html":
+        body = inline_report_assets(path.read_text(encoding="utf-8"), path.parent)
+        disposition = "inline" if inline else f'attachment; filename="{path.name}"'
+        return Response(body, media_type=MEDIA.get(fmt, "text/html"), headers=headers | {"Content-Disposition": disposition})
     return FileResponse(path, media_type=MEDIA.get(fmt, "application/octet-stream"), filename=None if inline and fmt == "html" else path.name, headers=headers)
 
 

@@ -7,6 +7,7 @@ export const en = {
   "action.edit": "Edit",
   "action.new": "New",
   "action.run": "Run",
+  "action.report": "Report",
   "action.save": "Save",
   "action.search": "Search",
   "admin.activeRuns": "Active scans",
@@ -309,5 +310,10 @@ export const en = {
   "theme.studio": "Studio",
   "theme.studio.sub": "Near monochrome, compact",
   "state.loading": "Loading…",
+  "table.filter": "Filter",
+  "table.selectAll": "Select shown",
+  "table.clear": "Clear",
+  "table.reset": "Reset",
+  "table.count": "{shown} of {total}",
 } as const;
 export type Messages = Record<keyof typeof en, string>;

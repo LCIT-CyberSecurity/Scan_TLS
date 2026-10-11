@@ -8,6 +8,7 @@ export const de: Messages = {
   "action.edit": "Bearbeiten",
   "action.new": "Neu",
   "action.run": "Starten",
+  "action.report": "Bericht",
   "action.save": "Speichern",
   "action.search": "Suchen",
   "admin.activeRuns": "Aktive Scans",
@@ -310,4 +311,9 @@ export const de: Messages = {
   "theme.studio": "Studio",
   "theme.studio.sub": "Fast einfarbig, kompakt",
   "state.loading": "Wird geladen …",
+  "table.filter": "Filtern",
+  "table.selectAll": "Alle wählen",
+  "table.clear": "Leeren",
+  "table.reset": "Zurücksetzen",
+  "table.count": "{shown} von {total}",
 };

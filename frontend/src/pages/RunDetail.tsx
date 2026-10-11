@@ -2,15 +2,45 @@ import { Download, GitCompare, XCircle } from "lucide-react";
 import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { api, downloadUrl } from "../api/client";
-import type { Comparison, FindingBrief, RunDetail as Detail } from "../api/types";
+import type { Comparison, Endpoint, Finding, FindingBrief, RunDetail as Detail } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
-import { ConfirmButton, Empty, ErrorNote, Loading, Metric, Note, PageHeader, SeverityBadge, StatusBadge, useLoad } from "../components/common";
+import { ConfirmButton, Empty, ErrorNote, Loading, Metric, Note, PageHeader, SeverityBadge, StatusBadge, TagList, useLoad } from "../components/common";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
-import { Table, Td, Th } from "../components/ui/table";
+import { DataTable, type Column } from "../components/DataTable";
 import { useI18n } from "../i18n";
 import { formatDate, formatDuration } from "../lib/utils";
+
+const SEVERITY_RANK: Record<string, number> = { critical: 5, high: 4, medium: 3, low: 2, info: 1 };
+const endpointLabel = (e: Endpoint) => `${e.hostname || e.ip_address}:${e.port}`;
+
+function endpointColumns(t: (key: never) => string): Column<Endpoint>[] {
+  const tr = t as unknown as (k: string) => string;
+  return [
+    { key: "endpoint", header: "Endpoint", values: (e) => [e.hostname || e.ip_address], sort: endpointLabel, render: (e) => <span className="row-link">{endpointLabel(e)}</span> },
+    { key: "tags", header: tr("col.tags"), values: (e) => e.tags ?? [], render: (e) => (e.tags?.length ? <TagList tags={e.tags} /> : "—") },
+    { key: "grade", header: tr("run.grade"), values: (e) => [e.grade], render: (e) => e.grade },
+    { key: "status", header: tr("col.status"), values: (e) => [e.compliance_status], render: (e) => e.compliance_status },
+    { key: "tls", header: "TLS", values: (e) => e.tls_versions, sort: (e) => e.tls_versions.join(", "), render: (e) => e.tls_versions.join(", ") },
+    { key: "cert", header: tr("run.certificate"), values: (e) => [String(e.certificate.subject ?? "")], sort: (e) => String(e.certificate.valid_until ?? ""),
+      render: (e) => <span className="text-xs">{String(e.certificate.subject ?? "")}<br /><span className="text-muted">{String(e.certificate.valid_until ?? "")}</span></span> },
+    { key: "errors", header: tr("run.errors"), values: (e) => (e.errors.length ? ["errors"] : e.untested_checks.length ? ["untested"] : []), sort: (e) => e.errors.length * 1000 + e.untested_checks.length,
+      render: (e) => <>{e.errors.length ? <Badge tone="danger">{e.errors.length}</Badge> : "—"}{e.untested_checks.length > 0 && <Badge tone="warning" className="ml-1">{tr("run.notTested")}: {e.untested_checks.length}</Badge>}</> },
+  ];
+}
+
+function findingColumns(t: (key: never) => string, label: (e: Endpoint) => string): Column<Finding>[] {
+  const tr = t as unknown as (k: string) => string;
+  void label;
+  return [
+    { key: "severity", header: tr("run.severity"), values: (f) => [f.severity], sort: (f) => SEVERITY_RANK[f.severity.toLowerCase()] ?? 0, render: (f) => <SeverityBadge severity={f.severity} /> },
+    { key: "finding", header: tr("run.finding"), sort: (f) => f.title, values: (f) => [f.title],
+      render: (f) => <><div className="font-medium">{f.title}</div><div className="text-xs text-muted">{f.evidence}</div><div className="mt-1 text-xs">{f.remediation}</div></> },
+    { key: "category", header: "Category", values: (f) => [f.category], render: (f) => f.category || "—" },
+    { key: "affected", header: tr("run.affected"), values: (f) => f.affected_endpoint_ids, sort: (f) => f.affected_endpoint_ids.length, render: (f) => <span className="text-xs">{f.affected_endpoint_ids.join(", ")}</span> },
+  ];
+}
 
 function FindingList({ title, items, tone }: { title: string; items: FindingBrief[]; tone: "danger" | "success" | "warning" | "neutral" }) {
   return (
@@ -79,12 +109,10 @@ export default function RunDetail() {
         </CardContent></Card>
       )}
       <Card className="mb-6"><CardHeader><CardTitle>{t("run.endpointsTitle")}</CardTitle></CardHeader>
-        {run.endpoints.length ? <Table><thead><tr><Th>Endpoint</Th><Th>{t("run.grade")}</Th><Th>{t("col.status")}</Th><Th>TLS</Th><Th>{t("run.certificate")}</Th><Th>{t("run.errors")}</Th></tr></thead>
-          <tbody>{run.endpoints.map((e) => <tr key={e.endpoint_id}><Td className="font-medium">{e.hostname || e.ip_address}:{e.port}</Td><Td>{e.grade}</Td><Td>{e.compliance_status}</Td><Td>{e.tls_versions.join(", ")}</Td><Td className="text-xs">{String(e.certificate.subject ?? "")}<br /><span className="text-muted">{String(e.certificate.valid_until ?? "")}</span></Td><Td>{e.errors.length ? <Badge tone="danger">{e.errors.length}</Badge> : "—"}{e.untested_checks.length > 0 && <Badge tone="warning" className="ml-1">{t("run.notTested")}: {e.untested_checks.length}</Badge>}</Td></tr>)}</tbody></Table> : <Empty>—</Empty>}
+        {run.endpoints.length ? <DataTable rows={run.endpoints} rowKey={(e) => e.endpoint_id} columns={endpointColumns(t as never)} /> : <Empty>—</Empty>}
       </Card>
       <Card><CardHeader><CardTitle>{t("run.findings")}</CardTitle></CardHeader>
-        {run.findings.length ? <Table><thead><tr><Th>{t("run.severity")}</Th><Th>{t("run.finding")}</Th><Th>{t("run.affected")}</Th></tr></thead>
-          <tbody>{run.findings.map((f) => <tr key={f.finding_id}><Td><SeverityBadge severity={f.severity} /></Td><Td><div className="font-medium">{f.title}</div><div className="text-xs text-muted">{f.evidence}</div><div className="mt-1 text-xs">{f.remediation}</div></Td><Td className="text-xs">{f.affected_endpoint_ids.join(", ")}</Td></tr>)}</tbody></Table> : <Empty>—</Empty>}
+        {run.findings.length ? <DataTable rows={run.findings} rowKey={(f) => f.finding_id} columns={findingColumns(t as never, endpointLabel)} /> : <Empty>—</Empty>}
       </Card>
     </>
   );
