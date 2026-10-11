@@ -1,6 +1,6 @@
 import { FileText, Play, Plus, RotateCcw, Trash2, Pencil } from "lucide-react";
-import { useEffect, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import { api, downloadUrl } from "../api/client";
 import type { Definition, Group, Run, SI, Target, Template, Versioned } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
@@ -72,11 +72,8 @@ export default function Scans() {
   const [mine, setMine] = useState(!atLeast("OPERATOR"));
   const [status, setStatus] = useState("");
   const [grouped, setGrouped] = useState(true);
-  const [params, setParams] = useSearchParams();
   const [tab, setTab] = useState("runs");
   const [editing, setEditing] = useState<Definition | "new" | null>(null);
-  // The sidebar's "New scan" button links to /scans?new=1: open the dialog, then drop the parameter.
-  useEffect(() => { if (params.get("new")) { setEditing("new"); setParams({}, { replace: true }); } }, [params, setParams]);
   const [error, setError] = useState<unknown>();
   const { data: runs, reload } = useLoad(() => api<Run[]>("/scan-runs", { params: { mine, status } }), [mine, status], 5000);
   const { data: defs, reload: reloadDefs } = useLoad(() => api<Definition[]>("/scan-definitions"));
@@ -133,7 +130,7 @@ export default function Scans() {
             ? <div className="card-body"><GroupedRuns runs={runs} canDelete={atLeast("OPERATOR")} canCancel={(r) => r.initiated_by === user?.id || atLeast("OPERATOR")}
                 onRescan={(id) => void launch(id)} onCancel={async (id) => { try { await api(`/scan-runs/${id}/cancel`, { method: "POST" }); void reload(); } catch (e) { setError(e); } }}
                 onDelete={async (id) => { try { await api(`/scan-runs/${id}`, { method: "DELETE" }); void reload(); } catch (e) { setError(e); } }} /></div>
-            : <DataTable rows={runs} rowKey={(r) => r.id} columns={runColumns} />) : <Empty>{t("scans.none")}</Empty>}</Card>
+            : <DataTable rows={runs} rowKey={(r) => r.id} columns={runColumns} defaultSort={{ key: "date", dir: "desc" }} />) : <Empty>{t("scans.none")}</Empty>}</Card>
         </TabsContent>
         <TabsContent value="defs">
           <Card>{defs?.length ? <DataTable rows={defs} rowKey={(d) => d.id} columns={defColumns} /> : <Empty>{t("def.none")}</Empty>}</Card>

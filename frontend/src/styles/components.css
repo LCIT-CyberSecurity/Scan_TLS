@@ -68,15 +68,6 @@
     content: ""; position: absolute; left: -16px; top: 50%; width: 3px; height: 24px; margin-top: -12px;
     background: var(--primary-edge, var(--primary)); border-radius: 0 3px 3px 0;
   }
-  .sidebar-cta {
-    display: flex; align-items: center; justify-content: center; gap: 8px; flex: none;
-    min-height: 44px; margin: -6px 0 8px; border-radius: var(--radius-sm);
-    background: var(--accent-wash, var(--primary)); color: var(--text-on-accent);
-    font-size: 15px; font-weight: 600; text-decoration: none; box-shadow: 0 1px 2px rgba(16, 24, 40, 0.08), 0 6px 14px -8px var(--primary);
-    transition: filter var(--fast) ease, transform var(--fast) ease;
-  }
-  .sidebar-cta:hover { filter: brightness(1.07); }
-  .sidebar-cta:active { transform: translateY(1px); }
   .nav-group { display: flex; flex-direction: column; gap: 4px; }
   .nav-group--bottom { margin-top: auto; padding-top: 12px; padding-bottom: 16px; }
   .sidebar-footer {

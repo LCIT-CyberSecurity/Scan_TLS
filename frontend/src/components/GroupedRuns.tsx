@@ -23,11 +23,13 @@ export function GroupedRuns({ runs, canDelete, canCancel, onRescan, onDelete, on
   const [q, setQ] = useState("");
   const groups = useMemo<Group[]>(() => {
     const map = new Map<string, Group>();
-    for (const r of runs) { // runs arrive newest first
+    const newestFirst = [...runs].sort((a, b) => b.queued_at.localeCompare(a.queued_at));
+    for (const r of newestFirst) {
       const key = r.definition_id ?? `name:${r.name}`;
       const g = map.get(key) ?? { key, name: r.name, definitionId: r.definition_id, runs: [] };
       g.runs.push(r); map.set(key, g);
     }
+    // Maps keep insertion order: the group of the most recent run comes first.
     return [...map.values()].filter((g) => g.name.toLowerCase().includes(q.toLowerCase()));
   }, [runs, q]);
   const toggle = (key: string) => setOpen((s) => { const n = new Set(s); if (n.has(key)) n.delete(key); else n.add(key); return n; });

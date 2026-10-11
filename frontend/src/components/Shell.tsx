@@ -1,4 +1,4 @@
-import { Activity, BarChart3, Plus, CalendarClock, ChevronRight, FileText, ListChecks, Menu, Network, ShieldCheck, SlidersHorizontal } from "lucide-react";
+import { Activity, BarChart3, CalendarClock, ChevronRight, FileText, ListChecks, Menu, Network, ShieldCheck, SlidersHorizontal } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import type { Role } from "../api/types";
@@ -45,7 +45,6 @@ export default function Shell() {
           <img className="brand-logo" src="/lcit-mark.png" alt="LCIT" />
           <div><span>TLS Scan</span><small>{t("brand.tagline")}</small></div>
         </div>
-        {atLeast("USER") && <NavLink to="/scans?new=1" onClick={close} className="sidebar-cta"><Plus size={18} aria-hidden="true" />{t("def.new")}</NavLink>}
         <nav aria-label="Main">
           {SECTIONS.map((section) => {
             const items = section.items.filter((i) => atLeast(i.min));

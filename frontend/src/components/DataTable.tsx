@@ -51,9 +51,9 @@ function FilterPopover({ anchor, options, selected, onChange, onClose }: { ancho
 }
 
 /** Table whose headers sort on click and open a value filter (checkbox list) on the funnel button. */
-export function DataTable<T>({ rows, columns, rowKey, empty }: { rows: T[]; columns: Column<T>[]; rowKey: (row: T) => string; empty?: ReactNode }) {
+export function DataTable<T>({ rows, columns, rowKey, empty, defaultSort }: { rows: T[]; columns: Column<T>[]; rowKey: (row: T) => string; empty?: ReactNode; defaultSort?: { key: string; dir: Dir } }) {
   const { t } = useI18n();
-  const [sort, setSort] = useState<{ key: string; dir: Dir } | null>(null);
+  const [sort, setSort] = useState<{ key: string; dir: Dir } | null>(defaultSort ?? null);
   const [filters, setFilters] = useState<Record<string, Set<string>>>({});
   const [open, setOpen] = useState<{ key: string; anchor: HTMLElement } | null>(null);
 
@@ -90,7 +90,7 @@ export function DataTable<T>({ rows, columns, rowKey, empty }: { rows: T[]; colu
       </Table>
       {!visible.length && <Empty>{empty ?? "—"}</Empty>}
       {(activeFilters > 0 || visible.length !== rows.length) && (
-        <div className="table-foot"><span>{t("table.count", { shown: visible.length, total: rows.length })}</span><button type="button" className="button button--ghost button--sm" onClick={() => { setFilters({}); setSort(null); }}><X size={13} />{t("table.reset")}</button></div>
+        <div className="table-foot"><span>{t("table.count", { shown: visible.length, total: rows.length })}</span><button type="button" className="button button--ghost button--sm" onClick={() => { setFilters({}); setSort(defaultSort ?? null); }}><X size={13} />{t("table.reset")}</button></div>
       )}
       {open && openCol && <FilterPopover anchor={open.anchor} options={options[open.key] ?? []} selected={filters[open.key] ?? new Set()} onChange={(next) => setFilters((f) => ({ ...f, [open.key]: next }))} onClose={() => setOpen(null)} />}
     </>
