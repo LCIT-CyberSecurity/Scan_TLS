@@ -3,12 +3,12 @@ import { Link } from "react-router-dom";
 import { api } from "../api/client";
 import type { Dashboard as Data } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
-import { Empty, ErrorNote, Metric, PageHeader, StatusBadge, useLoad } from "../components/common";
+import { Empty, ErrorNote, Metric, PageHeader, useLoad } from "../components/common";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Select } from "../components/ui/input";
-import { Table, Td, Th } from "../components/ui/table";
+import { RecentRuns } from "../components/RecentRuns";
 import { useI18n } from "../i18n";
-import { formatDate, formatDuration } from "../lib/utils";
+import { formatDate } from "../lib/utils";
 import { useState } from "react";
 import type { SI, Tag } from "../api/types";
 
@@ -43,10 +43,7 @@ export default function Dashboard() {
         <Card>
           <CardHeader><CardTitle>{t("dash.recent")}</CardTitle></CardHeader>
           {data?.recent.length ? (
-            <Table><thead><tr><Th>{t("col.name")}</Th><Th>{t("col.status")}</Th><Th>{t("col.date")}</Th><Th>{t("col.duration")}</Th><Th>{t("col.nonCompliant")}</Th></tr></thead>
-              <tbody>{data.recent.map((r) => (
-                <tr key={r.id}><Td><Link className="row-link" to={`/scans/${r.id}`}>{r.name}</Link></Td><Td><StatusBadge status={r.status} /></Td><Td>{formatDate(r.queued_at, locale)}</Td><Td>{formatDuration(r.duration_seconds)}</Td><Td>{r.summary?.non_compliant_endpoints ?? "—"}</Td></tr>
-              ))}</tbody></Table>
+            <RecentRuns runs={data.recent} />
           ) : <Empty>{t("dash.noScans")}</Empty>}
         </Card>
         <div className="space-y-6">

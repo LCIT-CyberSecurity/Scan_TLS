@@ -13,10 +13,11 @@ from sqlalchemy.orm import Session as DbSession
 from tls_scan_app.api.common import classification_of, get_or_404, ids_matching_filter, require_modify, set_classification
 from tls_scan_app.deps import get_db, require_role
 from tls_scan_app.models import (
-    DefinitionGroup, DefinitionTarget, InformationSystem, ResourceSI, ResourceTag, Role, Tag, Target, TargetGroup,
+    DefinitionGroup, DnsDiscovery, DefinitionTarget, InformationSystem, ResourceSI, ResourceTag, Role, Tag, Target, TargetGroup,
     TargetGroupMember, User,
 )
 from tls_scan_app.services import audit
+from tls_scan_app.services.dns_discovery import DiscoveryError, normalize_domain
 from tls_scan_app.services.targets import TargetError, normalize_ports, normalize_target
 
 router = APIRouter(prefix="/api", tags=["catalog"])
@@ -288,3 +289,42 @@ def delete_group(group_id: uuid.UUID, db: DbSession = Depends(get_db), user: Use
     db.delete(group)
     audit.record(db, "group.delete", actor=user, resource_type="group", resource_id=group_id)
     db.commit()
+
+
+# ---------- DNS discovery (OPERATOR+): name servers + zone-transfer attempt, run by the worker ----------
+class DiscoverBody(BaseModel):
+    domain: str = Field(min_length=1, max_length=253)
+    authorized: bool = False  # the requester states the domain is theirs / in scope
+
+
+def _discovery_out(row: DnsDiscovery) -> dict:
+    return {"id": str(row.id), "domain": row.domain, "status": row.status, "result": row.result, "error": row.error,
+            "created_at": row.created_at, "finished_at": row.finished_at}
+
+
+@router.post("/targets/discover", status_code=202)
+def start_discovery(body: DiscoverBody, db: DbSession = Depends(get_db), user: User = Depends(operator)) -> dict:
+    if not body.authorized:
+        raise HTTPException(400, "Confirm that you are authorised to query this domain")
+    try:
+        domain = normalize_domain(body.domain)
+    except DiscoveryError as error:
+        raise HTTPException(422, str(error)) from None
+    busy = db.scalar(select(func.count()).select_from(DnsDiscovery).where(
+        DnsDiscovery.requested_by == user.id, DnsDiscovery.status.in_(("queued", "running"))))
+    if busy:
+        raise HTTPException(409, "A discovery is already running; wait for it to finish")
+    row = DnsDiscovery(domain=domain, requested_by=user.id)
+    db.add(row)
+    db.flush()
+    audit.record(db, "target.discover", actor=user, resource_type="dns_discovery", resource_id=row.id, detail={"domain": domain})
+    db.commit()
+    return _discovery_out(row)
+
+
+@router.get("/targets/discover/{discovery_id}")
+def get_discovery(discovery_id: uuid.UUID, db: DbSession = Depends(get_db), user: User = Depends(operator)) -> dict:
+    row = db.get(DnsDiscovery, discovery_id)
+    if row is None or (row.requested_by != user.id and user.role != Role.ADMIN):
+        raise HTTPException(404, "Discovery not found")
+    return _discovery_out(row)

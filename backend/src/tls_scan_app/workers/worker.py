@@ -16,7 +16,7 @@ from pathlib import Path
 from tls_scan_app.config import Settings, get_settings
 from tls_scan_app.database import make_engine, make_session_factory
 from tls_scan_app.models import ScanRun
-from tls_scan_app.services import mail, retention, runs
+from tls_scan_app.services import dns_discovery, mail, retention, runs
 from tls_scan_app.services.logs import configure_logging, scrub_text
 from tls_scan_app.services.notifications import notify_run_finished
 
@@ -129,6 +129,7 @@ def main() -> None:
     import threading
 
     active: dict = {}
+    discovery_thread = None
     last_purge = 0.0
     while not stop["flag"]:
         with session_factory() as db:
@@ -142,6 +143,9 @@ def main() -> None:
             run = None
             if len(active) < settings.max_concurrent_scans:
                 run = runs.claim_next(db, worker_id, settings.max_concurrent_scans)
+        if discovery_thread is None or not discovery_thread.is_alive():
+            discovery_thread = threading.Thread(target=_discover_once, args=(session_factory,), daemon=True)
+            discovery_thread.start()
         if run is not None:
             logger.info("scan_run_id=%s claimed", run.id)
             thread = threading.Thread(target=_guarded, args=(settings, session_factory, run.id), daemon=True)
@@ -152,6 +156,14 @@ def main() -> None:
     logger.info("worker stopping; waiting for %s active scan(s)", len(active))
     for thread in active.values():
         thread.join(timeout=settings.max_scan_duration_seconds)
+
+
+def _discover_once(session_factory) -> None:
+    try:
+        with session_factory() as db:
+            dns_discovery.process_next(db)
+    except Exception:  # noqa: BLE001
+        logger.exception("dns discovery loop failed")
 
 
 def _guarded(settings, session_factory, run_id) -> None:

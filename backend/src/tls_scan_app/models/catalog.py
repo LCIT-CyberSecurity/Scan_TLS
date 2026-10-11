@@ -12,7 +12,7 @@ from datetime import datetime
 from sqlalchemy import DateTime, ForeignKey, Index, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
-from tls_scan_app.database import Base
+from tls_scan_app.database import Base, JsonType
 
 
 class Organization(Base):
@@ -93,3 +93,22 @@ class TargetGroupMember(Base):
 
     group_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("target_groups.id", ondelete="CASCADE"), primary_key=True)
     target_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("targets.id", ondelete="CASCADE"), primary_key=True)
+
+
+class DnsDiscovery(Base):
+    """A DNS discovery request for one domain (name-server lookup + zone-transfer attempt), run by the worker.
+
+    The result is a suggestion list: nothing becomes a target until the user adds it.
+    """
+
+    __tablename__ = "dns_discoveries"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    domain: Mapped[str] = mapped_column(String(253))
+    status: Mapped[str] = mapped_column(String(10), default="queued", index=True)  # queued | running | done | failed
+    result: Mapped[dict | None] = mapped_column(JsonType)
+    error: Mapped[str] = mapped_column(Text, default="")
+    requested_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

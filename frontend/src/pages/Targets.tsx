@@ -1,9 +1,9 @@
-import { Download, Pencil, Plus, Trash2, Upload } from "lucide-react";
-import { useState } from "react";
+import { Download, Pencil, Plus, Radar, Trash2, Upload } from "lucide-react";
+import { useEffect, useState } from "react";
 import { api } from "../api/client";
 import type { Group, SI, Tag, Target } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
-import { CheckList, ConfirmButton, Empty, ErrorNote, PageHeader, TagList, TagsInput, useLoad } from "../components/common";
+import { CheckList, ConfirmButton, Empty, ErrorNote, Note, PageHeader, TagList, TagsInput, useLoad } from "../components/common";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
@@ -26,17 +26,39 @@ export function TargetDialog({ initial, systems, onClose, onSaved }: { initial?:
   const [form, setForm] = useState({ name: initial?.name ?? "", value: initial?.value ?? "", ports: initial?.ports ?? "", description: initial?.description ?? "", tags: initial?.tags ?? [], si_ids: initial?.si_ids ?? [] });
   const [kind, setKind] = useState<"fqdn" | "ip" | "cidr">((initial?.kind as "fqdn" | "ip" | "cidr") ?? "fqdn");
   const [error, setError] = useState<unknown>();
+  // Creating accepts several values (FQDN, IP, subnet; one per line, comma or space): each becomes a target and,
+  // when there are several, they are gathered in a group named after the target.
+  const values = initial ? [form.value.trim()] : [...new Set(form.value.split(/[\s,;]+/).map((v) => v.trim()).filter(Boolean))];
+  const multiple = values.length > 1;
   async function save() {
-    if (detectKind(form.value) !== kind) { setError(new Error(t("target.kindMismatch"))); return; }
-    try { const saved = initial ? await api<Target>(`/targets/${initial.id}`, { method: "PUT", body: form }) : await api<Target>("/targets", { method: "POST", body: form }); onSaved(saved); onClose(); } catch (e) { setError(e); }
+    if (!values.length) { setError(new Error(t("target.valueRequired"))); return; }
+    if (!multiple && detectKind(values[0]) !== kind) { setError(new Error(t("target.kindMismatch"))); return; }
+    try {
+      if (initial) { onSaved(await api<Target>(`/targets/${initial.id}`, { method: "PUT", body: form })); onClose(); return; }
+      const saved: Target[] = [];
+      for (const value of values) {
+        const body = { ...form, value, name: multiple ? "" : form.name };
+        try { saved.push(await api<Target>("/targets", { method: "POST", body })); }
+        catch (e) {
+          if ((e as { status?: number }).status !== 409) throw e;   // already known: reuse it
+          const all = await api<Target[]>("/targets");
+          const known = all.find((x) => x.value === value);
+          if (known) saved.push(known); else throw e;
+        }
+      }
+      if (multiple && form.name.trim()) await api("/target-groups", { method: "POST", body: { name: form.name.trim(), description: form.description, target_ids: saved.map((x) => x.id), tags: form.tags, si_ids: form.si_ids } });
+      saved.forEach(onSaved); onClose();
+    } catch (e) { setError(e); }
   }
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()} title={initial ? t("target.edit") : t("target.new")}>
       <div className="space-y-4">
         <Field label={t("target.name")} hint={t("target.nameHint")}><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} maxLength={160} /></Field>
         <div className="grid items-start gap-4 sm:grid-cols-[210px_1fr]">
-          <Field label={t("target.type")}><Select className="h-[42px]" value={kind} onChange={(e) => setKind(e.target.value as "fqdn" | "ip" | "cidr")}>{(["fqdn", "ip", "cidr"] as const).map((k) => <option key={k} value={k}>{t(`target.kind.${k}` as never)}</option>)}</Select></Field>
-          <Field label={t("target.value")} hint={t(`target.valueHint.${kind}` as never)}><Input className="h-[42px]" value={form.value} onChange={(e) => setForm({ ...form, value: e.target.value })} /></Field>
+          <Field label={t("target.type")}><Select className="h-[42px]" value={multiple ? "mixed" : kind} disabled={multiple} onChange={(e) => setKind(e.target.value as "fqdn" | "ip" | "cidr")}>{multiple && <option value="mixed">{t("target.kind.mixed")}</option>}{(["fqdn", "ip", "cidr"] as const).map((k) => <option key={k} value={k}>{t(`target.kind.${k}` as never)}</option>)}</Select></Field>
+          <Field label={initial ? t("target.value") : t("target.values")} hint={multiple ? t("target.multiHint", { n: values.length }) : initial ? t(`target.valueHint.${kind}` as never) : t("target.valuesHint")}>
+            {initial ? <Input className="h-[42px]" value={form.value} onChange={(e) => setForm({ ...form, value: e.target.value })} /> : <Textarea rows={3} value={form.value} onChange={(e) => setForm({ ...form, value: e.target.value })} placeholder={"www.example.org\n192.0.2.10\n10.20.0.0/24"} />}
+          </Field>
         </div>
         <Field label={t("target.ports")} hint={t("target.portsHint")}><Input value={form.ports} onChange={(e) => setForm({ ...form, ports: e.target.value })} placeholder="443,8443,9000-9010" /></Field>
         <Field label={t("col.description")}><Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
@@ -44,6 +66,78 @@ export function TargetDialog({ initial, systems, onClose, onSaved }: { initial?:
         <Field label={t("col.si")}><CheckList items={systems.map((s) => ({ id: s.id, label: (s.parent_id ? "↳ " : "") + s.name }))} selected={form.si_ids} onChange={(si_ids) => setForm({ ...form, si_ids })} /></Field>
         <ErrorNote error={error} />
         <div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>{t("action.cancel")}</Button><Button onClick={() => void save()}>{t("action.save")}</Button></div>
+      </div>
+    </Dialog>
+  );
+}
+
+interface Discovery { id: string; domain: string; status: "queued" | "running" | "done" | "failed"; error: string; result: { transfer_possible: boolean; truncated: boolean; nameservers: { name: string; address: string; status: string; records: number }[]; hosts: { fqdn: string; types: string[]; values: string[] }[] } | null }
+
+/** DNS discovery: name servers of a domain and a zone-transfer attempt; the user picks which names become targets. */
+function DiscoverDialog({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+  const { t } = useI18n();
+  const [domain, setDomain] = useState("");
+  const [authorized, setAuthorized] = useState(false);
+  const [job, setJob] = useState<Discovery>();
+  const [picked, setPicked] = useState<string[]>([]);
+  const [error, setError] = useState<unknown>();
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (!job || job.status === "done" || job.status === "failed") return;
+    const timer = setTimeout(() => { api<Discovery>(`/targets/discover/${job.id}`).then(setJob).catch(setError); }, 1500);
+    return () => clearTimeout(timer);
+  }, [job]);
+  async function start() {
+    setError(undefined); setPicked([]);
+    try { setJob(await api<Discovery>("/targets/discover", { method: "POST", body: { domain, authorized } })); } catch (e) { setError(e); }
+  }
+  async function add() {
+    setBusy(true);
+    try {
+      const ids: string[] = [];
+      let known: Target[] | undefined;
+      for (const value of picked) {
+        try { ids.push((await api<Target>("/targets", { method: "POST", body: { name: "", value, ports: "", description: t("discover.source", { domain: job?.domain ?? "" }), tags: [], si_ids: [] } })).id); }
+        catch (e) {
+          if ((e as { status?: number }).status !== 409) throw e;
+          known ??= await api<Target[]>("/targets");
+          const found = known.find((x) => x.value === value); if (found) ids.push(found.id);
+        }
+      }
+      if (ids.length > 1 && job) await api("/target-groups", { method: "POST", body: { name: job.domain, description: t("discover.source", { domain: job.domain }), target_ids: ids, tags: [], si_ids: [] } }).catch(() => undefined);
+      onDone(); onClose();
+    } catch (e) { setError(e); } finally { setBusy(false); }
+  }
+  const result = job?.result;
+  const running = job && (job.status === "queued" || job.status === "running");
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()} title={t("discover.title")}>
+      <div className="space-y-4">
+        <p className="text-sm text-muted">{t("discover.intro")}</p>
+        <Field label={t("discover.domain")}><Input value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="example.org" disabled={!!running} /></Field>
+        <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={authorized} onChange={(e) => setAuthorized(e.target.checked)} /><span>{t("discover.authorize")}</span></label>
+        {running && <p className="text-sm">{t("discover.running")}</p>}
+        {job?.status === "failed" && <Note tone="warning">{job.error || t("discover.failed")}</Note>}
+        {result && (
+          <>
+            <Note tone={result.transfer_possible ? "danger" : "info"}>{result.transfer_possible ? t("discover.transferOpen") : t("discover.transferRefused")}</Note>
+            <div className="table-scroll"><table className="simple-table"><thead><tr><th>{t("discover.ns")}</th><th>{t("col.status")}</th></tr></thead>
+              <tbody>{result.nameservers.map((n) => <tr key={n.name}><td>{n.name}<div className="text-xs text-muted">{n.address}</div></td><td>{t(`discover.status.${n.status}` as never)}{n.records ? ` (${n.records})` : ""}</td></tr>)}</tbody></table></div>
+            {result.hosts.length > 0 && (
+              <Field label={t("discover.hosts", { n: result.hosts.length })}>
+                <div className="mb-2 flex gap-2"><Button size="sm" variant="outline" onClick={() => setPicked(result.hosts.map((h) => h.fqdn))}>{t("discover.all")}</Button><Button size="sm" variant="outline" onClick={() => setPicked([])}>{t("discover.none")}</Button></div>
+                <CheckList items={result.hosts.map((h) => ({ id: h.fqdn, label: h.fqdn, sub: `${h.types.join("/")} ${h.values.join(", ")}` }))} selected={picked} onChange={setPicked} />
+                {result.truncated && <p className="mt-1 text-xs text-muted">{t("discover.truncated")}</p>}
+              </Field>
+            )}
+          </>
+        )}
+        <ErrorNote error={error} />
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={onClose}>{t("action.close")}</Button>
+          {result && picked.length > 0 ? <Button disabled={busy} onClick={() => void add()}>{t("discover.add", { n: picked.length })}</Button>
+            : <Button disabled={!domain.trim() || !authorized || !!running} onClick={() => void start()}><Radar />{t("discover.start")}</Button>}
+        </div>
       </div>
     </Dialog>
   );
@@ -93,7 +187,7 @@ export default function Targets() {
   const [tag, setTag] = useState("");
   const [si, setSi] = useState("");
   const [mine, setMine] = useState(false);
-  const [dialog, setDialog] = useState<"target" | "import" | "group" | null>(null);
+  const [dialog, setDialog] = useState<"target" | "import" | "group" | "discover" | null>(null);
   const [editT, setEditT] = useState<Target | undefined>();
   const [editG, setEditG] = useState<Group | undefined>();
   const [err, setErr] = useState<unknown>();
@@ -120,6 +214,7 @@ export default function Targets() {
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} />{t("scans.onlyMine")}</label>
             <div className="ml-auto flex gap-2">
               <Button variant="outline" asChild><a href="/api/targets-export" download="targets.txt"><Download />{t("target.export")}</a></Button>
+              {atLeast("OPERATOR") && <Button variant="outline" onClick={() => setDialog("discover")}><Radar />{t("discover.title")}</Button>}
               <Button variant="outline" onClick={() => setDialog("import")}><Upload />{t("target.import")}</Button>
               <Button onClick={() => { setEditT(undefined); setDialog("target"); }}><Plus />{t("target.new")}</Button>
             </div>
@@ -153,6 +248,7 @@ export default function Targets() {
         </TabsContent>
       </Tabs>
       {dialog === "target" && systems.data && <TargetDialog initial={editT} systems={systems.data} onClose={() => setDialog(null)} onSaved={() => { void targets.reload(); void tags.reload(); }} />}
+      {dialog === "discover" && <DiscoverDialog onClose={() => setDialog(null)} onDone={() => { void targets.reload(); void groups.reload(); }} />}
       {dialog === "import" && <ImportDialog onClose={() => setDialog(null)} onDone={() => { void targets.reload(); }} />}
       {dialog === "group" && systems.data && <GroupDialog initial={editG} targets={targets.data ?? []} systems={systems.data} onClose={() => setDialog(null)} onSaved={() => void groups.reload()} />}
     </>
