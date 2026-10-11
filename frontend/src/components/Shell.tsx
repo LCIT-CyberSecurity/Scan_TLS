@@ -1,5 +1,5 @@
 import { Activity, BarChart3, CalendarClock, ChevronRight, FileText, ListChecks, Menu, Network, ShieldCheck, SlidersHorizontal } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useState, type CSSProperties, type ReactNode } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import type { Role } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
@@ -49,9 +49,8 @@ export default function Shell() {
           {SECTIONS.map((section) => {
             const items = section.items.filter((i) => atLeast(i.min));
             if (!items.length) return null;
-            const bottom = section.heading === "nav.section.admin";
             return (
-              <div key={section.heading} className={bottom ? "nav-group nav-group--bottom" : "nav-group"}>
+              <div key={section.heading} className="nav-group" style={{ "--nav-links": items.length } as CSSProperties}>
                 <div className="nav-heading">{t(section.heading)}</div>
                 {items.map((i) => (
                   <NavLink key={i.to} to={i.to} end={i.to === "/"} onClick={close} className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>{i.icon}<span>{t(i.label)}</span></NavLink>

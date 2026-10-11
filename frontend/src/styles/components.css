@@ -38,7 +38,7 @@
     background: linear-gradient(180deg, transparent 0, color-mix(in srgb, var(--primary) 5%, transparent) 100%), var(--rail, var(--surface));
     border-right: 1px solid var(--border);
   }
-  .sidebar nav { display: flex; flex: 1; flex-direction: column; gap: 4px; min-height: 0; overflow-y: auto; }
+  .sidebar nav { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; overflow-y: auto; }
   .brand { display: flex; align-items: center; gap: 12px; padding: 2px 0 22px 2px; font-weight: 600; }
   .brand > div { display: grid; min-width: 0; white-space: nowrap; }
   .brand span { font-size: 24px; font-weight: 700; line-height: 28px; letter-spacing: -0.02em; }
@@ -68,8 +68,11 @@
     content: ""; position: absolute; left: -16px; top: 50%; width: 3px; height: 24px; margin-top: -12px;
     background: var(--primary-edge, var(--primary)); border-radius: 0 3px 3px 0;
   }
-  .nav-group { display: flex; flex-direction: column; gap: 4px; }
-  .nav-group--bottom { margin-top: auto; padding-top: 12px; padding-bottom: 16px; }
+  /* Groups share the free height in proportion to their links; links stretch from 44 to 54 px and a group
+     never grows past that, so any surplus lands after the last group instead of opening a gap in the middle.
+     --nav-links (the link count) is set by Shell.tsx. When the window is too short the nav scrolls. */
+  .nav-group { display: flex; flex-direction: column; gap: 4px; flex: var(--nav-links, 1) 0 auto; max-height: calc(var(--nav-links, 1) * 58px + 64px); }
+  .nav-group > .nav-link { flex: 1 0 44px; max-height: 54px; }
   .sidebar-footer {
     margin-top: auto; padding: 14px 10px 2px; border-top: 1px solid var(--border);
     color: var(--text-faint); font-size: 12.5px; line-height: 16px;
