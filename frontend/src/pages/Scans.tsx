@@ -10,7 +10,7 @@ import { Dialog } from "../components/ui/dialog";
 import { Field, Input, Select, Textarea } from "../components/ui/input";
 import { Card } from "../components/ui/card";
 import { TargetDialog } from "./Targets";
-import { Table, Td, Th } from "../components/ui/table";
+import { DataTable, type Column } from "../components/DataTable";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { useI18n } from "../i18n";
 import { formatDate, formatDuration } from "../lib/utils";
@@ -81,6 +81,32 @@ export default function Scans() {
   }
   const canEdit = (d: Definition) => atLeast("OPERATOR") || d.owner_id === user?.id;
 
+  const phaseText = (r: Run) => `${r.status === "running" ? t(`phase.${r.phase}` as never) : ""}${r.progress ? ` ${r.progress.hosts_done}/${r.progress.hosts_total}` : ""}`.trim();
+  const runColumns: Column<Run>[] = [
+    { key: "name", header: t("col.name"), values: (r) => [r.name], sort: (r) => r.name, render: (r) => <><Link className="row-link" to={`/scans/${r.id}`}>{r.name}</Link>{r.schedule_id && <span className="ml-2 text-xs text-muted">⏱</span>}</> },
+    { key: "status", header: t("col.status"), values: (r) => [r.status], render: (r) => <StatusBadge status={r.status} /> },
+    { key: "phase", header: t("col.phase"), sort: phaseText, render: (r) => <span className="text-muted">{phaseText(r)}</span> },
+    { key: "date", header: t("col.date"), sort: (r) => r.queued_at, values: (r) => [new Date(r.queued_at).toLocaleDateString(locale)], render: (r) => formatDate(r.queued_at, locale) },
+    { key: "duration", header: t("col.duration"), sort: (r) => r.duration_seconds ?? -1, render: (r) => formatDuration(r.duration_seconds) },
+    { key: "nc", header: t("col.nonCompliant"), sort: (r) => r.summary?.non_compliant_endpoints ?? -1, values: (r) => [String(r.summary?.non_compliant_endpoints ?? "—")], render: (r) => r.summary?.non_compliant_endpoints ?? "—" },
+    { key: "actions", header: "", render: (r) => (
+      <div className="row-actions">
+        {r.reports.some((x) => x.format === "html") && <Button asChild size="sm" variant="outline"><a href={downloadUrl(r.id, "html", true)} target="_blank" rel="noreferrer"><FileText />{t("action.report")}</a></Button>}
+        {(r.status === "queued" || r.status === "running") && (r.initiated_by === user?.id || atLeast("OPERATOR")) && <ConfirmButton variant="outline" label={t("action.cancelScan")} confirm={t("confirm.cancelScan")} onConfirm={async () => { try { await api(`/scan-runs/${r.id}/cancel`, { method: "POST" }); void reload(); } catch (e) { setError(e); } }} />}
+      </div>) },
+  ];
+  const defColumns: Column<Definition>[] = [
+    { key: "name", header: t("col.name"), values: (d) => [d.name], sort: (d) => d.name, render: (d) => <>{d.name}<div className="text-xs font-normal text-muted">{d.description}</div></> },
+    { key: "tags", header: t("col.tags"), values: (d) => d.tags, render: (d) => <TagList tags={d.tags} /> },
+    { key: "targets", header: t("def.targets"), sort: (d) => d.target_ids.length + d.group_ids.length, render: (d) => d.target_ids.length + d.group_ids.length },
+    { key: "actions", header: "", render: (d) => (
+      <div className="flex justify-end gap-2">
+        <Button size="sm" onClick={() => void launch(d.id)}><Play />{t("action.run")}</Button>
+        {canEdit(d) && <><Button size="sm" variant="outline" aria-label={t("action.edit")} onClick={() => setEditing(d)}><Pencil /></Button>
+          <ConfirmButton variant="outline" label={<Trash2 className="size-4" />} confirm={t("confirm.delete")} onConfirm={async () => { try { await api(`/scan-definitions/${d.id}`, { method: "DELETE" }); void reloadDefs(); } catch (e) { setError(e); } }} /></>}
+      </div>) },
+  ];
+
   return (
     <>
       <PageHeader title={t("nav.scans")} actions={<Button onClick={() => setEditing("new")}><Plus />{t("def.new")}</Button>} />
@@ -92,28 +118,10 @@ export default function Scans() {
             {atLeast("OPERATOR") && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} />{t("scans.onlyMine")}</label>}
             <Select aria-label={t("col.status")} className="w-44" value={status} onChange={(e) => setStatus(e.target.value)}><option value="">{t("filter.allStatuses")}</option>{["queued", "running", "completed", "partial", "failed", "cancelled", "expired"].map((s) => <option key={s} value={s}>{t(`status.${s}` as never)}</option>)}</Select>
           </div>
-          <Card>{runs?.length ? (
-            <Table><thead><tr><Th>{t("col.name")}</Th><Th>{t("col.status")}</Th><Th>{t("col.phase")}</Th><Th>{t("col.date")}</Th><Th>{t("col.duration")}</Th><Th>{t("col.nonCompliant")}</Th><Th /></tr></thead>
-              <tbody>{runs.map((r) => (
-                <tr key={r.id}><Td><Link className="row-link" to={`/scans/${r.id}`}>{r.name}</Link>{r.schedule_id && <span className="ml-2 text-xs text-muted">⏱</span>}</Td><Td><StatusBadge status={r.status} /></Td>
-                  <Td className="text-muted">{r.status === "running" ? t(`phase.${r.phase}` as never) : ""}{r.progress ? ` ${r.progress.hosts_done}/${r.progress.hosts_total}` : ""}</Td>
-                  <Td>{formatDate(r.queued_at, locale)}</Td><Td>{formatDuration(r.duration_seconds)}</Td><Td>{r.summary?.non_compliant_endpoints ?? "—"}</Td>
-                  <Td><div className="row-actions">{r.reports.some((x) => x.format === "html") && <Button asChild size="sm" variant="outline"><a href={downloadUrl(r.id, "html", true)} target="_blank" rel="noreferrer"><FileText />{t("action.report")}</a></Button>}{(r.status === "queued" || r.status === "running") && (r.initiated_by === user?.id || atLeast("OPERATOR")) && <ConfirmButton variant="outline" label={t("action.cancelScan")} confirm={t("confirm.cancelScan")} onConfirm={async () => { try { await api(`/scan-runs/${r.id}/cancel`, { method: "POST" }); void reload(); } catch (e) { setError(e); } }} />}</div></Td></tr>
-              ))}</tbody></Table>
-          ) : <Empty>{t("scans.none")}</Empty>}</Card>
+          <Card>{runs?.length ? <DataTable rows={runs} rowKey={(r) => r.id} columns={runColumns} /> : <Empty>{t("scans.none")}</Empty>}</Card>
         </TabsContent>
         <TabsContent value="defs">
-          <Card>{defs?.length ? (
-            <Table><thead><tr><Th>{t("col.name")}</Th><Th>{t("col.tags")}</Th><Th>{t("def.targets")}</Th><Th /></tr></thead>
-              <tbody>{defs.map((d) => (
-                <tr key={d.id}><Td className="font-medium">{d.name}<div className="text-xs font-normal text-muted">{d.description}</div></Td><Td><TagList tags={d.tags} /></Td><Td>{d.target_ids.length + d.group_ids.length}</Td>
-                  <Td><div className="flex justify-end gap-2">
-                    <Button size="sm" onClick={() => void launch(d.id)}><Play />{t("action.run")}</Button>
-                    {canEdit(d) && <><Button size="sm" variant="outline" aria-label={t("action.edit")} onClick={() => setEditing(d)}><Pencil /></Button>
-                      <ConfirmButton variant="outline" label={<Trash2 className="size-4" />} confirm={t("confirm.delete")} onConfirm={async () => { try { await api(`/scan-definitions/${d.id}`, { method: "DELETE" }); void reloadDefs(); } catch (e) { setError(e); } }} /></>}
-                  </div></Td></tr>
-              ))}</tbody></Table>
-          ) : <Empty>{t("def.none")}</Empty>}</Card>
+          <Card>{defs?.length ? <DataTable rows={defs} rowKey={(d) => d.id} columns={defColumns} /> : <Empty>{t("def.none")}</Empty>}</Card>
         </TabsContent>
       </Tabs>
       {editing && <DefinitionDialog initial={editing === "new" ? undefined : editing} onClose={() => setEditing(null)} onSaved={() => { void reloadDefs(); setTab("defs"); }} />}

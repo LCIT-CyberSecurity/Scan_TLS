@@ -7,7 +7,7 @@ import { Empty, ErrorNote, PageHeader, StatusBadge, useLoad } from "../component
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
 import { Select } from "../components/ui/input";
-import { Table, Td, Th } from "../components/ui/table";
+import { DataTable, type Column } from "../components/DataTable";
 import { useI18n } from "../i18n";
 import { formatDate } from "../lib/utils";
 
@@ -19,6 +19,14 @@ export default function Reports() {
   const { data: tags } = useLoad(() => api<Tag[]>("/tags"));
   const { data: systems } = useLoad(() => api<SI[]>("/information-systems"));
   const rows = data?.filter((r) => r.reports.length) ?? [];
+  const columns: Column<Run>[] = [
+    { key: "name", header: t("col.name"), values: (r) => [r.name], sort: (r) => r.name, render: (r) => <Link to={`/scans/${r.id}`} className="row-link">{r.name}</Link> },
+    { key: "date", header: t("col.date"), sort: (r) => r.finished_at ?? "", values: (r) => (r.finished_at ? [new Date(r.finished_at).toLocaleDateString(locale)] : []), render: (r) => formatDate(r.finished_at, locale) },
+    { key: "status", header: t("col.status"), values: (r) => [r.status], render: (r) => <StatusBadge status={r.status} /> },
+    { key: "nc", header: t("col.nonCompliant"), sort: (r) => r.summary?.non_compliant_endpoints ?? -1, values: (r) => [String(r.summary?.non_compliant_endpoints ?? "—")], render: (r) => r.summary?.non_compliant_endpoints ?? "—" },
+    { key: "pol", header: t("pol.policies"), values: (r) => r.policy_versions.map((p) => `${p.name} v${p.version}`), render: (r) => <span className="text-xs">{r.policy_versions.map((p) => `${p.name} v${p.version}`).join(", ")}</span> },
+    { key: "reports", header: t("nav.reports"), render: (r) => <div className="flex flex-wrap gap-1">{r.reports.filter((x) => ["html", "md", "csv", "cbom"].includes(x.format)).map((x) => <Button key={x.format} size="sm" variant="outline" asChild><a href={downloadUrl(r.id, x.format)}><Download />{x.format.toUpperCase()}</a></Button>)}</div> },
+  ];
   return (
     <>
       <PageHeader title={t("nav.reports")} actions={
@@ -28,14 +36,7 @@ export default function Reports() {
         </>
       } />
       <ErrorNote error={error} />
-      <Card>{rows.length ? (
-        <Table><thead><tr><Th>{t("col.name")}</Th><Th>{t("col.date")}</Th><Th>{t("col.status")}</Th><Th>{t("col.nonCompliant")}</Th><Th>{t("pol.policies")}</Th><Th>{t("nav.reports")}</Th></tr></thead>
-          <tbody>{rows.map((r) => (
-            <tr key={r.id}><Td><Link to={`/scans/${r.id}`} className="row-link">{r.name}</Link></Td><Td>{formatDate(r.finished_at, locale)}</Td><Td><StatusBadge status={r.status} /></Td><Td>{r.summary?.non_compliant_endpoints ?? "—"}</Td>
-              <Td className="text-xs">{r.policy_versions.map((p) => `${p.name} v${p.version}`).join(", ")}</Td>
-              <Td><div className="flex flex-wrap gap-1">{r.reports.filter((x) => ["html", "md", "csv", "cbom"].includes(x.format)).map((x) => <Button key={x.format} size="sm" variant="outline" asChild><a href={downloadUrl(r.id, x.format)}><Download />{x.format.toUpperCase()}</a></Button>)}</div></Td></tr>
-          ))}</tbody></Table>
-      ) : <Empty>{t("reports.none")}</Empty>}</Card>
+      <Card>{rows.length ? <DataTable rows={rows} rowKey={(r) => r.id} columns={columns} /> : <Empty>{t("reports.none")}</Empty>}</Card>
     </>
   );
 }
