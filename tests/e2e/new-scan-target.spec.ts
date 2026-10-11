@@ -7,7 +7,7 @@ test("New scan: a target can be created from the dialog and is selected", async 
   await page.getByRole("button", { name: /new scan|nouveau scan/i }).click();
   const host = `inline-${Date.now()}.example.org`;
   await page.getByRole("button", { name: /new target|nouvelle cible/i }).click();
-  await page.getByLabel(/^(target|cible)$/i).fill(host);
+  await page.getByLabel(/^(targets|cibles)$/i).fill(host);
   await page.getByRole("button", { name: /^(save|enregistrer)$/i }).last().click();
   // back in the scan dialog: the new target is listed and already ticked
   await expect(page.getByRole("checkbox", { name: new RegExp(host) })).toBeChecked();

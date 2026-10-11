@@ -9,7 +9,7 @@ test("user: create a target, launch a scan, follow it, read results, download a 
   await page.getByRole("link", { name: /Targets/ }).click();
   await page.getByRole("button", { name: "New target" }).click();
   const value = `e2e-${Date.now()}.example.org`;
-  await page.getByRole("dialog").getByLabel("Target", { exact: true }).fill(value);
+  await page.getByRole("dialog").getByLabel("Targets", { exact: true }).fill(value);
   await page.getByRole("dialog").getByLabel("Tags").fill("E2E");
   await page.getByRole("dialog").getByRole("button", { name: "Save" }).click();
   await expect(page.getByRole("cell", { name: value })).toBeVisible();

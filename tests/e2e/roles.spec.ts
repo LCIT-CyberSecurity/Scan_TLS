@@ -31,7 +31,7 @@ test("direct URL access is also refused server-side for an auditor", async ({ pa
 test("admin: users, audit and diagnostics", async ({ page }) => {
   await login(page, "admin", ADMIN);
   await page.getByRole("link", { name: "Administration" }).click();
-  await expect(page.getByRole("cell", { name: /operator@crashtest/ })).toBeVisible();
+  await expect(page.getByRole("cell", { name: /operator@crashtest/ }).first()).toBeVisible();
   await page.getByRole("tab", { name: "Audit log" }).click();
   await expect(page.getByText("auth.login").first()).toBeVisible();
   await page.getByRole("tab", { name: "Diagnostics" }).click();
