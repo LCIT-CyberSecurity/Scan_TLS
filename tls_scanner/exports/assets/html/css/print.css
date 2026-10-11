@@ -194,7 +194,7 @@ h3 {
   padding: var(--space-10);
   border-radius: var(--radius-lg);
   /* A flat navy reproduces predictably across printer drivers. */
-  background: #0b1d35 !important;
+  background: #0e1020 !important;
   color: #fff !important;
   break-inside: avoid;
 }
@@ -787,7 +787,7 @@ summary {
   margin: 0;
   padding: 16mm 16mm 14mm;
   border-radius: 0;
-  border-top: 2.2mm solid #4d7dbb;
+  border-top: 2.2mm solid var(--brand-500, #6366f1);
   page-break-after: always;
   break-after: page;
 }

@@ -16,7 +16,7 @@ from .report_model import ReportModel, build_report_model, report_model_to_dict
 
 HTML_ASSET_MANIFEST = {
     "css/report.css": "tls_scanner/exports/assets/html/css/report.css",
-    "css/theme-consulting.css": "tls_scanner/exports/assets/html/css/theme-consulting.css",
+    "css/theme-modern.css": "tls_scanner/exports/assets/html/css/theme-modern.css",
     "css/print.css": "tls_scanner/exports/assets/html/css/print.css",
     "js/report.js": "tls_scanner/exports/assets/html/js/report.js",
 }
@@ -81,7 +81,7 @@ def build_html_report_from_model(model: ReportModel):
         '  <meta charset="utf-8">', '  <meta name="viewport" content="width=device-width, initial-scale=1">',
         '  <meta name="referrer" content="no-referrer">', f"  <title>{title}</title>",
         '  <link rel="stylesheet" href="assets/css/report.css">',
-        '  <link rel="stylesheet" href="assets/css/theme-consulting.css">',
+        '  <link rel="stylesheet" href="assets/css/theme-modern.css">',
         '  <link rel="stylesheet" href="assets/css/print.css" media="print">', "</head>", "<body>",
         '  <a class="skip-link" href="#main">Skip to main content</a>',
         '  <header class="app-shell no-print"><div class="brand-block"><div class="brand-mark" aria-hidden="true">TS</div><div><strong>TLS Scan</strong><span>Security Report</span></div></div><nav aria-label="Report sections"><a href="#overview">Overview</a><a href="#findings">Findings</a><a href="#endpoints">Endpoints</a><a href="#communication">Communication Security</a><a href="#certificates">Certificates</a><a href="#trust">Trust</a><a href="#compliance">Compliance</a><a href="#pqc">PQC</a></nav><div class="header-actions"><button class="button" type="button" id="downloadCsv">Download CSV</button><button class="button button-primary" type="button" id="printReport">Print / Save as PDF</button></div></header>',

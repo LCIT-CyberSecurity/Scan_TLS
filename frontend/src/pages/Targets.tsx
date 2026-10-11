@@ -34,9 +34,9 @@ export function TargetDialog({ initial, systems, onClose, onSaved }: { initial?:
     <Dialog open onOpenChange={(o) => !o && onClose()} title={initial ? t("target.edit") : t("target.new")}>
       <div className="space-y-4">
         <Field label={t("target.name")} hint={t("target.nameHint")}><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} maxLength={160} /></Field>
-        <div className="grid gap-4 sm:grid-cols-[200px_1fr]">
-          <Field label={t("target.type")}><Select value={kind} onChange={(e) => setKind(e.target.value as "fqdn" | "ip" | "cidr")}>{(["fqdn", "ip", "cidr"] as const).map((k) => <option key={k} value={k}>{t(`target.kind.${k}` as never)}</option>)}</Select></Field>
-          <Field label={t("target.value")} hint={t(`target.valueHint.${kind}` as never)}><Input value={form.value} onChange={(e) => setForm({ ...form, value: e.target.value })} /></Field>
+        <div className="grid items-start gap-4 sm:grid-cols-[210px_1fr]">
+          <Field label={t("target.type")}><Select className="h-[42px]" value={kind} onChange={(e) => setKind(e.target.value as "fqdn" | "ip" | "cidr")}>{(["fqdn", "ip", "cidr"] as const).map((k) => <option key={k} value={k}>{t(`target.kind.${k}` as never)}</option>)}</Select></Field>
+          <Field label={t("target.value")} hint={t(`target.valueHint.${kind}` as never)}><Input className="h-[42px]" value={form.value} onChange={(e) => setForm({ ...form, value: e.target.value })} /></Field>
         </div>
         <Field label={t("target.ports")} hint={t("target.portsHint")}><Input value={form.ports} onChange={(e) => setForm({ ...form, ports: e.target.value })} placeholder="443,8443,9000-9010" /></Field>
         <Field label={t("col.description")}><Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
