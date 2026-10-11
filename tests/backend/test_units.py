@@ -162,3 +162,24 @@ def test_rate_limiter_counts_without_consuming():
     for _ in range(3):
         lim.hit("k")
     assert lim.count("k", 60) == 3
+
+
+def test_anssi_policy_is_available_natively(admin):
+    """The ANSSI policy from config/encryption_policy is seeded at first start, published, with the file's rules."""
+    import yaml
+    from pathlib import Path
+
+    expected = yaml.safe_load(Path("/app/config/encryption_policy/anssi_encryption_policy.yaml").read_text())["tls"]
+    anssi = [p for p in admin.get("/api/policies").json() if p["name"] == "ANSSI"]
+    assert len(anssi) == 1
+    published = [v for v in anssi[0]["versions"] if v["status"] == "published"]
+    assert published and published[0]["content"] == expected
+
+
+def test_anssi_scan_profile_is_available_natively(admin):
+    """A published ANSSI scan profile (engine defaults from config/config.yaml) exists at first start."""
+    anssi = [p for p in admin.get("/api/profiles").json() if p["name"] == "ANSSI"]
+    assert len(anssi) == 1
+    published = [v for v in anssi[0]["versions"] if v["status"] == "published"]
+    assert published and published[0]["content"]["scan"]["crypto"] == "standard"
+    assert "certificate" in published[0]["content"]["checks"]
