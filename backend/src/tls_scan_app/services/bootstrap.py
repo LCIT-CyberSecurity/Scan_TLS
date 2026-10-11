@@ -23,6 +23,8 @@ DEFAULT_ADMIN_PASSWORD = "SecretPassword"  # noqa: S105  deployment default, mus
 # The ANSSI policy shipped in config/ (same file as the Standalone engine) is available natively, already published.
 ANSSI_POLICY_NAME = "ANSSI"
 ANSSI_POLICY_FILE = Path(__file__).resolve().parents[4] / "config" / "encryption_policy" / "anssi_encryption_policy.yaml"
+STANDARD_PROFILE_NAME = "Standard"
+PROFILE_DESCRIPTION = "Standard scan profile: engine defaults (standard ciphers, certificate trust and revocation checks)."
 ANSSI_PROFILE_FILE = ANSSI_POLICY_FILE.parents[1] / "config.yaml"  # scan profile: the engine's `defaults` section
 POLICY_FIELDS = ("allowed_versions", "allowed_cipher_algorithms", "allowed_signature_hashes", "minimum_rsa_bits")
 
@@ -45,20 +47,32 @@ def ensure_builtin_policies(db: DbSession, path: Path = ANSSI_POLICY_FILE) -> No
 
 
 def ensure_builtin_profiles(db: DbSession, path: Path = ANSSI_PROFILE_FILE) -> None:
-    """Create the ANSSI scan profile (published v1) from config/config.yaml `defaults`; same rules as the policy."""
-    if not path.is_file() or db.execute(select(ScanProfile).where(ScanProfile.name == ANSSI_POLICY_NAME)).scalar_one_or_none():
+    """Create the built-in "Standard" scan profile (published v1) from config/config.yaml `defaults`, once.
+
+    An earlier release seeded it under the name "ANSSI" (that name now belongs to the policy only): rename it
+    when it is still unnamed-by-anyone-else, i.e. no profile called "Standard" exists yet.
+    """
+    if db.execute(select(ScanProfile).where(ScanProfile.name == STANDARD_PROFILE_NAME)).scalar_one_or_none():
+        return
+    legacy = db.execute(select(ScanProfile).where(ScanProfile.name == ANSSI_POLICY_NAME)).scalar_one_or_none()
+    if legacy is not None:
+        legacy.name = STANDARD_PROFILE_NAME
+        if legacy.description.startswith("ANSSI scan profile"):
+            legacy.description = PROFILE_DESCRIPTION
+        return
+    if not path.is_file():
         return
     try:
         defaults = yaml.safe_load(path.read_text(encoding="utf-8"))["defaults"]
         content = {"scan": defaults["scan"], "checks": defaults["checks"]}
     except (OSError, yaml.YAMLError, KeyError, TypeError):
-        logger.warning("Scan defaults in %s are unreadable; ANSSI profile not seeded", path)
+        logger.warning("Scan defaults in %s are unreadable; Standard profile not seeded", path)
         return
-    profile = ScanProfile(name=ANSSI_POLICY_NAME, description="ANSSI scan profile: engine defaults (standard ciphers, certificate trust and revocation checks).")
+    profile = ScanProfile(name=STANDARD_PROFILE_NAME, description=PROFILE_DESCRIPTION)
     db.add(profile)
     db.flush()
     db.add(ScanProfileVersion(profile_id=profile.id, version=1, status=PUBLISHED, content=content, published_at=datetime.now(UTC)))
-    audit.record(db, "profile.builtin_seeded", actor_label="system", resource_type="profile", resource_id=str(profile.id), detail={"name": ANSSI_POLICY_NAME})
+    audit.record(db, "profile.builtin_seeded", actor_label="system", resource_type="profile", resource_id=str(profile.id), detail={"name": STANDARD_PROFILE_NAME})
 
 
 def ensure_bootstrap(db: DbSession, settings: Settings) -> None:

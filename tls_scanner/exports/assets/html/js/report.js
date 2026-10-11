@@ -283,6 +283,34 @@
     });
   }
 
+  // Findings by severity: one stacked bar and a legend with unique findings and occurrences.
+  function initSeveritySummary(){
+    const root = $('severitySummary');
+    const counts = data.statistics.findings_by_severity || {};
+    const levels = ['critical','high','medium','low','informational'];
+    const total = levels.reduce((sum, level) => sum + ((counts[level] || {}).unique || 0), 0);
+    root.append(el('p','eyebrow','Risk profile'), el('h3','severity-title','Findings by severity'));
+    if(!total){ root.append(el('p','muted','No findings were identified.')); return; }
+    const bar = el('div','severity-bar');
+    bar.setAttribute('role','img');
+    bar.setAttribute('aria-label', levels.map((level) => `${(counts[level] || {}).unique || 0} ${level}`).join(', '));
+    const legend = el('dl','severity-legend');
+    levels.forEach((level) => {
+      const unique = (counts[level] || {}).unique || 0;
+      const occurrences = (counts[level] || {}).occurrences || 0;
+      if(unique){ const part = el('span',`severity-part severity-fill-${level}`); part.style.flexGrow = unique; bar.append(part); }
+      const item = el('div',`severity-legend-item${unique ? '' : ' is-empty'}`);
+      const swatch = document.createElement('dt');
+      swatch.className = `severity-fill-${level}`;
+      swatch.setAttribute('aria-hidden','true');
+      const detail = document.createElement('dd');
+      detail.append(el('strong','',unique), el('span','',level), el('small','',`${occurrences} occurrence(s)`));
+      item.append(swatch, detail);
+      legend.append(item);
+    });
+    root.append(bar, legend);
+  }
+
   function initKpis(){
     const s = data.statistics;
     const compliantPct = `${pct(s.compliant_endpoints, s.total_endpoints)}% compliant`;
@@ -794,9 +822,9 @@
   initNavigation();
   initContext();
   initKpis();
+  initSeveritySummary();
   initCharts();
   initTopFindings();
-  window.addEventListener('beforeprint', () => document.querySelectorAll('details.top-finding').forEach((d) => { d.open = true; }));
   initFindings();
   initEndpoints();
   initCertificates();

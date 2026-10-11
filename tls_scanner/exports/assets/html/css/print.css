@@ -771,3 +771,112 @@ summary {
 /* No page number here on purpose: `counter(page)` does not increment inside a
    position:fixed element in Blink, so it would print "Page 0" on every sheet.
    Browsers add their own page numbers in the print dialog instead. */
+
+
+/* ==========================================================================
+   10. CONSULTING LAYER (print)
+   Cover page, numbered chapters and ruled findings, matching the screen theme.
+   ========================================================================== */
+
+.report-cover {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto 1fr auto;
+  gap: 14mm;
+  min-height: 235mm;
+  margin: 0;
+  padding: 16mm 16mm 14mm;
+  border-radius: 0;
+  border-top: 2.2mm solid #4d7dbb;
+  page-break-after: always;
+  break-after: page;
+}
+
+.cover-title { align-self: center; }
+
+.cover-kicker {
+  margin: 0 0 5mm;
+  color: #9fb8dc !important;
+  font-size: 8.5pt;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+.cover-name {
+  margin: 0;
+  color: #fff !important;
+  font-size: 34pt;
+  font-weight: 500;
+  line-height: 1.08;
+  letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
+}
+
+.cover-sub { margin: 5mm 0 0; color: #b9c8de !important; font-size: 11pt; }
+
+.cover-meta {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  margin: 0;
+  padding-top: 6mm;
+  border-top: 0.3mm solid rgba(255, 255, 255, 0.35);
+}
+
+.cover-meta dt { font-size: 7pt; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; }
+.cover-meta dd { margin: 1.5mm 0 0; }
+
+.executive-summary h1 { font-size: 22pt; font-weight: 500; line-height: 1.15; max-width: none; }
+
+.summary-text {
+  padding-left: 5mm;
+  border-left: 0.9mm solid var(--brand-600);
+  color: var(--text) !important;
+  font-family: var(--font-serif);
+  font-size: 11pt;
+  line-height: 1.6;
+}
+
+.priority-item { border: 0 !important; border-bottom: 0.2mm solid var(--border) !important; border-radius: 0 !important; background: transparent !important; box-shadow: none !important; }
+.priority-strip { gap: 0; border-top: 0.3mm solid var(--border-strong); }
+
+.kpi-row { border: 0 !important; border-top: 0.6mm solid #0a1f3a !important; border-bottom: 0.2mm solid var(--border-strong) !important; border-radius: 0 !important; background: transparent !important; box-shadow: none !important; }
+.kpi-item svg { display: none; }
+.kpi-value { font-family: var(--font-serif); font-size: 16pt; font-weight: 500; }
+
+.severity-summary { margin: 0 0 8mm; break-inside: avoid; }
+.severity-title { margin: 1mm 0 4mm; font-size: 13pt; font-weight: 500; }
+.severity-bar { display: flex; gap: 0.5mm; height: 3.5mm; background: var(--surface-sunken) !important; }
+.severity-part { display: block; flex-basis: 0; min-width: 1.5mm; }
+.severity-fill-critical { background: #7f1d2d !important; }
+.severity-fill-high { background: #a3342a !important; }
+.severity-fill-medium { background: #9a6a0c !important; }
+.severity-fill-low { background: #3d6b86 !important; }
+.severity-fill-informational { background: #55657a !important; }
+.severity-legend { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); margin: 4mm 0 0; }
+.severity-legend-item { display: grid; grid-template-columns: 1mm 1fr; gap: 3mm; padding-right: 3mm; }
+.severity-legend-item dt { width: 1mm; min-height: 11mm; }
+.severity-legend-item dd { display: grid; margin: 0; }
+.severity-legend-item strong { font-family: var(--font-serif); font-size: 15pt; font-weight: 500; line-height: 1.1; }
+.severity-legend-item span { font-size: 6.5pt; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
+.severity-legend-item small { color: var(--muted); font-size: 6.5pt; }
+.severity-legend-item.is-empty { opacity: 0.45; }
+
+.section-heading, .chapter-heading { padding-bottom: 2.5mm; border-bottom: 0.6mm solid #0a1f3a; }
+.section-heading h2, .chapter-heading h2 { font-size: 18pt; font-weight: 500; letter-spacing: -0.02em; }
+.section-count { border: 0 !important; padding: 0; }
+
+.finding-card { border: 0 !important; border-top: 0.6mm solid var(--tone, var(--border-strong)) !important; border-radius: 0 !important; box-shadow: none !important; background: #fff !important; }
+.finding-card::before { display: none !important; }
+.finding-name { font-family: var(--font-serif); font-weight: 600; }
+.finding-block { border: 0 !important; border-top: 0.2mm solid var(--border) !important; border-radius: 0 !important; background: transparent !important; }
+.finding-block-recommendation { border-top-color: var(--brand-600) !important; }
+.badge, .port-badge { border-radius: 0.6mm !important; }
+.endpoint-card, .top-finding-row, .top-finding-detail, .analytics-row { border-radius: 0 !important; box-shadow: none !important; }
+
+/* Printed priority themes stay compact: the endpoints are listed in the detailed findings. */
+.top-finding-detail, .top-finding-toggle { display: none !important; }
+.chapter-heading, .severity-title { break-after: avoid; }
+.kpi-value { font-size: 13pt; overflow-wrap: anywhere; }
+.kpi-item { min-width: 0; }

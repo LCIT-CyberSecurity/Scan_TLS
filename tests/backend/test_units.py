@@ -176,9 +176,9 @@ def test_anssi_policy_is_available_natively(admin):
     assert published and published[0]["content"] == expected
 
 
-def test_anssi_scan_profile_is_available_natively(admin):
-    """A published ANSSI scan profile (engine defaults from config/config.yaml) exists at first start."""
-    anssi = [p for p in admin.get("/api/profiles").json() if p["name"] == "ANSSI"]
+def test_standard_scan_profile_is_available_natively(admin):
+    """A published Standard scan profile (engine defaults from config/config.yaml) exists at first start."""
+    anssi = [p for p in admin.get("/api/profiles").json() if p["name"] == "Standard"]
     assert len(anssi) == 1
     published = [v for v in anssi[0]["versions"] if v["status"] == "published"]
     assert published and published[0]["content"]["scan"]["crypto"] == "standard"

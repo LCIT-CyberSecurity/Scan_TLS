@@ -16,6 +16,7 @@ from .report_model import ReportModel, build_report_model, report_model_to_dict
 
 HTML_ASSET_MANIFEST = {
     "css/report.css": "tls_scanner/exports/assets/html/css/report.css",
+    "css/theme-consulting.css": "tls_scanner/exports/assets/html/css/theme-consulting.css",
     "css/print.css": "tls_scanner/exports/assets/html/css/print.css",
     "js/report.js": "tls_scanner/exports/assets/html/js/report.js",
 }
@@ -68,8 +69,8 @@ def build_html_report_from_model(model: ReportModel):
     summary = html.escape(build_executive_summary(model))
     cover = (
         '    <section class="report-cover" aria-label="Report header"><div class="cover-brand"><div class="brand-mark large" aria-hidden="true">TS</div><div><strong>TLS Scan</strong><span>Trust. Visibility. Stronger TLS.</span></div></div>'
+        f'<div class="cover-title"><p class="cover-kicker">TLS Security Assessment</p><p class="cover-name">{report_name}</p><p class="cover-sub">Confidential security report</p></div>'
         '<dl class="cover-meta">'
-        f'<div><dt>Report</dt><dd class="cover-report-name">{report_name}</dd></div>'
         '<div><dt>Produced by</dt><dd>TLS Scan by LCIT Cybersecurity</dd></div>'
         f'<div><dt>Generated on</dt><dd>{report_date}</dd></div>'
         f'<div><dt>Scanner version</dt><dd>{scanner_version}</dd></div>'
@@ -80,6 +81,7 @@ def build_html_report_from_model(model: ReportModel):
         '  <meta charset="utf-8">', '  <meta name="viewport" content="width=device-width, initial-scale=1">',
         '  <meta name="referrer" content="no-referrer">', f"  <title>{title}</title>",
         '  <link rel="stylesheet" href="assets/css/report.css">',
+        '  <link rel="stylesheet" href="assets/css/theme-consulting.css">',
         '  <link rel="stylesheet" href="assets/css/print.css" media="print">', "</head>", "<body>",
         '  <a class="skip-link" href="#main">Skip to main content</a>',
         '  <header class="app-shell no-print"><div class="brand-block"><div class="brand-mark" aria-hidden="true">TS</div><div><strong>TLS Scan</strong><span>Security Report</span></div></div><nav aria-label="Report sections"><a href="#overview">Overview</a><a href="#findings">Findings</a><a href="#endpoints">Endpoints</a><a href="#communication">Communication Security</a><a href="#certificates">Certificates</a><a href="#trust">Trust</a><a href="#compliance">Compliance</a><a href="#pqc">PQC</a></nav><div class="header-actions"><button class="button" type="button" id="downloadCsv">Download CSV</button><button class="button button-primary" type="button" id="printReport">Print / Save as PDF</button></div></header>',
@@ -89,6 +91,7 @@ def build_html_report_from_model(model: ReportModel):
         f'    <h1 id="postureTitle">TLS security posture requires focused remediation</h1><p class="summary-text" id="executiveSummary">{summary}</p><div id="priorityActions" class="priority-strip" aria-label="Priority actions"></div></div>',
         '    </section>',
         '    <section id="kpis" class="kpi-row" aria-label="Executive key performance indicators"></section>',
+        '    <section id="severitySummary" class="severity-summary" aria-label="Findings by severity"></section>',
         '    <section class="scan-info" aria-labelledby="scanInfoTitle"><div class="section-heading compact"><div><p class="eyebrow">Context</p><h2 id="scanInfoTitle">Scan Information</h2></div></div><div id="scanContext" class="scan-info-grid" aria-label="Scan context"></div></section>',
         '    <section class="analytics report-chapter" id="analytics" aria-label="Security analytics"><div class="chapter-heading"><p class="eyebrow">Security Analytics</p><h2>Evidence that explains the posture</h2><p>Five focused views summarize endpoint compliance, protocol exposure, certificate health, renewal urgency, and PQC readiness.</p></div><div id="charts"></div></section>',
         '    <section class="panel report-chapter top-findings-panel" id="top-findings"><div class="section-heading"><div><p class="eyebrow">Top Findings</p><h2>Priority remediation themes</h2></div><a class="text-link no-print" href="#findings">View all findings</a></div><div id="topFindingsList"></div></section>',
