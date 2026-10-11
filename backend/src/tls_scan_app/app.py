@@ -6,7 +6,7 @@ from collections.abc import Callable
 
 from fastapi import FastAPI, Request, Response
 
-from tls_scan_app.api import admin, auth, catalog, definitions, health, policies, runs, sso
+from tls_scan_app.api import admin, auth, catalog, definitions, health, policies, results, runs, sso, swagger
 from tls_scan_app.config import Settings, get_settings
 from tls_scan_app.database import make_engine, make_session_factory
 from tls_scan_app.services.bootstrap import ensure_bootstrap
@@ -27,7 +27,8 @@ SECURITY_HEADERS = {
 def make_app(settings: Settings | None = None, bootstrap: bool = True) -> FastAPI:
     settings = settings or get_settings()
     configure_logging(settings, "api")
-    app = FastAPI(title="TLS Scan", docs_url=None if settings.environment == "production" else "/api/docs", openapi_url="/api/openapi.json")
+    # The only API documentation is the read-only results one (/swagger, authenticated); the full internal schema is not published.
+    app = FastAPI(title="TLS Scan", docs_url=None, redoc_url=None, openapi_url=None)
     app.state.settings = settings
     app.state.engine = make_engine(settings.database_url)
     app.state.session_factory = make_session_factory(app.state.engine)
@@ -42,7 +43,7 @@ def make_app(settings: Settings | None = None, bootstrap: bool = True) -> FastAP
         response.headers["X-Request-ID"] = request_id
         return response
 
-    for module in (health, auth, sso, catalog, policies, definitions, runs, admin):
+    for module in (health, auth, sso, catalog, policies, definitions, runs, admin, results, swagger):
         app.include_router(module.router)
 
     if bootstrap:
