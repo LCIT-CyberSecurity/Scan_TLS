@@ -167,7 +167,8 @@ def test_only_operator_and_admin_can_delete_a_scan(user, operator, admin, audito
     assert auditor.delete(f"/api/scan-runs/{run_id}").status_code == 403  # the auditor only reads
     assert operator.delete(f"/api/scan-runs/{run_id}").status_code == 204
     assert admin.get(f"/api/scan-runs/{run_id}").status_code == 404
-    # the admin can delete too
-    run_id = user.post(f"/api/scan-definitions/{definition['id']}/run").json()["run_id"]
+    # the admin can delete too (own definition: no run to share with the first one)
+    other = make_definition(user, catalog, [LAB], name="delete-rights-admin")
+    run_id = user.post(f"/api/scan-definitions/{other['id']}/run").json()["run_id"]
     wait_final(user, run_id)
     assert admin.delete(f"/api/scan-runs/{run_id}").status_code == 204

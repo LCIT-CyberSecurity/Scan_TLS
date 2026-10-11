@@ -68,6 +68,7 @@ class Target(Base):
     __table_args__ = (UniqueConstraint("value", "ports", name="uq_target_value_ports"),)
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    name: Mapped[str] = mapped_column(String(160), default="", server_default="")  # display label; the value stays the identity
     value: Mapped[str] = mapped_column(String(255))  # fqdn, ip or cidr (normalised lower-case)
     kind: Mapped[str] = mapped_column(String(10))  # fqdn | ip | cidr
     ports: Mapped[str] = mapped_column(String(120), default="")  # "" = use the profile's ports

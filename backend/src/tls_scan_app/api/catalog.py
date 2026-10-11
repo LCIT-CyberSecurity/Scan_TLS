@@ -6,7 +6,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import delete, func, select
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DbSession
 
@@ -94,6 +94,7 @@ def delete_tag(tag_id: uuid.UUID, db: DbSession = Depends(get_db), user: User = 
 
 # ---------- targets ----------
 class TargetBody(BaseModel):
+    name: str = Field(default="", max_length=160)
     value: str
     ports: str = ""
     description: str = ""
@@ -102,7 +103,7 @@ class TargetBody(BaseModel):
 
 
 def target_out(t: Target, cls: dict | None = None) -> dict:
-    return {"id": str(t.id), "value": t.value, "kind": t.kind, "ports": t.ports, "description": t.description,
+    return {"id": str(t.id), "name": t.name, "value": t.value, "kind": t.kind, "ports": t.ports, "description": t.description,
             "owner_id": str(t.owner_id) if t.owner_id else None, "tags": (cls or {}).get("tags", []), "si_ids": (cls or {}).get("si", [])}
 
 
@@ -121,7 +122,7 @@ def list_targets(
 ) -> list[dict]:
     stmt = select(Target).order_by(Target.value)
     if q:
-        stmt = stmt.where(Target.value.ilike(f"%{q}%"))
+        stmt = stmt.where(or_(Target.value.ilike(f"%{q}%"), Target.name.ilike(f"%{q}%")))
     if mine:
         stmt = stmt.where(Target.owner_id == user.id)
     allowed = ids_matching_filter(db, "target", tag, si)
@@ -138,7 +139,7 @@ def create_target(body: TargetBody, db: DbSession = Depends(get_db), user: User 
     existing = db.execute(select(Target).where(Target.value == value, Target.ports == ports)).scalar_one_or_none()
     if existing:  # one record per (value, ports): reuse instead of duplicating
         raise HTTPException(409, "This target already exists")
-    target = Target(value=value, kind=kind, ports=ports, description=body.description, owner_id=user.id)
+    target = Target(name=body.name.strip(), value=value, kind=kind, ports=ports, description=body.description, owner_id=user.id)
     db.add(target)
     db.flush()
     set_classification(db, "target", target.id, body.tags, body.si_ids)
@@ -155,7 +156,7 @@ def update_target(target_id: uuid.UUID, body: TargetBody, db: DbSession = Depend
     clash = db.execute(select(Target).where(Target.value == value, Target.ports == ports, Target.id != target.id)).scalar_one_or_none()
     if clash:
         raise HTTPException(409, "This target already exists")
-    target.value, target.kind, target.ports, target.description = value, kind, ports, body.description
+    target.name, target.value, target.kind, target.ports, target.description = body.name.strip(), value, kind, ports, body.description
     set_classification(db, "target", target.id, body.tags, body.si_ids)
     audit.record(db, "target.update", actor=user, resource_type="target", resource_id=target.id)
     db.commit()

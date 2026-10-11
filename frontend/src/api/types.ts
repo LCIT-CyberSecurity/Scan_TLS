@@ -1,7 +1,7 @@
 export type Role = "AUDITOR" | "USER" | "OPERATOR" | "ADMIN";
 export interface User { id: string; email: string; display_name: string; role: Role; must_change_password: boolean; locale: string | null; theme: string; palette: string; notify_events: string[] | null; local_account: boolean; active?: boolean; last_login_at?: string }
 export interface SI { id: string; name: string; description: string; parent_id: string | null }
-export interface Target { id: string; value: string; kind: string; ports: string; description: string; owner_id: string | null; tags: string[]; si_ids: string[] }
+export interface Target { id: string; name: string; value: string; kind: string; ports: string; description: string; owner_id: string | null; tags: string[]; si_ids: string[] }
 export interface Group { id: string; name: string; description: string; owner_id: string | null; target_ids: string[]; tags: string[]; si_ids: string[] }
 export interface Version { id: string; version: number; status: "draft" | "published" | "archived"; content: Record<string, unknown>; published_at: string | null }
 export interface Versioned { id: string; name: string; description: string; archived: boolean; versions: Version[] }

@@ -1,4 +1,4 @@
-import { FileText, Play, Plus, Trash2, Pencil } from "lucide-react";
+import { FileText, Play, Plus, RotateCcw, Trash2, Pencil } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api, downloadUrl } from "../api/client";
@@ -11,6 +11,7 @@ import { Field, Input, Select, Textarea } from "../components/ui/input";
 import { Card } from "../components/ui/card";
 import { TargetDialog } from "./Targets";
 import { DataTable, type Column } from "../components/DataTable";
+import { GroupedRuns } from "../components/GroupedRuns";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { useI18n } from "../i18n";
 import { formatDate, formatDuration } from "../lib/utils";
@@ -44,7 +45,7 @@ function DefinitionDialog({ initial, onClose, onSaved }: { initial?: Definition;
       <div className="space-y-4">
         <Field label={t("col.name")}><Input value={form.name} onChange={(e) => set("name", e.target.value)} /></Field>
         <Field label={t("col.description")}><Textarea value={form.description} onChange={(e) => set("description", e.target.value)} /></Field>
-        <Field label={t("def.targets")}><CheckList items={(targets ?? []).map((x) => ({ id: x.id, label: x.value, sub: x.ports }))} selected={form.target_ids} onChange={(v) => set("target_ids", v)} empty={t("def.noTargets")} /></Field>
+        <Field label={t("def.targets")}><CheckList items={(targets ?? []).map((x) => ({ id: x.id, label: x.name || x.value, sub: [x.name ? x.value : "", x.ports].filter(Boolean).join(" · ") }))} selected={form.target_ids} onChange={(v) => set("target_ids", v)} empty={t("def.noTargets")} /></Field>
         <div><Button type="button" variant="outline" size="sm" onClick={() => setNewTarget(true)}><Plus />{t("target.new")}</Button></div>
         <Field label={t("def.groups")}><CheckList items={(groups ?? []).map((x) => ({ id: x.id, label: x.name, sub: `${x.target_ids.length}` }))} selected={form.group_ids} onChange={(v) => set("group_ids", v)} empty={t("def.noGroups")} /></Field>
         <div className="grid gap-4 sm:grid-cols-2">
@@ -70,6 +71,7 @@ export default function Scans() {
   const navigate = useNavigate();
   const [mine, setMine] = useState(!atLeast("OPERATOR"));
   const [status, setStatus] = useState("");
+  const [grouped, setGrouped] = useState(true);
   const [params, setParams] = useSearchParams();
   const [tab, setTab] = useState("runs");
   const [editing, setEditing] = useState<Definition | "new" | null>(null);
@@ -95,6 +97,7 @@ export default function Scans() {
     { key: "actions", header: "", render: (r) => (
       <div className="row-actions">
         {r.reports.some((x) => x.format === "html") && <Button asChild size="sm" variant="outline"><a href={downloadUrl(r.id, "html", true)} target="_blank" rel="noreferrer"><FileText />{t("action.report")}</a></Button>}
+        {r.definition_id && !(r.status === "queued" || r.status === "running") && <Button size="sm" variant="outline" onClick={() => void launch(r.definition_id as string)}><RotateCcw />{t("scans.rescan")}</Button>}
         {atLeast("OPERATOR") && !(r.status === "queued" || r.status === "running") && <ConfirmButton variant="outline" label={<Trash2 className="size-4" />} confirm={t("confirm.deleteScan")} onConfirm={async () => { try { await api(`/scan-runs/${r.id}`, { method: "DELETE" }); void reload(); } catch (e) { setError(e); } }} />}
         {(r.status === "queued" || r.status === "running") && (r.initiated_by === user?.id || atLeast("OPERATOR")) && <ConfirmButton variant="outline" label={t("action.cancelScan")} confirm={t("confirm.cancelScan")} onConfirm={async () => { try { await api(`/scan-runs/${r.id}/cancel`, { method: "POST" }); void reload(); } catch (e) { setError(e); } }} />}
       </div>) },
@@ -121,8 +124,16 @@ export default function Scans() {
           <div className="mb-3 flex flex-wrap items-center gap-3">
             {atLeast("OPERATOR") && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} />{t("scans.onlyMine")}</label>}
             <Select aria-label={t("col.status")} className="w-44" value={status} onChange={(e) => setStatus(e.target.value)}><option value="">{t("filter.allStatuses")}</option>{["queued", "running", "completed", "partial", "failed", "cancelled", "expired"].map((s) => <option key={s} value={s}>{t(`status.${s}` as never)}</option>)}</Select>
+            <div className="segmented" role="group" aria-label={t("scans.runs")}>
+              <button type="button" aria-pressed={grouped} className={grouped ? "active" : ""} onClick={() => setGrouped(true)}>{t("scans.group")}</button>
+              <button type="button" aria-pressed={!grouped} className={!grouped ? "active" : ""} onClick={() => setGrouped(false)}>{t("scans.flat")}</button>
+            </div>
           </div>
-          <Card>{runs?.length ? <DataTable rows={runs} rowKey={(r) => r.id} columns={runColumns} /> : <Empty>{t("scans.none")}</Empty>}</Card>
+          <Card>{runs?.length ? (grouped
+            ? <div className="card-body"><GroupedRuns runs={runs} canDelete={atLeast("OPERATOR")} canCancel={(r) => r.initiated_by === user?.id || atLeast("OPERATOR")}
+                onRescan={(id) => void launch(id)} onCancel={async (id) => { try { await api(`/scan-runs/${id}/cancel`, { method: "POST" }); void reload(); } catch (e) { setError(e); } }}
+                onDelete={async (id) => { try { await api(`/scan-runs/${id}`, { method: "DELETE" }); void reload(); } catch (e) { setError(e); } }} /></div>
+            : <DataTable rows={runs} rowKey={(r) => r.id} columns={runColumns} />) : <Empty>{t("scans.none")}</Empty>}</Card>
         </TabsContent>
         <TabsContent value="defs">
           <Card>{defs?.length ? <DataTable rows={defs} rowKey={(d) => d.id} columns={defColumns} /> : <Empty>{t("def.none")}</Empty>}</Card>

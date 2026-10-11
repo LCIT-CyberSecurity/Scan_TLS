@@ -13,17 +13,31 @@ import { Table, Td, Th } from "../components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { useI18n } from "../i18n";
 
+/** Same classes as the server: a "/" means a subnet, an IPv4/IPv6 literal an address, anything else a host name. */
+function detectKind(value: string): "fqdn" | "ip" | "cidr" {
+  const v = value.trim();
+  if (v.includes("/")) return "cidr";
+  if (/^\d{1,3}(\.\d{1,3}){3}$/.test(v) || (v.includes(":") && /^[0-9a-f:.]+$/i.test(v))) return "ip";
+  return "fqdn";
+}
+
 export function TargetDialog({ initial, systems, onClose, onSaved }: { initial?: Target; systems: SI[]; onClose: () => void; onSaved: (saved: Target) => void }) {
   const { t } = useI18n();
-  const [form, setForm] = useState({ value: initial?.value ?? "", ports: initial?.ports ?? "", description: initial?.description ?? "", tags: initial?.tags ?? [], si_ids: initial?.si_ids ?? [] });
+  const [form, setForm] = useState({ name: initial?.name ?? "", value: initial?.value ?? "", ports: initial?.ports ?? "", description: initial?.description ?? "", tags: initial?.tags ?? [], si_ids: initial?.si_ids ?? [] });
+  const [kind, setKind] = useState<"fqdn" | "ip" | "cidr">((initial?.kind as "fqdn" | "ip" | "cidr") ?? "fqdn");
   const [error, setError] = useState<unknown>();
   async function save() {
+    if (detectKind(form.value) !== kind) { setError(new Error(t("target.kindMismatch"))); return; }
     try { const saved = initial ? await api<Target>(`/targets/${initial.id}`, { method: "PUT", body: form }) : await api<Target>("/targets", { method: "POST", body: form }); onSaved(saved); onClose(); } catch (e) { setError(e); }
   }
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()} title={initial ? t("target.edit") : t("target.new")}>
       <div className="space-y-4">
-        <Field label={t("target.value")} hint={t("target.valueHint")}><Input value={form.value} onChange={(e) => setForm({ ...form, value: e.target.value })} /></Field>
+        <Field label={t("target.name")} hint={t("target.nameHint")}><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} maxLength={160} /></Field>
+        <div className="grid gap-4 sm:grid-cols-[200px_1fr]">
+          <Field label={t("target.type")}><Select value={kind} onChange={(e) => setKind(e.target.value as "fqdn" | "ip" | "cidr")}>{(["fqdn", "ip", "cidr"] as const).map((k) => <option key={k} value={k}>{t(`target.kind.${k}` as never)}</option>)}</Select></Field>
+          <Field label={t("target.value")} hint={t(`target.valueHint.${kind}` as never)}><Input value={form.value} onChange={(e) => setForm({ ...form, value: e.target.value })} /></Field>
+        </div>
         <Field label={t("target.ports")} hint={t("target.portsHint")}><Input value={form.ports} onChange={(e) => setForm({ ...form, ports: e.target.value })} placeholder="443,8443,9000-9010" /></Field>
         <Field label={t("col.description")}><Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
         <Field label={t("col.tags")} hint={t("hint.commaSeparated")}><TagsInput value={form.tags} onChange={(tags) => setForm({ ...form, tags })} /></Field>
@@ -62,7 +76,7 @@ function GroupDialog({ initial, targets, systems, onClose, onSaved }: { initial?
       <div className="space-y-4">
         <Field label={t("col.name")}><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></Field>
         <Field label={t("col.description")}><Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
-        <Field label={t("def.targets")}><CheckList items={targets.map((x) => ({ id: x.id, label: x.value, sub: x.ports }))} selected={form.target_ids} onChange={(target_ids) => setForm({ ...form, target_ids })} /></Field>
+        <Field label={t("def.targets")}><CheckList items={targets.map((x) => ({ id: x.id, label: x.name || x.value, sub: [x.name ? x.value : "", x.ports].filter(Boolean).join(" · ") }))} selected={form.target_ids} onChange={(target_ids) => setForm({ ...form, target_ids })} /></Field>
         <Field label={t("col.tags")}><TagsInput value={form.tags} onChange={(tags) => setForm({ ...form, tags })} /></Field>
         <Field label={t("col.si")}><CheckList items={systems.map((s) => ({ id: s.id, label: (s.parent_id ? "↳ " : "") + s.name }))} selected={form.si_ids} onChange={(si_ids) => setForm({ ...form, si_ids })} /></Field>
         <ErrorNote error={error} />
@@ -111,9 +125,9 @@ export default function Targets() {
             </div>
           </div>
           <Card>{targets.data?.length ? (
-            <Table><thead><tr><Th>{t("target.value")}</Th><Th>{t("col.type")}</Th><Th>{t("target.ports")}</Th><Th>{t("col.tags")}</Th><Th>{t("col.si")}</Th><Th /></tr></thead>
+            <Table><thead><tr><Th>{t("target.name")}</Th><Th>{t("col.type")}</Th><Th>{t("target.ports")}</Th><Th>{t("col.tags")}</Th><Th>{t("col.si")}</Th><Th /></tr></thead>
               <tbody>{targets.data.map((x) => (
-                <tr key={x.id}><Td className="font-medium">{x.value}<div className="text-xs font-normal text-muted">{x.description}</div></Td><Td><Badge>{x.kind}</Badge></Td><Td>{x.ports || "—"}</Td><Td><TagList tags={x.tags} /></Td><Td className="text-xs">{x.si_ids.map(siName).join(", ")}</Td>
+                <tr key={x.id}><Td className="font-medium">{x.name || x.value}<div className="text-xs font-normal text-muted">{x.name ? x.value : ""}{x.name && x.description ? " · " : ""}{x.description}</div></Td><Td><Badge>{t(`target.kind.${x.kind}` as never)}</Badge></Td><Td>{x.ports || "—"}</Td><Td><TagList tags={x.tags} /></Td><Td className="text-xs">{x.si_ids.map(siName).join(", ")}</Td>
                   <Td>{own(x.owner_id) && <div className="flex justify-end gap-2"><Button size="sm" variant="outline" aria-label={t("action.edit")} onClick={() => { setEditT(x); setDialog("target"); }}><Pencil /></Button><ConfirmButton variant="outline" label={<Trash2 className="size-4" />} confirm={t("confirm.delete")} onConfirm={remove(`/targets/${x.id}`, targets.reload)} /></div>}</Td></tr>
               ))}</tbody></Table>
           ) : <Empty>{t("target.none")}</Empty>}</Card>

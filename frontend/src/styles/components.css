@@ -275,6 +275,18 @@
   .tab:hover { color: var(--text-primary); }
   .tab[data-state="active"] { color: var(--text-primary); border-bottom-color: var(--primary); font-weight: 600; }
 
+  /* ===== Grouped executions ===== */
+  .segmented { display: inline-flex; margin-left: auto; padding: 3px; gap: 3px; background: var(--surface-secondary); border-radius: var(--radius); }
+  .segmented button { padding: 5px 12px; border: 1px solid transparent; border-radius: var(--radius-xs); background: transparent; color: var(--text-muted); font: inherit; font-size: 14px; font-weight: 550; cursor: pointer; }
+  .segmented button:hover { color: var(--text-primary); }
+  .segmented button.active { color: var(--text-primary); background: var(--surface); border-color: var(--border); box-shadow: var(--shadow-sm); }
+  .group-row td { padding-top: 14px; padding-bottom: 14px; }
+  .history-row td { background: var(--surface-sunken); font-size: 14px; }
+  .history-row td:nth-child(2) { padding-left: 28px; }
+  .trend { display: inline-flex; align-items: center; gap: 3px; margin-left: 8px; font-size: 13px; font-weight: 650; }
+  .trend--bad { color: var(--danger); }
+  .trend--good { color: var(--success); }
+
   /* ===== Progress and stacked bars ===== */
   .progress-track { height: 6px; margin: 9px 0 6px; background: var(--surface-secondary); border-radius: 10px; overflow: hidden; }
   .progress-track div { height: 100%; background: var(--accent-wash); border-radius: inherit; transition: width var(--slow) var(--ease); }

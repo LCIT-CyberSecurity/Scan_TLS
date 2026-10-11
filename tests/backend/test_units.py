@@ -183,3 +183,13 @@ def test_standard_scan_profile_is_available_natively(admin):
     published = [v for v in anssi[0]["versions"] if v["status"] == "published"]
     assert published and published[0]["content"]["scan"]["crypto"] == "standard"
     assert "certificate" in published[0]["content"]["checks"]
+
+
+def test_target_name_is_a_searchable_label(user):
+    value = f"named-{uuid.uuid4().hex[:6]}.example.org"
+    created = user.post("/api/targets", json={"name": "Public website", "value": value}).json()
+    assert created["name"] == "Public website" and created["value"] == value and created["kind"] == "fqdn"
+    assert any(t["id"] == created["id"] for t in user.get("/api/targets", params={"q": "public web"}).json())
+    updated = user.put(f"/api/targets/{created['id']}", json={"name": "Renamed", "value": value}).json()
+    assert updated["name"] == "Renamed"
+    assert user.post("/api/targets", json={"value": f"plain-{uuid.uuid4().hex[:6]}.example.org"}).json()["name"] == ""
