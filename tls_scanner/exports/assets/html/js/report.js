@@ -370,6 +370,61 @@
     root.append(bar, legend);
   }
 
+  // The most exposed endpoints, ranked by severity-weighted findings; each opens its detail drawer.
+  function initExposure(){
+    const root = $('severitySummary');
+    const weights = {critical:100, high:10, medium:3, low:1, informational:0};
+    const ranked = data.endpoints.map((endpoint) => {
+      const counts = {critical:0, high:0, medium:0, low:0, informational:0};
+      (endpoint.finding_ids || []).forEach((id) => { const finding = data.findings.find((item) => item.finding_id === id); if(finding) counts[finding.severity] += 1; });
+      const score = Object.keys(counts).reduce((total, level) => total + counts[level] * weights[level], 0);
+      return {endpoint, counts, score};
+    }).filter((item) => item.score > 0).sort((a,b) => b.score - a.score).slice(0, 6);
+    if(!ranked.length) return;
+    const max = Math.max(...ranked.map((item) => Object.values(item.counts).reduce((x, y) => x + y, 0)));
+    const block = el('div','exposure');
+    block.append(el('p','eyebrow','Exposure'), el('h3','severity-title','Most exposed endpoints'));
+    const list = el('ol','exposure-list');
+    ranked.forEach(({endpoint, counts}) => {
+      const total = Object.values(counts).reduce((x, y) => x + y, 0);
+      const row = el('li');
+      const open = button('', () => openEndpoint(endpoint.endpoint_id), 'exposure-row');
+      const label = el('span','exposure-name');
+      label.append(el('strong','',endpoint.hostname || endpoint.ip_address), el('small','',`${endpoint.port}/${endpoint.protocol}`));
+      const bar = el('span','exposure-bar');
+      ['critical','high','medium','low','informational'].forEach((level) => {
+        if(!counts[level]) return;
+        const part = el('i',`severity-fill-${level}`);
+        part.style.width = `${(counts[level] / max) * 100}%`;
+        part.title = `${counts[level]} ${level}`;
+        bar.append(part);
+      });
+      open.replaceChildren(label, bar, el('span','exposure-total',`${total} finding(s)`));
+      row.append(open);
+      list.append(row);
+    });
+    block.append(list);
+    root.append(block);
+  }
+
+  // Contents: numbered like the chapter headings (the CSS counter follows the same order).
+  function initContents(){
+    const nav = $('contents');
+    const chapters = Array.from(document.querySelectorAll('.scan-info, .report-chapter')).filter((node) => node.id && node.querySelector('h2'));
+    if(!chapters.length) return;
+    nav.append(el('p','eyebrow','Contents'));
+    const list = el('ol','contents-list');
+    chapters.forEach((node, index) => {
+      const link = document.createElement('a');
+      link.href = `#${node.id}`;
+      link.append(el('span','contents-n',String(index + 1).padStart(2,'0')), el('span','contents-t',node.querySelector('h2').textContent));
+      const item = document.createElement('li');
+      item.append(link);
+      list.append(item);
+    });
+    nav.append(list);
+  }
+
   function initKpis(){
     const s = data.statistics;
     const compliantPct = `${pct(s.compliant_endpoints, s.total_endpoints)}% compliant`;
@@ -885,6 +940,8 @@
   initContext();
   initKpis();
   initSeveritySummary();
+  initExposure();
+  initContents();
   initCharts();
   initTopFindings();
   initFindings();

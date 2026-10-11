@@ -880,3 +880,16 @@ summary {
 .chapter-heading, .severity-title { break-after: avoid; }
 .kpi-value { font-size: 13pt; overflow-wrap: anywhere; }
 .kpi-item { min-width: 0; }
+
+.exposure { margin-top: 6mm; break-inside: avoid; }
+.exposure-list { margin: 0; padding: 0; list-style: none; }
+.exposure-row { display: grid; grid-template-columns: 55mm 1fr 22mm; gap: 4mm; align-items: center; width: 100%; padding: 1.8mm 0; border: 0; border-bottom: 0.2mm solid var(--border); background: transparent; font: inherit; text-align: left; }
+.exposure-name strong { font-size: 9pt; }
+.exposure-name small { color: var(--muted); font-size: 7pt; }
+.exposure-bar { display: flex; gap: 0.6mm; height: 2.4mm; }
+.exposure-bar i { display: block; height: 100%; }
+.exposure-total { font-size: 8pt; text-align: right; }
+.contents { margin: 0 0 6mm; break-inside: avoid; }
+.contents-list { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5mm 4mm; margin: 3mm 0 0; padding: 0; list-style: none; }
+.contents-list a { display: flex; gap: 2.5mm; font-size: 8.5pt; color: var(--text); text-decoration: none; }
+.contents-n { color: var(--brand-600); font-weight: 700; }
