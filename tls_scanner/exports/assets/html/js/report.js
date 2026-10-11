@@ -386,14 +386,39 @@
     $('charts').append(analyticsRow('quantum', 'PQC readiness', 'Post-quantum cryptography support detected on scanned endpoints.', pqcVisual, pqcInsight));
   }
 
+  // A priority theme is expandable: its impacted endpoints (each opens the endpoint drawer) and a link to the full finding.
   function topFindingRow(finding, index){
     const full = data.findings.find((item) => item.finding_id === finding.finding_id) || {};
-    const row = el('article','top-finding-row');
+    const item = el('details','top-finding');
+    const row = el('summary','top-finding-row');
     const summary = el('div','top-finding-summary');
     summary.append(valueNode(finding.title, 'top-finding-title'), valueNode(full.description || full.technical_impact || 'Prioritized remediation theme.', 'top-finding-description'));
-    row.append(el('strong','rank',index + 1), badge(finding.severity, severityClass(finding.severity)), summary, valueNode(`${finding.affected_endpoints} impacted endpoint(s)`, 'top-finding-impact'));
-    return row;
+    const impact = el('div','top-finding-impact');
+    impact.append(valueNode(`${finding.affected_endpoints} impacted endpoint(s)`), el('span','top-finding-toggle','Show endpoints'));
+    row.append(el('strong','rank',index + 1), badge(finding.severity, severityClass(finding.severity)), summary, impact);
+    const detail = el('div','top-finding-detail');
+    const list = el('ul','top-finding-endpoints');
+    (full.affected_endpoint_ids || []).forEach((id) => {
+      const endpoint = data.endpoints.find((candidate) => candidate.endpoint_id === id);
+      const li = el('li');
+      li.append(valueNode(endpoint ? `${endpoint.hostname || endpoint.ip_address}:${endpoint.port}` : id, 'mono'));
+      if(endpoint) li.append(button('Open', () => openEndpoint(id), 'button'));
+      list.append(li);
+    });
+    const more = el('a','text-link no-print','View full finding detail');
+    more.href = `#finding-${finding.finding_id}`;
+    more.addEventListener('click', (event) => {
+      event.preventDefault();
+      if(resetFindingFilters) resetFindingFilters();
+      const target = document.getElementById(`finding-${finding.finding_id}`);
+      if(target){ target.scrollIntoView({behavior:'smooth', block:'start'}); target.classList.add('flash'); setTimeout(() => target.classList.remove('flash'), 1800); }
+    });
+    detail.append(list, more);
+    item.append(row, detail);
+    return item;
   }
+
+  let resetFindingFilters = null;
 
   function initTopFindings(){
     const root = $('topFindingsList');
@@ -407,6 +432,7 @@
 
   function findingCard(finding){
     const card = el('article',`finding-card ${severityClass(finding.severity)}`);
+    card.id = `finding-${finding.finding_id}`;
     const head = el('div','finding-head');
     const title = el('div','finding-title');
     title.append(badge(finding.severity, severityClass(finding.severity)), valueNode(finding.title, 'finding-name'));
@@ -446,6 +472,7 @@
     };
     search.addEventListener('input', render);
     sev.addEventListener('change', render);
+    resetFindingFilters = () => { search.value = ''; sev.value = 'all'; render(); };
     render();
   }
 
@@ -769,6 +796,7 @@
   initKpis();
   initCharts();
   initTopFindings();
+  window.addEventListener('beforeprint', () => document.querySelectorAll('details.top-finding').forEach((d) => { d.open = true; }));
   initFindings();
   initEndpoints();
   initCertificates();

@@ -493,7 +493,7 @@ h3 {
   break-inside: avoid;
 }
 
-.top-finding-row + .top-finding-row {
+.top-finding + .top-finding {
   margin-top: 0;
 }
 
