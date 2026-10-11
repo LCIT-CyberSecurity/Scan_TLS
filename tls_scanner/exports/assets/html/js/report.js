@@ -175,6 +175,19 @@
     }
   }
 
+  // One column menu at a time, opened by clicking the column name: sort and, on filterable tables, a value list.
+  let openMenu = null;
+  function closeMenu(){
+    if(!openMenu) return;
+    openMenu.menu.remove();
+    openMenu.trigger.setAttribute('aria-expanded','false');
+    openMenu = null;
+  }
+  document.addEventListener('mousedown', (event) => { if(openMenu && !openMenu.menu.contains(event.target) && !openMenu.trigger.contains(event.target)) closeMenu(); });
+  document.addEventListener('keydown', (event) => { if(event.key === 'Escape') closeMenu(); });
+  window.addEventListener('scroll', closeMenu, true);
+  window.addEventListener('resize', closeMenu);
+
   function table(headers, rows, options){
     const sortable = !options || options.sortable !== false;
     const filterable = Boolean(options && options.filterable);
@@ -184,54 +197,100 @@
     const thead = document.createElement('thead');
     const tr = document.createElement('tr');
     const tbody = document.createElement('tbody');
-    const state = {index:-1, direction:1, filters:headers.map(() => '')};
+    const state = {index:-1, direction:1, hidden:headers.map(() => new Set())};
+    const headerCells = [];
 
     const applyState = () => {
-      let visible = rows.filter((cells) => state.filters.every((filter, index) => !filter || cellText(cells[index]).toLowerCase().includes(filter)));
+      let visible = rows.filter((cells) => state.hidden.every((hidden, index) => !hidden.size || !hidden.has(cellText(cells[index]))));
       if(state.index >= 0){
         visible = [...visible].sort((a,b) => compareValues(cellText(a[state.index]), cellText(b[state.index])) * state.direction);
       }
       renderRows(tbody, visible, headers.length);
+      headerCells.forEach(({th, trigger, mark}, index) => {
+        if(!trigger) return;
+        if(state.index === index) th.setAttribute('aria-sort', state.direction === 1 ? 'ascending' : 'descending'); else th.removeAttribute('aria-sort');
+        th.classList.toggle('has-filter', state.hidden[index].size > 0);
+        mark.textContent = state.hidden[index].size ? '\u25CF' : (state.index === index ? (state.direction === 1 ? '\u25B2' : '\u25BC') : '\u25BE');
+      });
       if(onRender) onRender(visible.length, rows.length);
+    };
+
+    const buildMenu = (index) => {
+      const menu = el('div','col-menu no-print');
+      menu.setAttribute('role','dialog');
+      menu.setAttribute('aria-label', `${headers[index]} options`);
+      const sortAsc = button('Sort ascending', () => { state.index = index; state.direction = 1; applyState(); closeMenu(); }, 'col-menu-item');
+      const sortDesc = button('Sort descending', () => { state.index = index; state.direction = -1; applyState(); closeMenu(); }, 'col-menu-item');
+      menu.append(sortAsc, sortDesc);
+      if(state.index === index) menu.append(button('Clear sort', () => { state.index = -1; applyState(); closeMenu(); }, 'col-menu-item'));
+      if(filterable){
+        const values = Array.from(new Set(rows.map((cells) => cellText(cells[index])))).sort(compareValues);
+        const search = document.createElement('input');
+        search.type = 'search';
+        search.placeholder = 'Search values';
+        search.setAttribute('aria-label', `Search ${headers[index]} values`);
+        const list = el('div','col-menu-list');
+        const renderList = () => {
+          const q = search.value.trim().toLowerCase();
+          list.replaceChildren(...values.filter((value) => value.toLowerCase().includes(q)).slice(0, 300).map((value) => {
+            const label = document.createElement('label');
+            const box = document.createElement('input');
+            box.type = 'checkbox';
+            box.checked = !state.hidden[index].has(value);
+            box.addEventListener('change', () => { if(box.checked) state.hidden[index].delete(value); else state.hidden[index].add(value); applyState(); });
+            label.append(box, el('span','',value === '' ? '(empty)' : value));
+            return label;
+          }));
+        };
+        search.addEventListener('input', renderList);
+        const foot = el('div','col-menu-foot');
+        foot.append(
+          button('Select all', () => { state.hidden[index].clear(); applyState(); renderList(); }, 'col-menu-link'),
+          button('Clear all', () => { values.forEach((value) => state.hidden[index].add(value)); applyState(); renderList(); }, 'col-menu-link'),
+        );
+        menu.append(el('div','col-menu-rule'), search, list, foot);
+        renderList();
+      }
+      return menu;
+    };
+
+    const toggleMenu = (index, trigger, th) => {
+      const wasOpen = openMenu && openMenu.trigger === trigger;
+      closeMenu();
+      if(wasOpen) return;
+      const menu = buildMenu(index);
+      document.body.append(menu);
+      const rect = th.getBoundingClientRect();
+      menu.style.top = `${Math.min(rect.bottom + 4, window.innerHeight - 120)}px`;
+      menu.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - menu.offsetWidth - 8))}px`;
+      trigger.setAttribute('aria-expanded','true');
+      openMenu = {menu, trigger};
+      const first = menu.querySelector('input[type=search]');
+      if(first) first.focus();
     };
 
     headers.forEach((h, index) => {
       const th = el('th');
+      let trigger = null, mark = null;
       if(sortable){
-        const sortButton = button(h, () => {
-          state.direction = state.index === index ? state.direction * -1 : 1;
-          state.index = index;
-          Array.from(tr.children).forEach((item) => item.removeAttribute('aria-sort'));
-          th.setAttribute('aria-sort', state.direction === 1 ? 'ascending' : 'descending');
-          applyState();
-        }, 'table-sort');
-        sortButton.title = `Sort by ${h}`;
-        th.append(sortButton);
+        trigger = document.createElement('button');
+        trigger.type = 'button';
+        trigger.className = 'table-sort';
+        trigger.setAttribute('aria-haspopup','dialog');
+        trigger.setAttribute('aria-expanded','false');
+        trigger.title = filterable ? `Sort or filter by ${h}` : `Sort by ${h}`;
+        mark = el('span','sort-mark');
+        mark.setAttribute('aria-hidden','true');
+        trigger.append(el('span','',h), mark);
+        trigger.addEventListener('click', () => toggleMenu(index, trigger, th));
+        th.append(trigger);
       } else {
         th.textContent = h;
       }
+      headerCells.push({th, trigger, mark});
       tr.append(th);
     });
     thead.append(tr);
-
-    if(filterable){
-      const filterRow = document.createElement('tr');
-      filterRow.className = 'column-filter-row no-print';
-      headers.forEach((h, index) => {
-        const th = document.createElement('th');
-        const input = document.createElement('input');
-        input.className = 'column-filter';
-        input.placeholder = `Filter ${h}`;
-        input.setAttribute('aria-label', `Filter ${h}`);
-        input.addEventListener('input', () => {
-          state.filters[index] = input.value.trim().toLowerCase();
-          applyState();
-        });
-        th.append(input);
-        filterRow.append(th);
-      });
-      thead.append(filterRow);
-    }
 
     applyState();
     t.append(thead, tbody);
@@ -422,15 +481,18 @@
     const summary = el('div','top-finding-summary');
     summary.append(valueNode(finding.title, 'top-finding-title'), valueNode(full.description || full.technical_impact || 'Prioritized remediation theme.', 'top-finding-description'));
     const impact = el('div','top-finding-impact');
-    impact.append(valueNode(`${finding.affected_endpoints} impacted endpoint(s)`), el('span','top-finding-toggle','Show endpoints'));
+    impact.append(el('span','top-finding-count',`${finding.affected_endpoints} impacted endpoint(s)`), el('span','top-finding-toggle','Show endpoints'));
     row.append(el('strong','rank',index + 1), badge(finding.severity, severityClass(finding.severity)), summary, impact);
     const detail = el('div','top-finding-detail');
     const list = el('ul','top-finding-endpoints');
     (full.affected_endpoint_ids || []).forEach((id) => {
       const endpoint = data.endpoints.find((candidate) => candidate.endpoint_id === id);
       const li = el('li');
-      li.append(valueNode(endpoint ? `${endpoint.hostname || endpoint.ip_address}:${endpoint.port}` : id, 'mono'));
-      if(endpoint) li.append(button('Open', () => openEndpoint(id), 'button'));
+      if(endpoint){
+        const open = button('', () => openEndpoint(id), 'top-finding-endpoint');
+        open.replaceChildren(el('span','mono',`${endpoint.hostname || endpoint.ip_address}:${endpoint.port}`), el('span','top-finding-open','View details \u2192'));
+        li.append(open);
+      } else li.append(valueNode(id, 'mono'));
       list.append(li);
     });
     const more = el('a','text-link no-print','View full finding detail');

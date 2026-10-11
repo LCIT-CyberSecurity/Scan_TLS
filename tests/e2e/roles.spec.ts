@@ -1,14 +1,14 @@
 import { expect, test } from "@playwright/test";
 import { ADMIN, DEMO, login } from "./helpers";
 
-const MENUS = ["Dashboard", "My tasks", "Scans", "Schedules", "Targets & groupings", "Policies & profiles", "Reports", "Administration"];
+const MENUS = ["Dashboard", "My tasks", "Scans", "Schedules", "Targets", "Profiles", "Reports", "Administration"];
 const visible = async (page: import("@playwright/test").Page) => (await Promise.all(MENUS.map(async (m) => ((await page.getByRole("navigation", { name: "Main" }).getByText(m, { exact: true }).count()) ? m : null)))).filter(Boolean);
 
 test("the sidebar adapts to the role", async ({ browser }) => {
   const expected: Record<string, [string, string[]]> = {
     auditor: [DEMO, ["Dashboard", "Reports"]],
-    user: [DEMO, ["Dashboard", "My tasks", "Scans", "Schedules", "Targets & groupings", "Policies & profiles", "Reports"]],
-    operator: [DEMO, ["Dashboard", "My tasks", "Scans", "Schedules", "Targets & groupings", "Policies & profiles", "Reports"]],
+    user: [DEMO, ["Dashboard", "My tasks", "Scans", "Schedules", "Targets", "Profiles", "Reports"]],
+    operator: [DEMO, ["Dashboard", "My tasks", "Scans", "Schedules", "Targets", "Profiles", "Reports"]],
   };
   for (const [name, [pw, menus]] of Object.entries(expected)) {
     const page = await (await browser.newContext({ ignoreHTTPSErrors: true, locale: "en-US" })).newPage();
@@ -41,11 +41,11 @@ test("admin: users, audit and diagnostics", async ({ page }) => {
 test("operator can publish a policy version; user cannot see the buttons", async ({ browser }) => {
   const op = await (await browser.newContext({ ignoreHTTPSErrors: true, locale: "en-US" })).newPage();
   await login(op, "operator@crashtest.example.com", DEMO);
-  await op.getByRole("link", { name: "Policies & profiles" }).click();
+  await op.getByRole("link", { name: "Profiles" }).click();
   await expect(op.getByRole("button", { name: "New" }).first()).toBeVisible();
   const user = await (await browser.newContext({ ignoreHTTPSErrors: true, locale: "en-US" })).newPage();
   await login(user, "user@crashtest.example.com", DEMO);
-  await user.getByRole("link", { name: "Policies & profiles" }).click();
+  await user.getByRole("link", { name: "Profiles" }).click();
   await expect(user.getByRole("button", { name: "New" })).toHaveCount(0);
 });
 

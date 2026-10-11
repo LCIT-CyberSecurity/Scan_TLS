@@ -11,7 +11,7 @@
 Everyone signed in can read shared results; only an object's owner (or an operator) can modify it.
 
 ## Typical flow
-1. **Targets & groupings** → *New target*: FQDN, IP or CIDR, optional ports (`443,8443,9000-9010`), description,
+1. **Targets** → *New target*: FQDN, IP or CIDR, optional ports (`443,8443,9000-9010`), description,
    tags, SI/sub-SI. Importing: one `value;ports;description` per line. A target exists once and can be used by any
    number of definitions and groups. SI, sub-SI and tags only help you organise and filter.
 2. **Scans → Definitions → New scan**: pick targets/groups, a *technical profile* (how to scan), one or more

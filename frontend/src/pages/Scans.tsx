@@ -1,6 +1,6 @@
 import { FileText, Play, Plus, Trash2, Pencil } from "lucide-react";
-import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api, downloadUrl } from "../api/client";
 import type { Definition, Group, Run, SI, Target, Template, Versioned } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
@@ -70,8 +70,11 @@ export default function Scans() {
   const navigate = useNavigate();
   const [mine, setMine] = useState(!atLeast("OPERATOR"));
   const [status, setStatus] = useState("");
+  const [params, setParams] = useSearchParams();
   const [tab, setTab] = useState("runs");
   const [editing, setEditing] = useState<Definition | "new" | null>(null);
+  // The sidebar's "New scan" button links to /scans?new=1: open the dialog, then drop the parameter.
+  useEffect(() => { if (params.get("new")) { setEditing("new"); setParams({}, { replace: true }); } }, [params, setParams]);
   const [error, setError] = useState<unknown>();
   const { data: runs, reload } = useLoad(() => api<Run[]>("/scan-runs", { params: { mine, status } }), [mine, status], 5000);
   const { data: defs, reload: reloadDefs } = useLoad(() => api<Definition[]>("/scan-definitions"));

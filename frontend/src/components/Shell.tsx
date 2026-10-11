@@ -1,4 +1,4 @@
-import { Activity, BarChart3, CalendarClock, ChevronRight, FileText, ListChecks, Menu, Network, ShieldCheck, SlidersHorizontal } from "lucide-react";
+import { Activity, BarChart3, Plus, CalendarClock, ChevronRight, FileText, ListChecks, Menu, Network, ShieldCheck, SlidersHorizontal } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import type { Role } from "../api/types";
@@ -45,12 +45,14 @@ export default function Shell() {
           <img className="brand-logo" src="/lcit-mark.png" alt="LCIT" />
           <div><span>TLS Scan</span><small>{t("brand.tagline")}</small></div>
         </div>
+        {atLeast("USER") && <NavLink to="/scans?new=1" onClick={close} className="sidebar-cta"><Plus size={18} aria-hidden="true" />{t("def.new")}</NavLink>}
         <nav aria-label="Main">
           {SECTIONS.map((section) => {
             const items = section.items.filter((i) => atLeast(i.min));
             if (!items.length) return null;
+            const bottom = section.heading === "nav.section.admin";
             return (
-              <div key={section.heading} style={{ display: "contents" }}>
+              <div key={section.heading} className={bottom ? "nav-group nav-group--bottom" : "nav-group"}>
                 <div className="nav-heading">{t(section.heading)}</div>
                 {items.map((i) => (
                   <NavLink key={i.to} to={i.to} end={i.to === "/"} onClick={close} className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>{i.icon}<span>{t(i.label)}</span></NavLink>
