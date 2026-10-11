@@ -316,4 +316,6 @@ export const fr: Messages = {
   "table.clear": "Effacer",
   "table.reset": "Réinitialiser",
   "table.count": "{shown} sur {total}",
+  "confirm.deleteScan": "Supprimer ce scan et ses rapports ? Cette action est irréversible.",
+  "action.delete": "Supprimer",
 };

@@ -157,3 +157,17 @@ def test_report_template_branding_is_applied_to_the_html_report(operator, user, 
     assert {r["format"] for r in final["reports"]} >= {"html", "csv"} and "md" not in {r["format"] for r in final["reports"]}  # template picks formats
     html = user.get(f"/api/scan-runs/{final['id']}/reports/html").text  # integrity check passes on the branded file
     assert "ACME &lt;Sec&gt;" in html and "--brand-600:#0a7f3f" in html and f"data:image/png;base64,{png}" in html and "<Sec>" not in html
+
+
+def test_only_operator_and_admin_can_delete_a_scan(user, operator, admin, auditor, catalog):
+    definition = make_definition(user, catalog, [LAB], name="delete-rights")
+    run_id = user.post(f"/api/scan-definitions/{definition['id']}/run").json()["run_id"]
+    wait_final(user, run_id)
+    assert user.delete(f"/api/scan-runs/{run_id}").status_code == 403  # the requester cannot delete
+    assert auditor.delete(f"/api/scan-runs/{run_id}").status_code == 403  # the auditor only reads
+    assert operator.delete(f"/api/scan-runs/{run_id}").status_code == 204
+    assert admin.get(f"/api/scan-runs/{run_id}").status_code == 404
+    # the admin can delete too
+    run_id = user.post(f"/api/scan-definitions/{definition['id']}/run").json()["run_id"]
+    wait_final(user, run_id)
+    assert admin.delete(f"/api/scan-runs/{run_id}").status_code == 204

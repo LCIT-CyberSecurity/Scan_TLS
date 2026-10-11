@@ -315,5 +315,7 @@ export const en = {
   "table.clear": "Clear",
   "table.reset": "Reset",
   "table.count": "{shown} of {total}",
+  "confirm.deleteScan": "Delete this scan and its reports? This cannot be undone.",
+  "action.delete": "Delete",
 } as const;
 export type Messages = Record<keyof typeof en, string>;

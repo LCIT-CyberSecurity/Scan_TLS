@@ -316,4 +316,6 @@ export const de: Messages = {
   "table.clear": "Leeren",
   "table.reset": "Zurücksetzen",
   "table.count": "{shown} von {total}",
+  "confirm.deleteScan": "Diesen Scan und seine Berichte löschen? Das kann nicht rückgängig gemacht werden.",
+  "action.delete": "Löschen",
 };

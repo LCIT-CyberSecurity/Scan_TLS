@@ -1,6 +1,6 @@
-import { Download, GitCompare, XCircle } from "lucide-react";
+import { Download, GitCompare, Trash2, XCircle } from "lucide-react";
 import { useState } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { api, downloadUrl } from "../api/client";
 import type { Comparison, Endpoint, Finding, FindingBrief, RunDetail as Detail } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
@@ -73,6 +73,7 @@ export default function RunDetail() {
   const { id = "" } = useParams();
   const { t, locale } = useI18n();
   const { user, atLeast } = useAuth();
+  const navigate = useNavigate();
   const [cmp, setCmp] = useState(false);
   const [error, setError] = useState<unknown>();
   const { data: run, error: loadError, reload } = useLoad(() => api<Detail>(`/scan-runs/${id}`), [id], 3000);
@@ -87,6 +88,7 @@ export default function RunDetail() {
           <StatusBadge status={run.status} />
           {active && (run.initiated_by === user?.id || atLeast("OPERATOR")) && <ConfirmButton label={<><XCircle className="size-4" />{t("action.cancelScan")}</>} confirm={t("confirm.cancelScan")} onConfirm={async () => { try { await api(`/scan-runs/${id}/cancel`, { method: "POST" }); void reload(); } catch (e) { setError(e); } }} />}
           {atLeast("USER") && !active && <Button variant="outline" onClick={() => setCmp(!cmp)}><GitCompare />{t("cmp.title")}</Button>}
+          {atLeast("OPERATOR") && !active && <ConfirmButton label={<><Trash2 className="size-4" />{t("action.delete")}</>} confirm={t("confirm.deleteScan")} onConfirm={async () => { try { await api(`/scan-runs/${id}`, { method: "DELETE" }); navigate("/scans"); } catch (e) { setError(e); } }} />}
         </>
       } />
       <ErrorNote error={error} />

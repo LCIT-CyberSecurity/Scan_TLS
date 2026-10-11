@@ -95,6 +95,7 @@ export default function Scans() {
     { key: "actions", header: "", render: (r) => (
       <div className="row-actions">
         {r.reports.some((x) => x.format === "html") && <Button asChild size="sm" variant="outline"><a href={downloadUrl(r.id, "html", true)} target="_blank" rel="noreferrer"><FileText />{t("action.report")}</a></Button>}
+        {atLeast("OPERATOR") && !(r.status === "queued" || r.status === "running") && <ConfirmButton variant="outline" label={<Trash2 className="size-4" />} confirm={t("confirm.deleteScan")} onConfirm={async () => { try { await api(`/scan-runs/${r.id}`, { method: "DELETE" }); void reload(); } catch (e) { setError(e); } }} />}
         {(r.status === "queued" || r.status === "running") && (r.initiated_by === user?.id || atLeast("OPERATOR")) && <ConfirmButton variant="outline" label={t("action.cancelScan")} confirm={t("confirm.cancelScan")} onConfirm={async () => { try { await api(`/scan-runs/${r.id}/cancel`, { method: "POST" }); void reload(); } catch (e) { setError(e); } }} />}
       </div>) },
   ];
