@@ -7,6 +7,9 @@ All tests run on the integration VM in containers (nothing is installed on the d
 | Engine unit tests (115 legacy + runner) | `python3 -m unittest -q test_tls_scanner` and `PYTHONPATH=. python3 -m unittest tests/engine/test_runner.py` | plain Python, existing venv |
 | Backend (unit, API, permissions, security, login throttle, concurrency, dedup, cancel, schedules, comparison, SSO mock, SMTP + Graph mock, directory (OpenLDAP + Graph mock), branding, PQC, retention, restart recovery) | `ops/dev/run-tests.sh [pytest args]` (on the VM) or `ops/dev/test-stack.sh [pytest args]` (any Docker host, used by CI) | isolated project `tlsscan-test`: PostgreSQL (tmpfs), api, worker, scheduler, lab TLS target (Debian 13 / OpenSSL 3.5), mock OIDC, mock Graph, OpenLDAP, SMTP sink. No published ports. |
 | Bootstrap script (menu, both modes, update/Git, backup/restore, reinstall/uninstall, isolation, legacy commands) | `tests/bootstrap/run.sh` (plain Bash; Docker is faked, Git is real, no network) | throw-away sandboxes; also `bash -n` and ShellCheck when installed |
+| External API and MCP (switches, per-user authorisation, key lifecycle and hashing, expiry, REST/MCP/session separation, roles, read-only, OpenAPI scope, rate limit, Host/Origin, official MCP client) | `ops/dev/run-tests.sh tests/backend/test_external_access.py` | same stack as above |
+| DNS discovery (pure logic, roles, worker) | `ops/dev/run-tests.sh tests/backend/test_discovery.py` | same stack |
+| Frontend components (global switches, key management and one-time key dialog) | `ops/dev/frontend.sh` (vitest, `src/__tests__/external-access.test.tsx`) | node container |
 | Timeout path | `TEST_MAX_DURATION=15 ops/dev/run-tests.sh tests/backend/test_reliability.py` | stack started with a 15 s limit |
 | Frontend types + unit + build | `ops/dev/frontend.sh` | Node container |
 | E2E (Playwright) | start the CrashTest, then see [crashtest](crashtest.md) | roles, scan flow, i18n, SSO mock |

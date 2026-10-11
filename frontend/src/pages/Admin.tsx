@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { api } from "../api/client";
-import type { Role, User } from "../api/types";
+import type { AccessService, Role, User } from "../api/types";
 import { Empty, ErrorNote, Note, PageHeader, useLoad } from "../components/common";
+import { ExternalAccessSwitches, SERVICES } from "../components/ExternalAccess";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
@@ -31,12 +32,16 @@ function Users() {
         <Button disabled={!form.email} onClick={() => void run(async () => { const r = await api<{ temporary_password: string }>("/admin/users", { method: "POST", body: form }); setSecret(r.temporary_password); setForm({ email: "", display_name: "", role: "USER" }); })}>{t("admin.createUser")}</Button>
       </div></Card>
       <Card>{data?.length ? (
-        <Table><thead><tr><Th>E-mail</Th><Th>{t("admin.role")}</Th><Th>{t("admin.source")}</Th><Th>{t("admin.lastLogin")}</Th><Th>{t("col.status")}</Th><Th /></tr></thead>
+        <Table><thead><tr><Th>E-mail</Th><Th>{t("admin.role")}</Th><Th>{t("admin.source")}</Th><Th>{t("admin.lastLogin")}</Th><Th>{t("col.status")}</Th><Th>{t("access.apiShort")}</Th><Th>{t("access.mcpShort")}</Th><Th /></tr></thead>
           <tbody>{data.map((u) => (
             <tr key={u.id}><Td className="font-medium">{u.email}<div className="text-xs font-normal text-muted">{u.display_name}</div></Td>
               <Td><Select aria-label={t("admin.role")} className="compact w-36" value={u.role} onChange={(e) => void run(async () => { await api(`/admin/users/${u.id}`, { method: "PUT", body: { role: e.target.value } }); })}>{ROLES.map((r) => <option key={r}>{r}</option>)}</Select></Td>
               <Td>{u.local_account ? "local" : "SSO"}</Td><Td>{formatDate(u.last_login_at, locale)}</Td>
               <Td><Badge tone={u.active ? "success" : "neutral"}>{u.active ? t("sched.active") : t("sched.inactive")}</Badge></Td>
+              {SERVICES.map((svc) => <Td key={svc}><div className="flex flex-col gap-1">
+                <label className="flex items-center gap-2 text-sm"><input type="checkbox" aria-label={`${t(`access.${svc}Short` as never)} ${u.email}`} checked={!!u[`${svc}_access_enabled` as const]} onChange={(e) => void run(async () => { await api(`/admin/users/${u.id}/access`, { method: "PUT", body: { [`${svc}_access_enabled`]: e.target.checked } }); })} />{u[`${svc}_access_enabled` as const] ? t("access.allowed") : t("access.notAllowed")}</label>
+                {u.access_keys?.[svc]?.active && <span className="text-xs text-muted">{u.access_keys[svc].prefix}… <button type="button" className="underline" onClick={() => void run(async () => { if (window.confirm(t("access.confirmRevoke"))) await api(`/admin/users/${u.id}/access/${svc as AccessService}/token`, { method: "DELETE" }); })}>{t("access.revoke")}</button></span>}
+              </div></Td>)}
               <Td><div className="flex justify-end gap-2">
                 <Button size="sm" variant="outline" onClick={() => void run(async () => { await api(`/admin/users/${u.id}`, { method: "PUT", body: { role: u.role, active: !u.active } }); })}>{u.active ? t("admin.disable") : t("admin.enable")}</Button>
                 {u.local_account && <Button size="sm" variant="outline" onClick={() => void run(async () => { if (window.confirm(t("admin.confirmReset"))) setSecret((await api<{ temporary_password: string }>(`/admin/users/${u.id}/reset-password`, { method: "POST" })).temporary_password); })}>{t("admin.resetPassword")}</Button>}
@@ -83,10 +88,13 @@ function SettingsTab() {
   const smtpCfg = smtp ?? data?.notifications.smtp;
   const graphCfg = graph ?? data?.notifications.graph ?? { tenant_id: "", client_id: "", sender: "" };
   const conn = connector ?? data?.notifications.connector ?? "none";
+  const external = useLoad(() => api<{ api_enabled: boolean; mcp_enabled: boolean }>("/admin/external-access"));
+  const toggleExternal = async (service: AccessService, enabled: boolean) => { try { await api(`/admin/external-access/${service}`, { method: "PUT", body: { enabled } }); setErr(undefined); await external.reload(); } catch (e) { setErr(e); } };
   const save = async (key: string, value: unknown) => { try { await api(`/admin/settings/${key}`, { method: "PUT", body: { value } }); setSaved(key); setErr(undefined); await reload(); } catch (e) { setErr(e); } };
   return (
     <div className="grid max-w-3xl gap-6">
       <ErrorNote error={err} />
+      {external.data && <ExternalAccessSwitches state={external.data} onToggle={(svc, on) => void toggleExternal(svc, on)} />}
       {retention && (
         <Card><CardHeader><CardTitle>{t("admin.retention")}</CardTitle></CardHeader><CardContent className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-3">

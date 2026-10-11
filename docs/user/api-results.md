@@ -2,7 +2,7 @@
 
 A JSON API to consult scan results, documented in **Swagger UI** at `https://<server>:<port>/swagger` (the trailing-slash form works too).
 
-- **Authentication**: the TLS Scan session. Sign in to the WebUI in the same browser, then open `/swagger`; *Try it out* sends your session cookie. No API keys or long-lived tokens exist in V1. Without a session, `/swagger`, its OpenAPI document (`/swagger/openapi.json`) and every `/api/results` route answer `401`.
+- **Authentication**: the TLS Scan session. Sign in to the WebUI in the same browser, then open `/swagger`; *Try it out* sends your session cookie. This API is for in-browser use; for scripts and tools with a personal API key see the [external API](../integrations/external-api.md) (`/api/v1`). Without a session, `/swagger`, its OpenAPI document (`/swagger/openapi.json`) and every `/api/results` route answer `401`.
 - **Roles**: AUDITOR, USER, OPERATOR and ADMIN can list and read scans, endpoints, findings and reports. Comparison needs USER or higher (as in the WebUI). Rights are those of the internal API; nothing is widened.
 - **Read-only**: only `GET`. The Swagger document describes `/api/results` only; launch, cancel, delete and administration operations stay internal to the WebUI and are not documented.
 - **Swagger UI is served locally** (no CDN) under a strict Content-Security-Policy.

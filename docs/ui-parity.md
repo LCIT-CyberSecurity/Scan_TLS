@@ -31,6 +31,13 @@ Studio dark, and the Studio geometry.
 | Notes, empty, loading | LCIT-Sign | `Note`, `ErrorNote`, `Empty` (icon chip), `Loading` |
 | PageHeader | LCIT-Sign | `.page-title` 26/34 with accent bar, subtitle, actions |
 
+## External access screens (API and MCP)
+
+Built from the same classes as the rest of the UI (`card`, `badge`, `note`, `button`, `modal`, tokens, light/dark and the five styles), following EARE's ergonomics:
+* **Administration → Settings**: a card with one switch per service (External API, MCP server), each with its state badge and a note that both are off by default.
+* **Administration → Users**: an *API* and an *MCP* column per user (individual authorisation, key prefix and *Revoke* when a key exists). Administrators cannot create or read a key.
+* **Preferences → API and MCP access**: one card per service with the global state, the individual authorisation, the key state/expiry/last use, *Generate / Regenerate* (disabled with an explicit message when the service is off or the account is not authorised), *Revoke* and a *How to connect* snippet; a new key is shown once in a dedicated dialog with a *Copy* button and a warning.
+
 ## Deliberate differences
 
 * The global focus ring uses the `--ring` token on every focusable element (LCIT-Sign relies on the browser default outside its login page).

@@ -21,6 +21,8 @@ Standalone mode keeps its commands, YAML files, formats and cron usage unchanged
 PostgreSQL or a web server. YAML files and the database are never synchronised: in WebUI mode you
 manage everything in the interface and may import/export policies as YAML.
 
+**External access (WebUI only, off by default).** A read-only [REST API](docs/integrations/external-api.md) (`/api/v1`, Personal API Token) and an [MCP server](docs/integrations/mcp.md) (`/mcp`, official SDK, Streamable HTTP) let scripts and AI assistants consult scan results with the rights of a user. An administrator enables each service globally and authorises users one by one; users create their own revocable 90-day keys in *Preferences*. The Standalone CLI has no HTTP or MCP server.
+
 Both modes are installed and administered by one script, independently, on the same machine if you wish: run
 `./bootstrap_tls-scan-deployment.sh` for the interactive menu (Standalone / WebUI), or see
 [installation](docs/admin/install.md) for the non-interactive commands, backups and safety rules.

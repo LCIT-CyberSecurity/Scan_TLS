@@ -31,6 +31,7 @@ def user_payload(user: User) -> dict:
         "id": str(user.id), "email": user.email, "display_name": user.display_name, "role": str(user.role),
         "must_change_password": user.must_change_password, "locale": user.locale, "theme": user.theme,
         "palette": user.palette, "notify_events": (user.notify_events.split(",") if user.notify_events else []) if user.notify_events is not None else None, "local_account": user.password_hash is not None,
+        "api_access_enabled": user.api_access_enabled, "mcp_access_enabled": user.mcp_access_enabled,
     }
 
 

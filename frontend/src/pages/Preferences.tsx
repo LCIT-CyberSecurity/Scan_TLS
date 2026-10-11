@@ -2,6 +2,7 @@ import { useState } from "react";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
 import { ErrorNote, PageHeader } from "../components/common";
+import { ExternalAccessSection } from "../components/ExternalAccess";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Field, Input, Select } from "../components/ui/input";
@@ -34,6 +35,7 @@ export default function Preferences() {
         <Card><CardHeader><CardTitle>{t("pref.notifications")}</CardTitle></CardHeader><CardContent className="space-y-2">
           {EVENTS.map((ev) => <label key={ev} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={events.includes(ev)} onChange={(e) => void patch({ notify_events: e.target.checked ? [...events, ev] : events.filter((x) => x !== ev) })} />{t(`pref.ev.${ev}` as never)}</label>)}
         </CardContent></Card>
+        <ExternalAccessSection />
         {user?.local_account && (
           <Card><CardHeader><CardTitle>{t("pref.password")}</CardTitle></CardHeader><CardContent className="space-y-4">
             <Field label={t("login.currentPassword")}><Input type="password" autoComplete="current-password" value={pw.current_password} onChange={(e) => setPw({ ...pw, current_password: e.target.value })} /></Field>

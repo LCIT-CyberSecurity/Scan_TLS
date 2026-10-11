@@ -40,3 +40,27 @@ palette, e-mail notification events, local password change.
 ## What "no TLS service" means
 A target with no TLS on the scanned ports yields a *completed* run with zero endpoints and an explicit notice. It
 is neither an execution error nor a compliance result.
+
+## API and MCP access
+
+Two optional, **read-only** accesses let your own tools consult scan results with the rights of your account: the **external REST API** (`/api/v1`, for scripts and dashboards) and the **MCP server** (`/mcp`, for AI assistants that speak the Model Context Protocol). They never launch or change anything.
+
+* **Is my account allowed?** Open *Preferences → API and MCP access*. For each service you see whether the administrator enabled it, whether **your account** is authorised, and the state of your key. If something is missing the page says so and the *Generate* button stays disabled: ask an administrator (*Administration → Users*). Being an administrator does not grant it automatically.
+* **Create a key**: click *Generate a key*. The key is shown **once** in a dialog: click *Copy* and store it in your secret manager. It is valid 90 days; there is one key per service. *Regenerate* replaces it (the old one stops working at once); *Revoke* removes it.
+* **Use it**: REST keys start with `tls_scan_pat_`, MCP keys with `tls_scan_mcp_`; they are not interchangeable.
+  ```bash
+  curl -H "Authorization: Bearer tls_scan_pat_…" https://<server>:<port>/api/v1/scans?limit=5
+  ```
+  The interactive documentation is at `/api/v1/docs` (while the API is enabled). For MCP, add the server URL `https://<server>:<port>/mcp` and the header `Authorization: Bearer tls_scan_mcp_…` in your MCP client; ask for example *"list the latest scans"* or *"which endpoints of scan <id> are non-compliant?"*.
+* **What you can read**: scans, their TLS endpoints, findings, compliance statistics and (USER role or higher) comparisons, exactly as in the WebUI. Role changes apply immediately.
+* **Usual messages**: `401 Authentication required` = missing, expired or revoked key, service disabled or account not authorised (generate a new key or ask an administrator); `403` = your role cannot do this (comparison needs USER); `404` = unknown scan; `429` = too many requests, wait a minute.
+
+Details: [external API](../integrations/external-api.md) · [MCP server](../integrations/mcp.md). Targets can also be created from a DNS discovery (see below).
+
+## DNS discovery (OPERATOR and ADMIN)
+
+*Targets → DNS discovery*: enter a domain you are authorised to query and confirm it. TLS Scan looks up the domain's name servers and asks each one, once, for a **zone transfer (AXFR)** of that domain. If a server accepts, the host names (A, AAAA, CNAME) are listed so you can tick the ones to add as targets (grouped under the domain name); an accepted transfer is also reported as a DNS weakness. Refusal is the normal, safe answer: then add names yourself or import a list. Nothing is guessed or brute-forced; loopback, link-local and multicast servers are never queried; each request is audited.
+
+## Several targets at once
+
+In *New target*, the *Targets* field accepts several values (FQDN, IP address or network in CIDR notation, one per line or separated by commas). Each becomes a target; with several values they are gathered in a group named after the label you typed.

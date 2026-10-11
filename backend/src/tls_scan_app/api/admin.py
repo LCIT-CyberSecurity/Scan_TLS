@@ -18,7 +18,7 @@ from tls_scan_app.database import database_is_ready
 from tls_scan_app.deps import get_db, require_role
 from tls_scan_app.models import AuditEvent, Role, ScanRun, Session, SystemSetting, User
 from tls_scan_app.models.scan import ACTIVE_STATUSES
-from tls_scan_app.services import audit
+from tls_scan_app.services import audit, external_access
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 admin_only = require_role(Role.ADMIN)
@@ -43,7 +43,8 @@ class RoleBody(BaseModel):
 
 @router.get("/users")
 def list_users(db: DbSession = Depends(get_db), _: User = Depends(admin_only)) -> list[dict]:
-    return [user_payload(u) | {"active": u.active, "issuer": u.issuer, "last_login_at": u.last_login_at}
+    return [user_payload(u) | {"active": u.active, "issuer": u.issuer, "last_login_at": u.last_login_at,
+                               "access_keys": {s: external_access.token_summary(db, u.id, s) for s in external_access.SERVICES}}
             for u in db.execute(select(User).order_by(User.email)).scalars()]
 
 
@@ -75,12 +76,56 @@ def update_user(user_id: uuid.UUID, body: RoleBody, db: DbSession = Depends(get_
     if body.active is not None:
         user.active = body.active
         if not body.active:
+            external_access.revoke_tokens(db, user.id)
             for s in db.execute(select(Session).where(Session.user_id == user.id, Session.revoked_at.is_(None))).scalars():
                 s.revoked_at = datetime.now().astimezone()
     audit.record(db, "user.role_change", actor=actor, resource_type="user", resource_id=user.id,
                  detail={"from": previous, "to": str(body.role), "active": user.active})
     db.commit()
     return user_payload(user)
+
+
+class AccessBody(BaseModel):
+    api_access_enabled: bool | None = None
+    mcp_access_enabled: bool | None = None
+
+
+@router.put("/users/{user_id}/access")
+def update_user_access(user_id: uuid.UUID, body: AccessBody, db: DbSession = Depends(get_db), actor: User = Depends(admin_only)) -> dict:
+    """Allow or forbid the external REST API / MCP for a user (the keys are created by the user, never by an administrator)."""
+    user = get_or_404(db, User, user_id, "User")
+    external_access.set_user_access(db, user, actor, body.api_access_enabled, body.mcp_access_enabled)
+    db.commit()
+    return user_payload(user)
+
+
+@router.delete("/users/{user_id}/access/{service}/token", status_code=204)
+def revoke_user_key(user_id: uuid.UUID, service: str, db: DbSession = Depends(get_db), actor: User = Depends(admin_only)) -> None:
+    if service not in external_access.SERVICES:
+        raise HTTPException(404, "Unknown service")
+    user = get_or_404(db, User, user_id, "User")
+    revoked = external_access.revoke_tokens(db, user.id, service)
+    audit.record(db, f"external_access.{service}_key_revoked", actor=actor, resource_type="user", resource_id=user.id, detail={"revoked": revoked, "by": "admin"})
+    db.commit()
+
+
+class ServiceBody(BaseModel):
+    enabled: bool
+
+
+@router.get("/external-access")
+def get_external_access(db: DbSession = Depends(get_db), _: User = Depends(admin_only)) -> dict:
+    return external_access.global_state(db)
+
+
+@router.put("/external-access/{service}")
+def set_external_access(service: str, body: ServiceBody, db: DbSession = Depends(get_db), actor: User = Depends(admin_only)) -> dict:
+    """Global switch. Switching off suspends every key at once (they are not revoked); no restart needed."""
+    if service not in external_access.SERVICES:
+        raise HTTPException(404, "Unknown service")
+    external_access.set_service_enabled(db, service, body.enabled, actor)
+    db.commit()
+    return external_access.global_state(db)
 
 
 @router.post("/users/{user_id}/reset-password")

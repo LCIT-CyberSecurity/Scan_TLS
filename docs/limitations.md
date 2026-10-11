@@ -7,7 +7,7 @@ profiles, YAML policy import/export; report templates (formats); scan definition
 dedicated worker with process isolation, cancellation with partial results, timeouts, crash recovery; run
 de-duplication under concurrency; comparison; reports (HTML/MD/CSV/CBOM/metadata) with integrity check; SMTP and Microsoft Graph
 notifications with diagnostics and the five event types; HTML report branding; audit log; retention; dashboard; "My tasks"; FR/EN/DE; light/dark/system + palettes;
-bootstrap (install/update/backup/restore/reset-admin/uninstall); CrashTest; Playwright E2E.
+bootstrap (Standalone / WebUI menu, install/update/backup/restore/reset-admin/reinstall/uninstall); read-only external REST API and MCP server with per-user keys; DNS discovery; CrashTest; Playwright E2E.
 
 ## Not implemented / partial (be aware before relying on it)
 * **Real Entra ID is not tested** (SSO: mock OIDC only; directory and Graph mail: mock Graph server only). The code follows the
@@ -26,6 +26,9 @@ bootstrap (install/update/backup/restore/reset-admin/uninstall); CrashTest; Play
 * Licence: this repository has no LICENSE file, while code and design tokens were adapted from LCIT-Sign (GPL-3.0):
   `auth/passwords.py`, `auth/oidc.py`, `frontend/src/styles/tokens.css`, the logos. Decide the licence of Scan_TLS before
   publishing a release (GPL-3.0 is compatible).
+
+* **External API and MCP** (read-only, `docs/integrations`): one active key per user and service, 90-day validity, no scoped or write-capable keys, no per-SI visibility (roles are global, like the WebUI), in-process rate limits (single API process), no report download or scan launch through them. MCP is exercised with the official Python client only.
+* **DNS discovery** is a zone-transfer attempt only (no brute force, no passive sources); most servers refuse it, which is the expected result. It runs in the worker and needs outbound DNS from it.
 
 ## Engine changes (the only modifications to `tls_scanner/`)
 1. `tls_scanner/runner.py` (new): headless `execute_scan`, `collect_job_results`, `validate_scan_input`.

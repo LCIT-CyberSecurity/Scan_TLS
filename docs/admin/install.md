@@ -105,6 +105,9 @@ to pull and is redeployed after a question. On a development branch (`feature/â€
 * Secrets are written to `.env` (mode 600) and never printed or logged; the technical log of a run is a private temporary file.
 * `.env` and the HTTPS certificate are **not** in backups: keep them in your own secret backup.
 
+External API and MCP stay disabled after installation (no secret to configure, no extra container or port): see
+[operations](operations.md#external-api-and-mcp-access) to enable and authorise them. Nothing in the bootstrap changes: `/mcp` and `/api/v1` ride on the existing HTTPS port.
+
 The first administrator is local. Configure SSO afterwards ([Entra ID](../integrations/entra-sso.md)), then
 promote SSO users in *Administration â†’ Users*. New SSO users get the role of `TLS_SCAN_OIDC_DEFAULT_ROLE`
 (default `USER`); the identity provider never grants roles.

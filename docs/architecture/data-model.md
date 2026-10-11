@@ -11,6 +11,8 @@ Migrations: `backend/migrations/versions` (Alembic, applied automatically when t
 | Definitions | `scan_definitions`, `definition_targets`, `definition_groups`, `definition_policies` |
 | Schedules | `scan_schedules`, `schedule_triggers` (history: triggered / skipped_overlap / skipped_late / error) |
 | Runs | `scan_runs` (status, phase, fingerprint, `config_snapshot`, policy versions, heartbeat, summary, report files + SHA-256), `scan_run_requesters`, `run_endpoints`, `run_findings` |
+| External access | `users.api_access_enabled`, `users.mcp_access_enabled` (default false, migration `0005`), `access_tokens` (hashed keys, expiry, last use, revocation; one non-revoked key per user and service), `system_settings['external_access']` (global switches, default off) |
+| Discovery | `dns_discoveries` (DNS discovery requests and their result; migration `0004`) |
 | Operations | `audit_events` (no FK to users: audit outlives accounts), `system_settings` (retention, SMTP), `notifications` (queue + delivery status) |
 
 Run results mirror the engine's `ReportModel` (`tls_scanner/exports/report_model.py`): `run_endpoints` keeps
