@@ -223,6 +223,25 @@ h1, h2, h3 { letter-spacing: var(--tracking-display); }
   .severity-legend-item small { color: var(--muted); font-size: var(--text-xs); }
   .severity-legend-item.is-empty { opacity: 0.5; }
 
+  /* -- Exposure ranking ----------------------------------------------------------- */
+  .exposure { margin-top: 36px; padding-top: 30px; border-top: 1px solid var(--border); }
+  .exposure-list { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+  .exposure-row { display: grid; grid-template-columns: minmax(180px, 280px) 1fr 110px; align-items: center; gap: 18px; width: 100%; padding: 12px 16px; border: 1px solid var(--border); border-radius: var(--radius-md); background: #fff; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: border-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease); }
+  .exposure-row:hover { border-color: var(--brand-400); box-shadow: var(--shadow-sm); }
+  .exposure-name { display: grid; min-width: 0; }
+  .exposure-name strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 650; letter-spacing: -0.02em; }
+  .exposure-name small { color: var(--muted); font-size: var(--text-xs); }
+  .exposure-bar { display: flex; gap: 3px; height: 10px; }
+  .exposure-bar i { display: block; height: 100%; border-radius: 999px; }
+  .exposure-total { color: var(--muted); font-size: var(--text-sm); font-weight: var(--weight-semibold); text-align: right; }
+
+  /* -- Contents ----------------------------------------------------------------------- */
+  .contents { margin: 0 0 24px; padding: clamp(22px, 3vw, 32px); border: 1px solid var(--border); border-radius: var(--radius-xl); background: #fff; box-shadow: var(--shadow-xs); }
+  .contents-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 8px; margin: 14px 0 0; padding: 0; list-style: none; }
+  .contents-list a { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: var(--radius-md); background: var(--surface-soft); color: var(--text); font-weight: var(--weight-semibold); text-decoration: none; transition: background var(--dur) var(--ease), color var(--dur) var(--ease); }
+  .contents-list a:hover { background: var(--brand-050); color: var(--brand-600); }
+  .contents-n { display: inline-grid; place-items: center; min-width: 30px; height: 24px; border-radius: 999px; background: var(--brand-050); color: var(--brand-600); font-size: var(--text-xs); font-weight: var(--weight-bold); }
+
   /* -- Chapters ---------------------------------------------------------------------- */
   .report-chapter, .panel { margin: 24px 0; padding: clamp(24px, 3.4vw, 44px); border: 1px solid var(--border); border-radius: var(--radius-xl); background: #fff; box-shadow: var(--shadow-xs); }
   .report-chapter::before { display: none; }
@@ -234,8 +253,8 @@ h1, h2, h3 { letter-spacing: var(--tracking-display); }
   .section-count { padding: 6px 14px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface-soft); color: var(--muted); font-size: var(--text-xs); font-weight: var(--weight-semibold); }
   .text-link { color: var(--brand-600); font-weight: var(--weight-semibold); }
 
-  .scan-info-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 0; padding: 0; overflow: visible; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
-  .info-item { margin: 0; padding: 16px 18px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-soft); }
+  .scan-info-grid { box-sizing: border-box; width: 100%; display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin: 0; padding: 0; overflow: visible; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+  .info-item { min-width: 0; margin: 0; padding: 16px 18px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-soft); }
   .info-label { letter-spacing: 0.06em; }
 
   /* -- Analytics ------------------------------------------------------------------------ */
