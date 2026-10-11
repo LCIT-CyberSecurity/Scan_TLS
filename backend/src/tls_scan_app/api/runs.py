@@ -12,14 +12,14 @@ from pydantic import BaseModel
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session as DbSession
 
-from tls_scan_app.api.common import can_modify, get_or_404, ids_matching_filter
+from tls_scan_app.api.common import can_modify, classification_of, get_or_404, ids_matching_filter
 from tls_scan_app.deps import get_db, require_role
 from tls_scan_app.models import (
-    Role, RunEndpoint, RunFinding, ScanDefinition, ScanRun, ScanRunRequester, ScanSchedule, ScheduleTrigger, User,
+    Role, RunEndpoint, Target, RunFinding, ScanDefinition, ScanRun, ScanRunRequester, ScanSchedule, ScheduleTrigger, User,
 )
 from tls_scan_app.models.scan import ACTIVE_STATUSES, FINAL_STATUSES
 from tls_scan_app.models.user import role_at_least
-from tls_scan_app.services import audit, comparison, results, runs
+from tls_scan_app.services import audit, comparison, runs
 from tls_scan_app.services.schedule_calc import ScheduleError, next_after, validate
 
 router = APIRouter(prefix="/api", tags=["runs"])
@@ -46,8 +46,16 @@ def run_out(r: ScanRun, detail: bool = False) -> dict:
 @router.get("/scan-runs")
 def list_runs(mine: bool = False, status: str | None = None, definition_id: uuid.UUID | None = None, tag: str | None = None,
               si: uuid.UUID | None = None, limit: int = 100, db: DbSession = Depends(get_db), user: User = Depends(auditor)) -> list[dict]:
-    stmt = results.filter_runs(select(ScanRun).order_by(ScanRun.queued_at.desc()).limit(min(limit, 500)), db, mine_of=user if mine else None,
-                               status=status, definition_id=definition_id, tag=tag, si=si)
+    stmt = select(ScanRun).order_by(ScanRun.queued_at.desc()).limit(min(limit, 500))
+    if mine:
+        stmt = stmt.where(or_(ScanRun.initiated_by == user.id, ScanRun.id.in_(select(ScanRunRequester.run_id).where(ScanRunRequester.user_id == user.id))))
+    if status:
+        stmt = stmt.where(ScanRun.status == status)
+    if definition_id:
+        stmt = stmt.where(ScanRun.definition_id == definition_id)
+    allowed = ids_matching_filter(db, "definition", tag, si)
+    if allowed is not None:
+        stmt = stmt.where(ScanRun.definition_id.in_(allowed))
     return [run_out(r) for r in db.execute(stmt).scalars()]
 
 
@@ -56,9 +64,26 @@ def get_run(run_id: uuid.UUID, db: DbSession = Depends(get_db), user: User = Dep
     r = get_or_404(db, ScanRun, run_id, "Scan run")
     out = run_out(r, detail=role_at_least(user.role, Role.OPERATOR))
     endpoints = db.execute(select(RunEndpoint).where(RunEndpoint.run_id == r.id).order_by(RunEndpoint.endpoint_id)).scalars().all()
-    by_value = results.endpoint_tags(db, endpoints)
-    out["endpoints"] = [results.endpoint_out(e, by_value) for e in endpoints]
-    out["findings"] = [results.finding_out(f) for f in db.execute(select(RunFinding).where(RunFinding.run_id == r.id)).scalars()]
+    # Tags are read live from the matching target(s): same value as the endpoint's hostname or address.
+    values = {v for e in endpoints for v in (e.hostname, e.ip_address) if v}
+    by_value: dict[str, set[str]] = {}
+    if values:
+        matched = db.execute(select(Target.id, Target.value).where(Target.value.in_(values))).all()
+        classes = classification_of(db, "target", [tid for tid, _ in matched])
+        for tid, value in matched:
+            by_value.setdefault(value, set()).update(classes[tid]["tags"])
+    out["endpoints"] = [
+        {"endpoint_id": e.endpoint_id, "hostname": e.hostname, "ip_address": e.ip_address, "port": e.port, "grade": e.grade,
+         "compliance_status": e.compliance_status, "highest_severity": e.highest_severity, "tls_versions": e.supported_tls_versions,
+         "certificate": e.certificate, "errors": e.errors, "untested_checks": e.untested_checks,
+         "tags": sorted(by_value.get(e.hostname, set()) | by_value.get(e.ip_address, set()))}
+        for e in endpoints
+    ]
+    out["findings"] = [
+        {"finding_id": f.finding_id, "title": f.title, "severity": f.severity, "status": f.status, "category": f.category,
+         "evidence": f.evidence, "remediation": f.remediation, "affected_endpoint_ids": f.affected_endpoint_ids}
+        for f in db.execute(select(RunFinding).where(RunFinding.run_id == r.id)).scalars()
+    ]
     return out
 
 
