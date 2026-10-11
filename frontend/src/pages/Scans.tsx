@@ -9,6 +9,7 @@ import { Button } from "../components/ui/button";
 import { Dialog } from "../components/ui/dialog";
 import { Field, Input, Select, Textarea } from "../components/ui/input";
 import { Card } from "../components/ui/card";
+import { TargetDialog } from "./Targets";
 import { Table, Td, Th } from "../components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { useI18n } from "../i18n";
@@ -20,7 +21,8 @@ function DefinitionDialog({ initial, onClose, onSaved }: { initial?: Definition;
   const { t } = useI18n();
   const [form, setForm] = useState(initial ? { ...blank, ...initial, report_template_id: initial.report_template_id ?? "" } : blank);
   const [error, setError] = useState<unknown>();
-  const { data: targets } = useLoad(() => api<Target[]>("/targets"));
+  const { data: targets, reload: reloadTargets } = useLoad(() => api<Target[]>("/targets"));
+  const [newTarget, setNewTarget] = useState(false);
   const { data: groups } = useLoad(() => api<Group[]>("/target-groups"));
   const { data: policies } = useLoad(() => api<Versioned[]>("/policies"));
   const { data: profiles } = useLoad(() => api<Versioned[]>("/profiles"));
@@ -43,6 +45,7 @@ function DefinitionDialog({ initial, onClose, onSaved }: { initial?: Definition;
         <Field label={t("col.name")}><Input value={form.name} onChange={(e) => set("name", e.target.value)} /></Field>
         <Field label={t("col.description")}><Textarea value={form.description} onChange={(e) => set("description", e.target.value)} /></Field>
         <Field label={t("def.targets")}><CheckList items={(targets ?? []).map((x) => ({ id: x.id, label: x.value, sub: x.ports }))} selected={form.target_ids} onChange={(v) => set("target_ids", v)} empty={t("def.noTargets")} /></Field>
+        <div><Button type="button" variant="outline" size="sm" onClick={() => setNewTarget(true)}><Plus />{t("target.new")}</Button></div>
         <Field label={t("def.groups")}><CheckList items={(groups ?? []).map((x) => ({ id: x.id, label: x.name, sub: `${x.target_ids.length}` }))} selected={form.group_ids} onChange={(v) => set("group_ids", v)} empty={t("def.noGroups")} /></Field>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label={t("def.profile")}><Select value={form.profile_id} onChange={(e) => set("profile_id", e.target.value)}><option value="">—</option>{publishedProfiles.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></Field>
@@ -56,6 +59,7 @@ function DefinitionDialog({ initial, onClose, onSaved }: { initial?: Definition;
         <ErrorNote error={error} />
         <div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>{t("action.cancel")}</Button><Button onClick={() => void save()}>{t("action.save")}</Button></div>
       </div>
+      {newTarget && systems && <TargetDialog systems={systems} onClose={() => setNewTarget(false)} onSaved={(saved) => { void reloadTargets(); setForm((f) => ({ ...f, target_ids: [...f.target_ids, saved.id] })); }} />}
     </Dialog>
   );
 }

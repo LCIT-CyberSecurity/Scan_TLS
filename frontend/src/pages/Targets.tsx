@@ -13,12 +13,12 @@ import { Table, Td, Th } from "../components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { useI18n } from "../i18n";
 
-function TargetDialog({ initial, systems, onClose, onSaved }: { initial?: Target; systems: SI[]; onClose: () => void; onSaved: () => void }) {
+export function TargetDialog({ initial, systems, onClose, onSaved }: { initial?: Target; systems: SI[]; onClose: () => void; onSaved: (saved: Target) => void }) {
   const { t } = useI18n();
   const [form, setForm] = useState({ value: initial?.value ?? "", ports: initial?.ports ?? "", description: initial?.description ?? "", tags: initial?.tags ?? [], si_ids: initial?.si_ids ?? [] });
   const [error, setError] = useState<unknown>();
   async function save() {
-    try { if (initial) await api(`/targets/${initial.id}`, { method: "PUT", body: form }); else await api("/targets", { method: "POST", body: form }); onSaved(); onClose(); } catch (e) { setError(e); }
+    try { const saved = initial ? await api<Target>(`/targets/${initial.id}`, { method: "PUT", body: form }) : await api<Target>("/targets", { method: "POST", body: form }); onSaved(saved); onClose(); } catch (e) { setError(e); }
   }
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()} title={initial ? t("target.edit") : t("target.new")}>
