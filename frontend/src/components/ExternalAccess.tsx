@@ -1,4 +1,4 @@
-import { Copy, KeyRound, ShieldAlert } from "lucide-react";
+import { Copy, KeyRound } from "lucide-react";
 import { useState } from "react";
 import { api } from "../api/client";
 import type { AccessKey, AccessService, MyAccess } from "../api/types";
@@ -90,7 +90,7 @@ export function ExternalAccessSwitches({ state, onToggle }: { state: { api_enabl
   const { t } = useI18n();
   return (
     <Card><CardHeader><CardTitle>{t("access.adminTitle")}</CardTitle></CardHeader><CardContent className="space-y-3">
-      <Note tone="info"><ShieldAlert className="mr-1 inline size-4" />{t("access.adminHint")}</Note>
+      <Note tone="info">{t("access.adminHint")}</Note>
       {SERVICES.map((s) => {
         const on = state[`${s}_enabled`];
         return (

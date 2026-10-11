@@ -39,7 +39,7 @@ function Users() {
               <Td>{u.local_account ? "local" : "SSO"}</Td><Td>{formatDate(u.last_login_at, locale)}</Td>
               <Td><Badge tone={u.active ? "success" : "neutral"}>{u.active ? t("sched.active") : t("sched.inactive")}</Badge></Td>
               {SERVICES.map((svc) => <Td key={svc}><div className="flex flex-col gap-1">
-                <label className="flex items-center gap-2 text-sm"><input type="checkbox" aria-label={`${t(`access.${svc}Short` as never)} ${u.email}`} checked={!!u[`${svc}_access_enabled` as const]} onChange={(e) => void run(async () => { await api(`/admin/users/${u.id}/access`, { method: "PUT", body: { [`${svc}_access_enabled`]: e.target.checked } }); })} />{u[`${svc}_access_enabled` as const] ? t("access.allowed") : t("access.notAllowed")}</label>
+                <label className="flex items-center gap-2 text-sm" title={u[`${svc}_access_enabled` as const] ? t("access.allowed") : t("access.notAllowed")}><input type="checkbox" aria-label={`${t(`access.${svc}Short` as never)} ${u.email}`} checked={!!u[`${svc}_access_enabled` as const]} onChange={(e) => void run(async () => { await api(`/admin/users/${u.id}/access`, { method: "PUT", body: { [`${svc}_access_enabled`]: e.target.checked } }); })} /></label>
                 {u.access_keys?.[svc]?.active && <span className="text-xs text-muted">{u.access_keys[svc].prefix}… <button type="button" className="underline" onClick={() => void run(async () => { if (window.confirm(t("access.confirmRevoke"))) await api(`/admin/users/${u.id}/access/${svc as AccessService}/token`, { method: "DELETE" }); })}>{t("access.revoke")}</button></span>}
               </div></Td>)}
               <Td><div className="flex justify-end gap-2">
