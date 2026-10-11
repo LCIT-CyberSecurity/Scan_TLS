@@ -4,7 +4,7 @@ import { useParams } from "react-router-dom";
 import { api, downloadUrl } from "../api/client";
 import type { Comparison, FindingBrief, RunDetail as Detail } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
-import { ConfirmButton, Empty, ErrorNote, PageHeader, SeverityBadge, StatusBadge, useLoad } from "../components/common";
+import { ConfirmButton, Empty, ErrorNote, Loading, Metric, Note, PageHeader, SeverityBadge, StatusBadge, useLoad } from "../components/common";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
@@ -27,7 +27,7 @@ function ComparisonView({ runId }: { runId: string }) {
   if (!data) return null;
   return (
     <div className="space-y-4">
-      {data.warnings.length > 0 && <div className="rounded-sm border border-warning-line bg-warning-soft px-3 py-2 text-sm text-warning">{data.warnings.map((w) => t(`cmp.warn.${w}` as never)).join(" · ")}</div>}
+      {data.warnings.length > 0 && <Note tone="warning">{data.warnings.map((w) => t(`cmp.warn.${w}` as never)).join(" · ")}</Note>}
       <div className="grid gap-4 lg:grid-cols-2">
         <FindingList title={t("cmp.new")} items={data.new} tone="danger" />
         <FindingList title={t("cmp.fixed")} items={data.fixed} tone="success" />
@@ -47,7 +47,7 @@ export default function RunDetail() {
   const [error, setError] = useState<unknown>();
   const { data: run, error: loadError, reload } = useLoad(() => api<Detail>(`/scan-runs/${id}`), [id], 3000);
   if (loadError) return <ErrorNote error={loadError} />;
-  if (!run) return null;
+  if (!run) return <Loading />;
   const active = run.status === "queued" || run.status === "running";
   const s = run.summary;
   return (
@@ -61,13 +61,13 @@ export default function RunDetail() {
       } />
       <ErrorNote error={error} />
       {active && <Card className="mb-4"><CardContent className="text-sm">{t(`phase.${run.phase}` as never)}{run.progress ? ` — ${run.progress.hosts_done}/${run.progress.hosts_total} ${t("run.hosts")}` : ""}{run.cancel_requested ? ` — ${t("run.cancelling")}` : ""}</CardContent></Card>}
-      {run.error && <div className="mb-4"><ErrorNote error={new Error(run.error)} /></div>}
-      {run.status === "completed" && run.endpoints.length === 0 && <div className="mb-4 rounded-sm border border-info-line bg-info-soft px-3 py-2 text-sm text-info">{t("run.noTls")}</div>}
-      {run.status === "partial" || run.skipped_hosts?.length ? <div className="mb-4 rounded-sm border border-warning-line bg-warning-soft px-3 py-2 text-sm text-warning">{t("run.partial")} {run.skipped_hosts?.length ? `(${t("run.skipped")}: ${run.skipped_hosts.join(", ")})` : ""}</div> : null}
+      {run.error && <ErrorNote error={new Error(run.error)} />}
+      {run.status === "completed" && run.endpoints.length === 0 && <Note tone="info" className="mb-4">{t("run.noTls")}</Note>}
+      {run.status === "partial" || run.skipped_hosts?.length ? <Note tone="warning" className="mb-4">{t("run.partial")} {run.skipped_hosts?.length ? `(${t("run.skipped")}: ${run.skipped_hosts.join(", ")})` : ""}</Note> : null}
       {s && (
-        <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {([[t("run.endpoints"), s.total_endpoints], [t("run.compliant"), s.compliant_endpoints], [t("run.nonCompliant"), s.non_compliant_endpoints], [t("run.critical"), s.critical_findings], [t("run.grade"), s.overall_grade], [t("run.errors"), s.endpoints_with_errors], [t("run.notTested"), s.checks_not_tested]] as [string, unknown][]).map(([l, v]) => (
-            <Card key={l}><CardContent><div className="text-sm text-muted">{l}</div><div className="mt-1 text-2xl font-semibold">{String(v ?? "—")}</div></CardContent></Card>
+        <div className="metrics">
+          {([[t("run.endpoints"), s.total_endpoints, ""], [t("run.compliant"), s.compliant_endpoints, "green"], [t("run.nonCompliant"), s.non_compliant_endpoints, s.non_compliant_endpoints ? "red" : ""], [t("run.critical"), s.critical_findings, s.critical_findings ? "red" : ""], [t("run.grade"), s.overall_grade, ""], [t("run.errors"), s.endpoints_with_errors, s.endpoints_with_errors ? "amber" : ""], [t("run.notTested"), s.checks_not_tested, ""]] as [string, unknown, string][]).map(([l, v, tone]) => (
+            <Metric key={l} label={l} value={String(v ?? "—")} tone={tone === "red" || tone === "green" || tone === "amber" ? tone : undefined} />
           ))}
         </div>
       )}

@@ -23,7 +23,7 @@ export default function Reports() {
     <>
       <PageHeader title={t("nav.reports")} actions={
         <>
-          <Select aria-label="SI" className="w-44" value={si} onChange={(e) => setSi(e.target.value)}><option value="">{t("filter.allSi")}</option>{systems?.map((s) => <option key={s.id} value={s.id}>{s.parent_id ? "↳ " : ""}{s.name}</option>)}</Select>
+          <Select aria-label="SI" className="w-60" value={si} onChange={(e) => setSi(e.target.value)}><option value="">{t("filter.allSi")}</option>{systems?.map((s) => <option key={s.id} value={s.id}>{s.parent_id ? "↳ " : ""}{s.name}</option>)}</Select>
           <Select aria-label="Tag" className="w-40" value={tag} onChange={(e) => setTag(e.target.value)}><option value="">{t("filter.allTags")}</option>{tags?.map((x) => <option key={x.id} value={x.name}>{x.name}</option>)}</Select>
         </>
       } />
@@ -31,7 +31,7 @@ export default function Reports() {
       <Card>{rows.length ? (
         <Table><thead><tr><Th>{t("col.name")}</Th><Th>{t("col.date")}</Th><Th>{t("col.status")}</Th><Th>{t("col.nonCompliant")}</Th><Th>{t("pol.policies")}</Th><Th>{t("nav.reports")}</Th></tr></thead>
           <tbody>{rows.map((r) => (
-            <tr key={r.id}><Td><Link to={`/scans/${r.id}`} className="font-medium text-primary hover:underline">{r.name}</Link></Td><Td>{formatDate(r.finished_at, locale)}</Td><Td><StatusBadge status={r.status} /></Td><Td>{r.summary?.non_compliant_endpoints ?? "—"}</Td>
+            <tr key={r.id}><Td><Link to={`/scans/${r.id}`} className="row-link">{r.name}</Link></Td><Td>{formatDate(r.finished_at, locale)}</Td><Td><StatusBadge status={r.status} /></Td><Td>{r.summary?.non_compliant_endpoints ?? "—"}</Td>
               <Td className="text-xs">{r.policy_versions.map((p) => `${p.name} v${p.version}`).join(", ")}</Td>
               <Td><div className="flex flex-wrap gap-1">{r.reports.filter((x) => ["html", "md", "csv", "cbom"].includes(x.format)).map((x) => <Button key={x.format} size="sm" variant="outline" asChild><a href={downloadUrl(r.id, x.format)}><Download />{x.format.toUpperCase()}</a></Button>)}</div></Td></tr>
           ))}</tbody></Table>

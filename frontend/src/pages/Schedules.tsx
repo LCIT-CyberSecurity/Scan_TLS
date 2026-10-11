@@ -65,7 +65,7 @@ export default function Schedules() {
         <Table><thead><tr><Th>{t("sched.definition")}</Th><Th>{t("sched.frequency")}</Th><Th>{t("sched.next")}</Th><Th>{t("sched.last")}</Th><Th>{t("col.status")}</Th><Th /></tr></thead>
           <tbody>{data.map((s) => (
             <tr key={s.id}><Td className="font-medium">{name(s.definition_id)}</Td><Td>{t(`sched.${s.kind}` as never)}</Td><Td>{formatDate(s.next_run_at, locale)}</Td>
-              <Td>{s.last_run ? <Link to={`/scans/${s.last_run.id}`} className="flex items-center gap-2 text-primary hover:underline"><StatusBadge status={s.last_run.status as never} />{formatDuration(s.last_run.duration_seconds)}</Link> : "—"}</Td>
+              <Td>{s.last_run ? <Link to={`/scans/${s.last_run.id}`} className="row-link flex items-center gap-2"><StatusBadge status={s.last_run.status as never} />{formatDuration(s.last_run.duration_seconds)}</Link> : "—"}</Td>
               <Td><Badge tone={s.active ? "success" : "neutral"}>{s.active ? t("sched.active") : t("sched.inactive")}</Badge></Td>
               <Td><div className="flex justify-end gap-2">
                 {(s.owner_id === user?.id || atLeast("OPERATOR")) && <Button size="sm" variant="outline" onClick={async () => setDetail(await api<Schedule>(`/schedules/${s.id}`))}>{t("sched.history")}</Button>}

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { api } from "../api/client";
 import type { Role, User } from "../api/types";
-import { Empty, ErrorNote, PageHeader, useLoad } from "../components/common";
+import { Empty, ErrorNote, Note, PageHeader, useLoad } from "../components/common";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
@@ -34,7 +34,7 @@ function Users() {
         <Table><thead><tr><Th>E-mail</Th><Th>{t("admin.role")}</Th><Th>{t("admin.source")}</Th><Th>{t("admin.lastLogin")}</Th><Th>{t("col.status")}</Th><Th /></tr></thead>
           <tbody>{data.map((u) => (
             <tr key={u.id}><Td className="font-medium">{u.email}<div className="text-xs font-normal text-muted">{u.display_name}</div></Td>
-              <Td><Select aria-label={t("admin.role")} className="h-8 w-36" value={u.role} onChange={(e) => void run(async () => { await api(`/admin/users/${u.id}`, { method: "PUT", body: { role: e.target.value } }); })}>{ROLES.map((r) => <option key={r}>{r}</option>)}</Select></Td>
+              <Td><Select aria-label={t("admin.role")} className="compact w-36" value={u.role} onChange={(e) => void run(async () => { await api(`/admin/users/${u.id}`, { method: "PUT", body: { role: e.target.value } }); })}>{ROLES.map((r) => <option key={r}>{r}</option>)}</Select></Td>
               <Td>{u.local_account ? "local" : "SSO"}</Td><Td>{formatDate(u.last_login_at, locale)}</Td>
               <Td><Badge tone={u.active ? "success" : "neutral"}>{u.active ? t("sched.active") : t("sched.inactive")}</Badge></Td>
               <Td><div className="flex justify-end gap-2">
@@ -127,7 +127,7 @@ function SettingsTab() {
               <Button variant="outline" onClick={async () => { try { setSteps(await api<Step[]>("/admin/notifications/test", { method: "POST", body: { to: to || null } })); setErr(undefined); } catch (e) { setErr(e); } }}>{t("admin.testConnector")}</Button>
             </>}
           </div>
-          {steps.map((s) => <div key={s.step} className={`rounded-sm border px-3 py-2 text-sm ${s.status === "ok" ? "border-success-line bg-success-soft text-success" : "border-danger-line bg-danger-soft text-danger"}`}><b>{s.step}</b> — {s.status}{s.detail && `: ${s.detail}`}</div>)}
+          {steps.map((s) => <Note key={s.step} tone={s.status === "ok" ? "success" : "danger"}><b>{s.step}</b> — {s.status}{s.detail && `: ${s.detail}`}</Note>)}
         </CardContent></Card>
       )}
       {saved && <p className="text-sm text-success">{t("admin.saved")}</p>}
@@ -183,7 +183,7 @@ function Directory() {
           <Button onClick={() => void run(async () => { await api("/admin/directory", { method: "PUT", body: c }); await reload(); setCfg(null); })}>{t("action.save")}</Button>
           {c.kind !== "none" && <Button variant="outline" onClick={() => void run(async () => setSteps(await api<Step[]>("/admin/directory/test", { method: "POST" })))}>{t("admin.testConnector")}</Button>}
         </div>
-        {steps.map((s) => <div key={s.step} className={`rounded-sm border px-3 py-2 text-sm ${s.status === "ok" ? "border-success-line bg-success-soft text-success" : "border-danger-line bg-danger-soft text-danger"}`}><b>{s.step}</b> — {s.status}{s.detail && `: ${s.detail}`}</div>)}
+        {steps.map((s) => <Note key={s.step} tone={s.status === "ok" ? "success" : "danger"}><b>{s.step}</b> — {s.status}{s.detail && `: ${s.detail}`}</Note>)}
       </CardContent></Card>
       {c.kind !== "none" && (
         <Card><CardContent className="space-y-3">
@@ -193,7 +193,7 @@ function Directory() {
             <div key={p.external_id} className="flex items-center justify-between gap-3 border-b border-hairline py-2 text-sm">
               <span>{p.display_name}<span className="block text-xs text-muted">{p.email}</span></span>
               {p.provisioned ? <Badge>{t("admin.dirExists")}</Badge> : (
-                <span className="flex gap-2"><Select aria-label={t("admin.role")} className="h-8 w-32" value={roles[p.email] ?? "USER"} onChange={(e) => setRoles({ ...roles, [p.email]: e.target.value as Role })}>{ROLES.map((r) => <option key={r}>{r}</option>)}</Select>
+                <span className="flex gap-2"><Select aria-label={t("admin.role")} className="compact w-32" value={roles[p.email] ?? "USER"} onChange={(e) => setRoles({ ...roles, [p.email]: e.target.value as Role })}>{ROLES.map((r) => <option key={r}>{r}</option>)}</Select>
                   <Button size="sm" onClick={() => void run(async () => { await api("/admin/directory/provision", { method: "POST", body: { email: p.email, display_name: p.display_name, role: roles[p.email] ?? "USER" } }); setPeople(await api<Person[]>("/admin/directory/search", { params: { q } })); })}>{t("admin.dirAdd")}</Button></span>
               )}
             </div>

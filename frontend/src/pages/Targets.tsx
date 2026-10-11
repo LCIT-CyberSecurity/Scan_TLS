@@ -101,7 +101,7 @@ export default function Targets() {
         <TabsContent value="targets">
           <div className="mb-3 flex flex-wrap items-center gap-3">
             <Input aria-label={t("action.search")} placeholder={t("action.search")} className="w-56" value={q} onChange={(e) => setQ(e.target.value)} />
-            <Select aria-label="SI" className="w-44" value={si} onChange={(e) => setSi(e.target.value)}><option value="">{t("filter.allSi")}</option>{systems.data?.map((s) => <option key={s.id} value={s.id}>{s.parent_id ? "↳ " : ""}{s.name}</option>)}</Select>
+            <Select aria-label="SI" className="w-60" value={si} onChange={(e) => setSi(e.target.value)}><option value="">{t("filter.allSi")}</option>{systems.data?.map((s) => <option key={s.id} value={s.id}>{s.parent_id ? "↳ " : ""}{s.name}</option>)}</Select>
             <Select aria-label="Tag" className="w-40" value={tag} onChange={(e) => setTag(e.target.value)}><option value="">{t("filter.allTags")}</option>{tags.data?.map((x) => <option key={x.id} value={x.name}>{x.name}</option>)}</Select>
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} />{t("scans.onlyMine")}</label>
             <div className="ml-auto flex gap-2">

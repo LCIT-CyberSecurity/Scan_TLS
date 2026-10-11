@@ -6,11 +6,11 @@ export function Dialog({ open, onOpenChange, title, children, wide }: { open: bo
   return (
     <D.Root open={open} onOpenChange={onOpenChange}>
       <D.Portal>
-        <D.Overlay className="fixed inset-0 z-40 bg-[var(--scrim)] backdrop-blur-[3px]" />
-        <D.Content className={`fixed left-1/2 top-1/2 z-50 max-h-[88vh] w-[calc(100vw-32px)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-border bg-surface p-6 shadow-lg ${wide ? "max-w-3xl" : "max-w-lg"}`}>
-          <div className="mb-4 flex items-center justify-between">
-            <D.Title className="text-lg font-semibold">{title}</D.Title>
-            <D.Close className="rounded-sm p-1 text-muted hover:bg-surface-2" aria-label="Close"><X className="size-4" /></D.Close>
+        <D.Overlay className="modal-backdrop" />
+        <D.Content className={`modal${wide ? " modal--wide" : ""}`}>
+          <div className="modal-head">
+            <D.Title asChild><h2>{title}</h2></D.Title>
+            <D.Close className="button button--ghost button--icon" aria-label="Close"><X className="size-4" /></D.Close>
           </div>
           <D.Description className="sr-only">{title}</D.Description>
           {children}

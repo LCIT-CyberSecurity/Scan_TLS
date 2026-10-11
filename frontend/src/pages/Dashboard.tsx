@@ -1,8 +1,9 @@
+import { Activity, CheckCircle2, XCircle } from "lucide-react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
 import type { Dashboard as Data } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
-import { Empty, ErrorNote, PageHeader, StatusBadge, useLoad } from "../components/common";
+import { Empty, ErrorNote, Metric, PageHeader, StatusBadge, useLoad } from "../components/common";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { Select } from "../components/ui/input";
 import { Table, Td, Th } from "../components/ui/table";
@@ -21,25 +22,22 @@ export default function Dashboard() {
   const { data: tags } = useLoad(() => api<Tag[]>("/tags"));
   const { data: systems } = useLoad(() => api<SI[]>("/information-systems"));
   const counts = data?.counts ?? {};
-  const tiles: [string, number | undefined, string][] = [
-    [t("dash.running"), (counts.running ?? 0) + (counts.queued ?? 0), "text-primary"],
-    [t("dash.completed"), (counts.completed ?? 0) + (counts.partial ?? 0), "text-success"],
-    [t("dash.failed"), (counts.failed ?? 0) + (counts.expired ?? 0), "text-danger"],
-  ];
   const trend = data?.compliance_trend ?? [];
   const max = Math.max(1, ...trend.map((p) => p.compliant + p.non_compliant));
   return (
     <>
       <PageHeader title={t("nav.dashboard")} actions={
         <>
-          {atLeast("OPERATOR") && <Select aria-label={t("dash.scope")} value={scope} onChange={(e) => setScope(e.target.value as "mine" | "all")} className="w-40"><option value="mine">{t("dash.scopeMine")}</option><option value="all">{t("dash.scopeAll")}</option></Select>}
-          <Select aria-label="SI" value={si} onChange={(e) => setSi(e.target.value)} className="w-44"><option value="">{t("filter.allSi")}</option>{systems?.map((s) => <option key={s.id} value={s.id}>{s.parent_id ? "↳ " : ""}{s.name}</option>)}</Select>
+          {atLeast("OPERATOR") && <Select aria-label={t("dash.scope")} value={scope} onChange={(e) => setScope(e.target.value as "mine" | "all")} className="w-44"><option value="mine">{t("dash.scopeMine")}</option><option value="all">{t("dash.scopeAll")}</option></Select>}
+          <Select aria-label="SI" value={si} onChange={(e) => setSi(e.target.value)} className="w-60"><option value="">{t("filter.allSi")}</option>{systems?.map((s) => <option key={s.id} value={s.id}>{s.parent_id ? "↳ " : ""}{s.name}</option>)}</Select>
           <Select aria-label="Tag" value={tag} onChange={(e) => setTag(e.target.value)} className="w-40"><option value="">{t("filter.allTags")}</option>{tags?.map((x) => <option key={x.id} value={x.name}>{x.name}</option>)}</Select>
         </>
       } />
       <ErrorNote error={error} />
-      <div className="mb-6 grid gap-4 sm:grid-cols-3">
-        {tiles.map(([label, value, tone]) => <Card key={label}><CardContent><div className="text-sm text-muted">{label}</div><div className={`mt-1 text-3xl font-semibold ${tone}`}>{value ?? "—"}</div></CardContent></Card>)}
+      <div className="metrics">
+        <Metric label={t("dash.running")} value={(counts.running ?? 0) + (counts.queued ?? 0)} icon={<Activity size={16} />} to="/scans" />
+        <Metric label={t("dash.completed")} value={(counts.completed ?? 0) + (counts.partial ?? 0)} icon={<CheckCircle2 size={16} />} tone="green" to="/scans" />
+        <Metric label={t("dash.failed")} value={(counts.failed ?? 0) + (counts.expired ?? 0)} icon={<XCircle size={16} />} tone="red" to="/scans" />
       </div>
       <div className="grid gap-6 xl:grid-cols-[2fr_1fr]">
         <Card>
@@ -47,7 +45,7 @@ export default function Dashboard() {
           {data?.recent.length ? (
             <Table><thead><tr><Th>{t("col.name")}</Th><Th>{t("col.status")}</Th><Th>{t("col.date")}</Th><Th>{t("col.duration")}</Th><Th>{t("col.nonCompliant")}</Th></tr></thead>
               <tbody>{data.recent.map((r) => (
-                <tr key={r.id}><Td><Link className="font-medium text-primary hover:underline" to={`/scans/${r.id}`}>{r.name}</Link></Td><Td><StatusBadge status={r.status} /></Td><Td>{formatDate(r.queued_at, locale)}</Td><Td>{formatDuration(r.duration_seconds)}</Td><Td>{r.summary?.non_compliant_endpoints ?? "—"}</Td></tr>
+                <tr key={r.id}><Td><Link className="row-link" to={`/scans/${r.id}`}>{r.name}</Link></Td><Td><StatusBadge status={r.status} /></Td><Td>{formatDate(r.queued_at, locale)}</Td><Td>{formatDuration(r.duration_seconds)}</Td><Td>{r.summary?.non_compliant_endpoints ?? "—"}</Td></tr>
               ))}</tbody></Table>
           ) : <Empty>{t("dash.noScans")}</Empty>}
         </Card>
@@ -64,7 +62,7 @@ export default function Dashboard() {
                   ))}
                 </div>
               ) : <p className="text-sm text-muted">{t("dash.noTrend")}</p>}
-              <div className="mt-3 flex gap-4 text-xs text-muted"><span className="flex items-center gap-1"><i className="size-2 rounded-full bg-success" />{t("dash.compliant")}</span><span className="flex items-center gap-1"><i className="size-2 rounded-full bg-danger" />{t("dash.nonCompliant")}</span></div>
+              <div className="stacked-legend mt-3"><span><i className="stacked-dot ok" />{t("dash.compliant")}</span><span><i className="stacked-dot bad" />{t("dash.nonCompliant")}</span></div>
             </CardContent>
           </Card>
           <Card>

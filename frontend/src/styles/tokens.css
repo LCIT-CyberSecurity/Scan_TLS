@@ -319,3 +319,37 @@ a {
   --shadow-md: 0 1px 2px rgba(17, 17, 26, 0.05), 0 12px 32px -14px rgba(17, 17, 26, 0.2);
 }
 /* Studio's geometry: a tighter grid than the other styles, stated once. */
+
+/* Studio dark: the same near-monochrome set, authored for a dark canvas. */
+:root[data-appearance="dark"][data-theme="studio"] {
+  --background: #0b0b0e;
+  --surface: #141418;
+  --surface-secondary: #1c1c21;
+  --surface-raised: #18181d;
+  --surface-sunken: #101013;
+  --rail: #101013;
+  --chrome: #101013;
+  --primary: #c9c9d6;
+  --primary-hover: #e2e2ec;
+  --primary-soft: rgba(255, 255, 255, 0.08);
+  --primary-line: rgba(255, 255, 255, 0.16);
+  --primary-edge: #e2e2ec;
+  --accent-wash: linear-gradient(135deg, #3a3a44 0%, #52525e 100%);
+  --text-on-accent: #f4f4f7;
+}
+
+/* Violet, premium finish — same palette, richer canvas and depth (as in LCIT-Sign). */
+:root[data-theme="violet"]:not([data-appearance="dark"]) {
+  --background: #f6f6fc;
+  --canvas-wash:
+    radial-gradient(900px 440px at 6% -10%, rgba(118, 87, 169, 0.22), transparent 62%),
+    radial-gradient(820px 400px at 98% -8%, rgba(66, 112, 214, 0.15), transparent 60%),
+    linear-gradient(180deg, #f0edfa 0, #f6f6fc 360px);
+  --border: #e3e5f0;
+  --surface-sunken: #f9f9fe;
+  --shadow-card: 0 1px 2px rgba(34, 24, 74, 0.05), 0 10px 28px -14px rgba(72, 48, 140, 0.22);
+}
+:root[data-theme="violet"][data-appearance="dark"] {
+  --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.04), 0 14px 32px -16px rgba(0, 0, 0, 0.85);
+}
+:root { --shadow-card: var(--shadow-sm); }

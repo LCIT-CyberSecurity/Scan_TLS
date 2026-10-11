@@ -3,7 +3,7 @@ import { useState } from "react";
 import { api } from "../api/client";
 import type { Template, Version, Versioned } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
-import { Empty, ErrorNote, PageHeader, useLoad } from "../components/common";
+import { Empty, ErrorNote, Note, PageHeader, useLoad } from "../components/common";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
@@ -41,7 +41,7 @@ function ProfileForm({ value, onChange }: { value: Content; onChange: (c: Conten
     <div className="space-y-4">
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label={t("prof.ports")} hint={t("prof.portsHint")}><Input value={String(scan.ports ?? "fast")} onChange={(e) => setScan("ports", e.target.value)} /></Field>
-        <Field label={t("prof.crypto")}><select className="h-10 w-full rounded-sm border border-border-strong bg-surface px-3 text-sm" value={scan.crypto ?? "standard"} onChange={(e) => setScan("crypto", e.target.value)}><option value="standard">standard</option><option value="pqc">pqc</option></select></Field>
+        <Field label={t("prof.crypto")}><select className="w-full" value={scan.crypto ?? "standard"} onChange={(e) => setScan("crypto", e.target.value)}><option value="standard">standard</option><option value="pqc">pqc</option></select></Field>
         <Field label={t("prof.workers")}><Input type="number" min={1} max={32} value={scan.workers ?? 4} onChange={(e) => setScan("workers", Number(e.target.value))} /></Field>
         <Field label={t("prof.expires")}><Input type="number" min={1} value={cert.expires_within_days ?? 30} onChange={(e) => setCert({ expires_within_days: Number(e.target.value) })} /></Field>
       </div>
@@ -101,7 +101,7 @@ function VersionedTab({ kind, Form, blank }: { kind: "policies" | "profiles"; Fo
       {edit && (
         <Dialog open onOpenChange={(o) => !o && setEdit(null)} title={edit.item ? t("pol.newVersion") : t("action.new")}>
           <div className="space-y-4">
-            {edit.item && <p className="rounded-sm bg-info-soft px-3 py-2 text-xs text-info">{t("pol.immutableHint")}</p>}
+            {edit.item && <Note tone="info">{t("pol.immutableHint")}</Note>}
             <Field label={t("col.name")}><Input value={edit.name} disabled={!!edit.item} onChange={(e) => setEdit({ ...edit, name: e.target.value })} /></Field>
             <Field label={t("col.description")}><Input value={edit.description} onChange={(e) => setEdit({ ...edit, description: e.target.value })} /></Field>
             <Form value={edit.content} onChange={(content) => setEdit({ ...edit, content })} />
@@ -135,7 +135,7 @@ function TemplatesTab() {
       </div>
       <div className="mt-3 flex flex-wrap items-end gap-3">
         <Field label={t("tpl.org")}><Input value={form.organization_name} onChange={(e) => setForm({ ...form, organization_name: e.target.value })} /></Field>
-        <Field label={t("tpl.accent")}><input type="color" className="h-10 w-16 rounded-sm border border-border-strong bg-surface" value={form.accent_color || "#4b2d8a"} onChange={(e) => setForm({ ...form, accent_color: e.target.value })} /></Field>
+        <Field label={t("tpl.accent")}><input type="color" className="h-10 w-16 p-1" value={form.accent_color || "#4b2d8a"} onChange={(e) => setForm({ ...form, accent_color: e.target.value })} /></Field>
         <Field label={t("tpl.logo")}><input type="file" accept="image/png,image/jpeg,image/svg+xml" aria-label={t("tpl.logo")} onChange={(e) => { const f = e.target.files?.[0]; if (!f) return; const r = new FileReader(); r.onload = () => setForm((s) => ({ ...s, logo: String(r.result) })); r.readAsDataURL(f); }} /></Field>
         <Button disabled={!form.name} onClick={async () => { try { await api("/report-templates", { method: "POST", body: form }); setForm({ ...form, name: "", logo: "" }); await reload(); } catch (e) { setErr(e); } }}><Plus />{t("action.add")}</Button>
       </div>

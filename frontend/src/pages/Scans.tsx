@@ -90,7 +90,7 @@ export default function Scans() {
           <Card>{runs?.length ? (
             <Table><thead><tr><Th>{t("col.name")}</Th><Th>{t("col.status")}</Th><Th>{t("col.phase")}</Th><Th>{t("col.date")}</Th><Th>{t("col.duration")}</Th><Th>{t("col.nonCompliant")}</Th><Th /></tr></thead>
               <tbody>{runs.map((r) => (
-                <tr key={r.id}><Td><Link className="font-medium text-primary hover:underline" to={`/scans/${r.id}`}>{r.name}</Link>{r.schedule_id && <span className="ml-2 text-xs text-muted">⏱</span>}</Td><Td><StatusBadge status={r.status} /></Td>
+                <tr key={r.id}><Td><Link className="row-link" to={`/scans/${r.id}`}>{r.name}</Link>{r.schedule_id && <span className="ml-2 text-xs text-muted">⏱</span>}</Td><Td><StatusBadge status={r.status} /></Td>
                   <Td className="text-muted">{r.status === "running" ? t(`phase.${r.phase}` as never) : ""}{r.progress ? ` ${r.progress.hosts_done}/${r.progress.hosts_total}` : ""}</Td>
                   <Td>{formatDate(r.queued_at, locale)}</Td><Td>{formatDuration(r.duration_seconds)}</Td><Td>{r.summary?.non_compliant_endpoints ?? "—"}</Td>
                   <Td>{(r.status === "queued" || r.status === "running") && (r.initiated_by === user?.id || atLeast("OPERATOR")) && <ConfirmButton variant="outline" label={t("action.cancelScan")} confirm={t("confirm.cancelScan")} onConfirm={async () => { try { await api(`/scan-runs/${r.id}/cancel`, { method: "POST" }); void reload(); } catch (e) { setError(e); } }} />}</Td></tr>

@@ -18,6 +18,11 @@ export default {
       },
       borderRadius: { sm: v("radius-sm"), DEFAULT: v("radius"), lg: v("radius-lg"), xl: v("radius-xl") },
       boxShadow: { sm: v("shadow-sm"), md: v("shadow-md"), lg: v("shadow-lg") },
+      // LCIT-Sign's type scale (12.5 / 13.5 / 14.5 / 16 px), so utilities and shared component classes agree.
+      fontSize: {
+        xs: ["12.5px", "16px"], "13": ["13.5px", "20px"], sm: ["14.5px", "22px"], base: ["16px", "24px"],
+        lg: ["17px", "26px"], xl: ["20px", "28px"], "2xl": ["26px", "34px"], "3xl": ["28px", "36px"],
+      },
       fontFamily: { sans: ['"Inter Variable"', "system-ui", "sans-serif"] },
     },
   },

@@ -13,7 +13,7 @@ test("language: browser detection, manual choice persisted and prioritised", asy
   await page.getByRole("button", { name: "Se connecter", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Tableau de bord" })).toBeVisible();
   // saved on the profile: a fresh German-language browser context signing in as the same user gets French
-  await page.getByRole("button", { name: /User2/ }).click();
+  await page.locator(".user-menu summary").click(); // account menu (details/summary, as in LCIT-Sign)
   await page.getByRole("menuitem", { name: "Préférences" }).click();
   await page.getByLabel("Langue").selectOption("fr");
   await page.reload();
@@ -32,6 +32,6 @@ test("SSO (mock provider): sign in provisions a USER", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Sign in with SSO" }).click();
   await expect(page.getByRole("navigation", { name: "Main" })).toBeVisible({ timeout: 30_000 });
-  await page.getByRole("button", { name: /USER/ }).click();
-  await expect(page.getByText("USER").first()).toBeVisible();
+  await page.locator(".user-menu summary").click();
+  await expect(page.locator(".user-menu summary").getByText("USER")).toBeVisible(); // the role is shown under the name
 });
