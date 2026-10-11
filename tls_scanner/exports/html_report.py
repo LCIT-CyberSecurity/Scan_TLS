@@ -69,7 +69,7 @@ def build_html_report_from_model(model: ReportModel):
     summary = html.escape(build_executive_summary(model))
     cover = (
         '    <section class="report-cover" aria-label="Report header"><div class="cover-brand"><div class="brand-mark large" aria-hidden="true">TS</div><div><strong>TLS Scan</strong><span>Trust. Visibility. Stronger TLS.</span></div></div>'
-        f'<div class="cover-title"><p class="cover-kicker">TLS Security Assessment</p><p class="cover-name">{report_name}</p><p class="cover-sub">Confidential security report</p></div>'
+        f'<div class="cover-title"><p class="cover-kicker">TLS Security Assessment</p><p class="cover-name">{report_name}</p><p class="cover-sub">Confidential security report · LCIT Cybersecurity</p></div>'
         '<dl class="cover-meta">'
         '<div><dt>Produced by</dt><dd>TLS Scan by LCIT Cybersecurity</dd></div>'
         f'<div><dt>Generated on</dt><dd>{report_date}</dd></div>'
@@ -84,7 +84,7 @@ def build_html_report_from_model(model: ReportModel):
         '  <link rel="stylesheet" href="assets/css/theme-modern.css">',
         '  <link rel="stylesheet" href="assets/css/print.css" media="print">', "</head>", "<body>",
         '  <a class="skip-link" href="#main">Skip to main content</a>',
-        '  <header class="app-shell no-print"><div class="brand-block"><div class="brand-mark" aria-hidden="true">TS</div><div><strong>TLS Scan</strong><span>Security Report</span></div></div><nav aria-label="Report sections"><a href="#overview">Overview</a><a href="#findings">Findings</a><a href="#endpoints">Endpoints</a><a href="#communication">Communication Security</a><a href="#certificates">Certificates</a><a href="#trust">Trust</a><a href="#compliance">Compliance</a><a href="#pqc">PQC</a></nav><div class="header-actions"><button class="button" type="button" id="downloadCsv">Download CSV</button><button class="button button-primary" type="button" id="printReport">Print / Save as PDF</button></div></header>',
+        '  <header class="app-shell no-print"><div class="brand-block"><div class="brand-mark" aria-hidden="true">TS</div><div><strong>TLS Scan</strong><span>LCIT Cybersecurity · Security Report</span></div></div><nav aria-label="Report sections"><a href="#overview">Overview</a><a href="#findings">Findings</a><a href="#endpoints">Endpoints</a><a href="#communication">Communication Security</a><a href="#certificates">Certificates</a><a href="#trust">Trust</a><a href="#compliance">Compliance</a><a href="#pqc">PQC</a></nav><div class="header-actions"><button class="button" type="button" id="downloadCsv">Download CSV</button><button class="button button-primary" type="button" id="printReport">Print / Save as PDF</button></div></header>',
         '  <main id="main" class="report-root">',
         cover,
         '    <section class="executive-summary" id="overview"><div class="summary-copy"><p class="eyebrow">Executive Summary</p>',
@@ -104,7 +104,7 @@ def build_html_report_from_model(model: ReportModel):
         '    <section class="panel report-chapter" id="compliance"><div class="section-heading"><div><p class="eyebrow">Policy Results</p><h2>Compliance</h2></div></div><div id="policyCompliance" class="stack"></div></section>',
         '    <section class="panel report-chapter" id="pqc"><div class="section-heading"><div><p class="eyebrow">PQC Details</p><h2>Post-Quantum Cryptography</h2></div></div><div id="pqcReadiness" class="section-grid"></div></section>',
         '    <section class="panel"><details><summary>Complete Technical Details</summary><div id="technicalDetails"></div></details></section>',
-        '    <footer class="report-footer" aria-label="Report footer"><span>TLS Scan | TLS Security Report</span><span id="pageFooterMeta"></span></footer>',
+        '    <footer class="report-footer" aria-label="Report footer"><span>LCIT Cybersecurity | TLS Scan | TLS Security Report</span><span id="pageFooterMeta"></span></footer>',
         '  </main><aside class="drawer" id="endpointDrawer" aria-hidden="true" aria-labelledby="drawerTitle"><button class="icon-button no-print" type="button" id="closeDrawer" aria-label="Close endpoint details">&times;</button><div id="drawerContent"></div></aside><div class="drawer-backdrop no-print" id="drawerBackdrop"></div>',
         f'  <script id="report-data" type="application/json">{data}</script>',
         '  <script src="assets/js/report.js"></script>', "</body>", "</html>",
