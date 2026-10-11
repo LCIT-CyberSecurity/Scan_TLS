@@ -165,6 +165,8 @@ def download_report(run_id: uuid.UUID, fmt: str, request: Request, inline: bool 
     db.commit()
     headers = {"X-Content-Type-Options": "nosniff", "Content-Security-Policy": "sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:; script-src 'unsafe-inline'"}
     if fmt == "html":
+        # The report's own script renders it. Sandboxed to an opaque origin (no allow-same-origin): it cannot touch the app's cookies or API.
+        headers = headers | {"Content-Security-Policy": "sandbox allow-scripts allow-modals allow-downloads; default-src 'none'; style-src 'unsafe-inline'; img-src data:; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"}
         body = inline_report_assets(path.read_text(encoding="utf-8"), path.parent)
         disposition = "inline" if inline else f'attachment; filename="{path.name}"'
         return Response(body, media_type=MEDIA.get(fmt, "text/html"), headers=headers | {"Content-Disposition": disposition})
