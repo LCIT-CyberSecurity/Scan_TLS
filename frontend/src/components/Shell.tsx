@@ -1,5 +1,5 @@
 import { Activity, BarChart3, CalendarClock, ChevronRight, FileText, ListChecks, Menu, Network, ShieldCheck, SlidersHorizontal } from "lucide-react";
-import { useState, type CSSProperties, type ReactNode } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import type { Role } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
@@ -12,17 +12,17 @@ interface Section { heading: keyof Messages; items: Item[] }
 // One sidebar for everybody; entries the role cannot use are hidden (the API enforces it anyway).
 const SECTIONS: Section[] = [
   { heading: "nav.section.workspace", items: [
-    { to: "/", icon: <BarChart3 size={18} />, label: "nav.dashboard", min: "AUDITOR" },
-    { to: "/tasks", icon: <ListChecks size={18} />, label: "nav.tasks", min: "USER" },
+    { to: "/", icon: <BarChart3 size={22} />, label: "nav.dashboard", min: "AUDITOR" },
+    { to: "/tasks", icon: <ListChecks size={22} />, label: "nav.tasks", min: "USER" },
   ] },
   { heading: "nav.section.scanning", items: [
-    { to: "/scans", icon: <Activity size={18} />, label: "nav.scans", min: "USER" },
-    { to: "/schedules", icon: <CalendarClock size={18} />, label: "nav.schedules", min: "USER" },
-    { to: "/targets", icon: <Network size={18} />, label: "nav.targets", min: "USER" },
-    { to: "/policies", icon: <SlidersHorizontal size={18} />, label: "nav.policies", min: "USER" },
+    { to: "/scans", icon: <Activity size={22} />, label: "nav.scans", min: "USER" },
+    { to: "/schedules", icon: <CalendarClock size={22} />, label: "nav.schedules", min: "USER" },
+    { to: "/targets", icon: <Network size={22} />, label: "nav.targets", min: "USER" },
+    { to: "/policies", icon: <SlidersHorizontal size={22} />, label: "nav.policies", min: "USER" },
   ] },
-  { heading: "nav.section.results", items: [{ to: "/reports", icon: <FileText size={18} />, label: "nav.reports", min: "AUDITOR" }] },
-  { heading: "nav.section.admin", items: [{ to: "/admin", icon: <ShieldCheck size={18} />, label: "nav.admin", min: "ADMIN" }] },
+  { heading: "nav.section.results", items: [{ to: "/reports", icon: <FileText size={22} />, label: "nav.reports", min: "AUDITOR" }] },
+  { heading: "nav.section.admin", items: [{ to: "/admin", icon: <ShieldCheck size={22} />, label: "nav.admin", min: "ADMIN" }] },
 ];
 const ALL = SECTIONS.flatMap((s) => s.items).concat([{ to: "/preferences", icon: null, label: "nav.preferences", min: "AUDITOR" }]);
 
@@ -46,18 +46,16 @@ export default function Shell() {
           <div><span>TLS Scan</span><small>{t("brand.tagline")}</small></div>
         </div>
         <nav aria-label="Main">
-          {SECTIONS.map((section) => {
-            const items = section.items.filter((i) => atLeast(i.min));
-            if (!items.length) return null;
-            return (
-              <div key={section.heading} className="nav-group" style={{ "--nav-links": items.length } as CSSProperties}>
+          {SECTIONS.map((section) => ({ ...section, items: section.items.filter((i) => atLeast(i.min)) })).filter((section) => section.items.length).map((section) => (
+            <Fragment key={section.heading}>
+              <div className="nav-group">
                 <div className="nav-heading">{t(section.heading)}</div>
-                {items.map((i) => (
+                {section.items.map((i) => (
                   <NavLink key={i.to} to={i.to} end={i.to === "/"} onClick={close} className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>{i.icon}<span>{t(i.label)}</span></NavLink>
                 ))}
               </div>
-            );
-          })}
+            </Fragment>
+          ))}
         </nav>
         <div className="sidebar-footer">
           <strong><ShieldCheck size={13} aria-hidden="true" /> LCIT Cybersecurity</strong>

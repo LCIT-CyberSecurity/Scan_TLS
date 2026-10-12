@@ -24,8 +24,10 @@ function FilterPopover({ anchor, options, selected, onChange, onClose }: { ancho
   const { t } = useI18n();
   const [q, setQ] = useState("");
   const ref = useRef<HTMLDivElement>(null);
+  // the page is drawn with CSS zoom (--ui-zoom): rectangles come in window pixels, fixed positions are in zoomed ones
+  const zoom = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--ui-zoom")) || 1;
   const rect = anchor.getBoundingClientRect();
-  const left = Math.max(8, Math.min(rect.left, window.innerWidth - 268));
+  const left = Math.max(8, Math.min(rect.left / zoom, window.innerWidth / zoom - 268));
   useEffect(() => {
     const down = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node) && !anchor.contains(e.target as Node)) onClose(); };
     const key = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -35,7 +37,7 @@ function FilterPopover({ anchor, options, selected, onChange, onClose }: { ancho
   const shown = options.filter((o) => o.toLowerCase().includes(q.toLowerCase()));
   const toggle = (o: string) => { const next = new Set(selected); if (next.has(o)) next.delete(o); else next.add(o); onChange(next); };
   return createPortal(
-    <div ref={ref} className="filter-pop" role="dialog" style={{ top: rect.bottom + 6, left }}>
+    <div ref={ref} className="filter-pop" role="dialog" style={{ top: rect.bottom / zoom + 6, left }}>
       <input autoFocus type="search" className="compact" placeholder={t("action.search")} aria-label={t("action.search")} value={q} onChange={(e) => setQ(e.target.value)} />
       <div className="filter-pop__list">
         {shown.map((o) => <label key={o}><input type="checkbox" checked={selected.has(o)} onChange={() => toggle(o)} /><span>{o || "—"}</span></label>)}

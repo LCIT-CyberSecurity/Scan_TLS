@@ -19,7 +19,7 @@ from tls_scan_app.models import (
 )
 from tls_scan_app.models.scan import ACTIVE_STATUSES, FINAL_STATUSES
 from tls_scan_app.models.user import role_at_least
-from tls_scan_app.services import audit, comparison, results, runs
+from tls_scan_app.services import audit, comparison, dashboard as dashboard_service, results, runs
 from tls_scan_app.services.schedule_calc import ScheduleError, next_after, validate
 
 router = APIRouter(prefix="/api", tags=["runs"])
@@ -241,7 +241,7 @@ def delete_schedule(schedule_id: uuid.UUID, db: DbSession = Depends(get_db), use
 
 # ---------- dashboard ----------
 @router.get("/dashboard")
-def dashboard(tag: str | None = None, si: uuid.UUID | None = None, scope: str = "mine", db: DbSession = Depends(get_db),
+def dashboard(tag: str | None = None, si: uuid.UUID | None = None, scope: str = "mine", trend_definition: uuid.UUID | None = None, db: DbSession = Depends(get_db),
               user: User = Depends(auditor)) -> dict:
     stmt = select(ScanRun)
     if scope == "mine" or not role_at_least(user.role, Role.OPERATOR):
@@ -251,10 +251,10 @@ def dashboard(tag: str | None = None, si: uuid.UUID | None = None, scope: str = 
         stmt = stmt.where(ScanRun.definition_id.in_(allowed))
     recent = db.execute(stmt.order_by(ScanRun.queued_at.desc()).limit(10)).scalars().all()
     counts = dict(db.execute(select(ScanRun.status, func.count()).where(ScanRun.id.in_(stmt.with_only_columns(ScanRun.id).order_by(None))).group_by(ScanRun.status)).all())
-    finished = db.execute(stmt.where(ScanRun.status.in_(("completed", "partial")), ScanRun.summary.is_not(None)).order_by(ScanRun.finished_at.desc()).limit(20)).scalars().all()
+    finished = db.execute(stmt.where(ScanRun.status.in_(("completed", "partial")), ScanRun.summary.is_not(None)).order_by(ScanRun.finished_at.desc()).limit(200)).scalars().all()
     trend = [{"run_id": str(r.id), "name": r.name, "finished_at": r.finished_at,
               "compliant": (r.summary or {}).get("compliant_endpoints", 0), "non_compliant": (r.summary or {}).get("non_compliant_endpoints", 0)}
-             for r in reversed(finished)]
+             for r in reversed(finished[:20])]
     upcoming = db.execute(select(ScanSchedule).where(ScanSchedule.active.is_(True), ScanSchedule.owner_id == user.id).order_by(ScanSchedule.next_run_at).limit(5)).scalars().all()
-    return {"counts": counts, "recent": [run_out(r) for r in recent], "compliance_trend": trend,
+    return {"counts": counts, "posture": dashboard_service.posture(db, finished), "trend": dashboard_service.trend(db, finished, trend_definition), "recent": [run_out(r) for r in recent], "compliance_trend": trend,
             "upcoming": [schedule_out(db, s) for s in upcoming]}

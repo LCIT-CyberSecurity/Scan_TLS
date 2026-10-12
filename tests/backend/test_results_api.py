@@ -290,3 +290,15 @@ def test_behind_nginx():
     assert login.get("/swagger/swagger-ui-bundle.js").status_code == 200
     assert login.get("/swagger/openapi.json").json()["paths"]
     assert login.get("/api/results").status_code == 200 and login.get("/").text.lower().count("<div id=\"root\"") == 1
+
+
+def test_dashboard_posture_follows_the_scope_of_the_caller(run, user, user2, operator):
+    mine = user.get("/api/dashboard").json()
+    assert mine["posture"]["basis_run_ids"] and mine["posture"]["endpoints"]["total"] >= 1  # the basis is the latest finished run of each definition
+    assert mine["trend"]["points"] and all(p["rate"] is None or 0 <= p["rate"] <= 100 for p in mine["trend"]["points"])
+    other = user2.get("/api/dashboard").json()  # a user never sees the results of somebody else's scans
+    assert not set(mine["posture"]["basis_run_ids"]) & set(other["posture"]["basis_run_ids"])
+    assert not {p["run_id"] for p in mine["trend"]["points"]} & {p["run_id"] for p in other["trend"]["points"]}
+    everything = operator.get("/api/dashboard", params={"scope": "all"}).json()
+    assert set(mine["posture"]["basis_run_ids"]) <= set(everything["posture"]["basis_run_ids"])
+    assert user.get("/api/dashboard", params={"trend_definition": str(uuid.uuid4())}).status_code == 200

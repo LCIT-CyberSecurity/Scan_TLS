@@ -212,7 +212,7 @@ export default function Targets() {
             <Select aria-label="SI" className="w-60" value={si} onChange={(e) => setSi(e.target.value)}><option value="">{t("filter.allSi")}</option>{systems.data?.map((s) => <option key={s.id} value={s.id}>{s.parent_id ? "↳ " : ""}{s.name}</option>)}</Select>
             <Select aria-label="Tag" className="w-40" value={tag} onChange={(e) => setTag(e.target.value)}><option value="">{t("filter.allTags")}</option>{tags.data?.map((x) => <option key={x.id} value={x.name}>{x.name}</option>)}</Select>
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} />{t("scans.onlyMine")}</label>
-            <div className="ml-auto flex gap-2">
+            <div className="ml-auto flex flex-wrap gap-2">
               <Button variant="outline" asChild><a href="/api/targets-export" download="targets.txt"><Download />{t("target.export")}</a></Button>
               {atLeast("OPERATOR") && <Button variant="outline" onClick={() => setDialog("discover")}><Radar />{t("discover.title")}</Button>}
               <Button variant="outline" onClick={() => setDialog("import")}><Upload />{t("target.import")}</Button>
