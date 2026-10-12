@@ -26,6 +26,7 @@ One historical field is aware of them: the list of *checks not performed* of an 
 | `starttls_ftp` | protocols | yes | FTP is confirmed and accepts `AUTH TLS`. |
 | `starttls_postgres` | protocols | yes | PostgreSQL answers the native `SSLRequest` and switches to TLS. |
 | `starttls_xmpp` | protocols | yes | XMPP (client-to-server) announces and accepts `STARTTLS`. |
+| `starttls_xmpp_server` | protocols | yes | XMPP server-to-server (port 5269) announces and accepts `STARTTLS`. |
 
 "Recommended" only means *pre-selected when a new profile is created in the WebUI*. Existing profiles and YAML files are never modified.
 
@@ -56,8 +57,9 @@ connecting by address would reject it too.
 and the stapled response is parsed and verified (status, certificate serial, freshness with a 5-minute tolerance, signature by the
 issuer or by a delegated OCSP-signing responder). Absence is confirmed by a second attempt after about 1.5 s because some servers
 (nginx, Apache) only staple once their cache is filled. Distinguished outcomes: absent, invalid/expired, revoked, unknown status,
-valid, not applicable (no OCSP URL), inconclusive. *Limit*: a TLS 1.3-only server staples inside the encrypted handshake; it is then
-read through `openssl s_client -status` and **the signature is not verified** (stated in the result).
+valid, not applicable (no OCSP URL), inconclusive. A TLS 1.3-only server staples inside the encrypted handshake: the decrypted
+Certificate message printed by `openssl s_client -msg` is parsed like the TLS 1.2 one and verified the same way, **signature included**.
+*Fallback*: if that transcript cannot be parsed, `openssl s_client -status` text is read instead and **the signature is then not verified** (stated in the result).
 
 **`tls_compression`** — A TLS ≤ 1.2 ClientHello offers DEFLATE and null; the compression method chosen in the ServerHello is read.
 `PASS` only if the server chose null. Nothing is ever compressed (no `openssl -comp`). Not applicable when TLS 1.3 is the only version.
@@ -142,7 +144,8 @@ everywhere without a secrets mechanism. A future extension would add an explicit
 | LDAP | 389 | one `ExtendedRequest` StartTLS (OID 1.3.6.1.4.1.1466.20037), result code read from the BER answer |
 | FTP | 21 | banner, `AUTH TLS` (reply 234); no login, no data connection, no transfer |
 | PostgreSQL | 5432 | the native 8-byte `SSLRequest`; the single-byte answer `S` / `N` / `E` is read (not a text STARTTLS) |
-| XMPP | 5222 | stream header (client-to-server `jabber:client` only), `<starttls/>` feature, `<proceed/>` |
+| XMPP | 5222 | stream header (client-to-server `jabber:client`), `<starttls/>` feature, `<proceed/>` |
+| XMPP server-to-server | 5269 | same dialogue on a `jabber:server` stream; no dialback, no stanza |
 | SMTP | 25, 587 | historical, always active, unchanged: `EHLO`, `STARTTLS` |
 
 Each adapter first **confirms the protocol from the server's own answers**, so a port number alone never proves a service: the result
@@ -157,8 +160,8 @@ standard one, or the ones in `ports`), every selected check — the lot 1 raw ha
 identity check and the certificate chain used by the trust/revocation controls — goes through the adapter, so they really run on the
 negotiated TLS channel. Without the protocol selected, those checks would be talking TLS to a plain-text service and end `INCONCLUSIVE`.
 Protocol checks **only exist on their own ports**: on any other endpoint they are skipped (no result row, no connection).
-Which endpoints are scanned at all still comes from Nmap, which negotiates STARTTLS on the standard ports by itself; for other ports use the
-`ports` option. A non-SMTP service with STARTTLS-only is not scanned over implicit TLS (993, 995, 636 ... are direct TLS and need no protocol check).
+Which endpoints are scanned at all still comes from Nmap, which negotiates STARTTLS on the standard client ports by itself; it does not discover
+XMPP server-to-server (5269) or non-standard ports, where the `ports` option only decides how a *discovered* endpoint is reached. A non-SMTP service with STARTTLS-only is not scanned over implicit TLS (993, 995, 636 ... are direct TLS and need no protocol check).
 
 ### Options (YAML and *Advanced options* of the profile form)
 
@@ -185,14 +188,19 @@ checks:
     starttls_ftp: true
     starttls_postgres: true
     starttls_xmpp: true
+    starttls_xmpp_server: true
 ```
 
 ### Testing and known gaps
 
-Validated on real TLS negotiations against nginx (OpenSSL 3.5), `openssl s_server` and the lab STARTTLS services
-(`tests/lab/starttls_server.py`: scripted application dialogues, then a **real** TLS handshake with the Python `ssl` module — they are
-not real IMAP/POP3/FTP/LDAP/PostgreSQL/XMPP servers). Real servers (Dovecot, vsftpd, OpenLDAP, PostgreSQL, ejabberd...) have not been
-used in the automated tests. XMPP server-to-server (5269), implicit TLS variants and the mTLS client-certificate flow are not covered.
+Validated on real TLS negotiations against nginx (OpenSSL 3.5), `openssl s_server`, the lab STARTTLS services
+(`tests/lab/starttls_server.py`: scripted application dialogues, then a real TLS handshake, including the misbehaving variants) **and genuine
+daemons**: `tests/regression/real-servers.sh` starts Postfix (SMTP), Dovecot (IMAP, POP3), vsftpd (FTP), OpenLDAP (LDAP), PostgreSQL
+and Prosody (XMPP client-to-server and server-to-server) on their standard ports and requires every protocol check to end `PASS` on a TLS
+channel negotiated by the adapter, with the other checks run through it. Observed with them, as expected from an external probe:
+Dovecot issues tickets but a new connection often lands on another login process, so resumption is reported `refused` (hence the caveat about
+other back-ends), and PostgreSQL issues no TLS 1.3 ticket (`session_tickets` stays `INCONCLUSIVE` after the wait). Implicit TLS variants and the
+mTLS client-certificate flow are not covered (see `client_auth`).
 
 ## Execution and safety
 

@@ -110,7 +110,7 @@ CHECK_LABELS = {
     EARLY_DATA_ID: "TLS 1.3 early data (0-RTT)",
     CLIENT_AUTH_ID: "Client authentication (mTLS)",
     "starttls_imap": "IMAP STARTTLS", "starttls_pop3": "POP3 STLS", "starttls_ldap": "LDAP StartTLS",
-    "starttls_ftp": "FTP AUTH TLS", "starttls_postgres": "PostgreSQL SSLRequest", "starttls_xmpp": "XMPP STARTTLS",
+    "starttls_ftp": "FTP AUTH TLS", "starttls_postgres": "PostgreSQL SSLRequest", "starttls_xmpp": "XMPP STARTTLS", "starttls_xmpp_server": "XMPP server-to-server STARTTLS",
 }
 
 

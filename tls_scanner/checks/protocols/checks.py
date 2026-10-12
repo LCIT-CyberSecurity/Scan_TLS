@@ -43,25 +43,26 @@ def _tls_after_upgrade(context: CheckContext, sock: socket.socket) -> tuple[dict
 
 def make_check(protocol: str) -> CheckFunction:
     identifier = check_id(protocol)
+    name = protocol.replace("_", " ").upper()
 
     def run(context: CheckContext) -> CheckResult:
         configured = bool(context.option("ports"))
         base = {"protocol": protocol, "port": context.port, "assumed_by": "configured ports" if configured else "standard port", "standard_ports": list(STANDARD_PORTS[protocol])}
         sock, upgrade, error = open_channel(context)
         if sock is None and upgrade is None:
-            return result(identifier, INCONCLUSIVE, f"{protocol.upper()} STARTTLS could not be examined ({error}).", {**base, "confirmed": False})
+            return result(identifier, INCONCLUSIVE, f"{name} STARTTLS could not be examined ({error}).", {**base, "confirmed": False})
         if sock is None:
             observations = {**base, "confirmed": upgrade.confirmed, "advertised": upgrade.advertised, "upgraded": False, "detail": upgrade.detail}
             evidence = [f"{protocol}: {upgrade.status}" + (f" ({upgrade.detail})" if upgrade.detail else "")]
             if upgrade.status == NOT_PROTOCOL:
-                return result(identifier, NOT_APPLICABLE, f"The service on this port does not answer like {protocol.upper()}: the protocol was assumed from the port and could not be confirmed.", observations, evidence)
+                return result(identifier, NOT_APPLICABLE, f"The service on this port does not answer like {name}: the protocol was assumed from the port and could not be confirmed.", observations, evidence)
             if upgrade.status in (NOT_OFFERED, REFUSED):
-                return result(identifier, FAIL, f"{protocol.upper()} was confirmed but the server did not switch to TLS ({upgrade.detail or upgrade.status}); the connection stays in clear text.", observations, evidence)
-            return result(identifier, INCONCLUSIVE, f"The {protocol.upper()} STARTTLS exchange did not complete ({upgrade.detail or ERROR}).", observations, evidence)
+                return result(identifier, FAIL, f"{name} was confirmed but the server did not switch to TLS ({upgrade.detail or upgrade.status}); the connection stays in clear text.", observations, evidence)
+            return result(identifier, INCONCLUSIVE, f"The {name} STARTTLS exchange did not complete ({upgrade.detail or ERROR}).", observations, evidence)
         details, failure = _tls_after_upgrade(context, sock)
         observations = {**base, "confirmed": True, "advertised": upgrade.advertised, "upgraded": True, **details}
         if failure:
             return result(identifier, INCONCLUSIVE, f"The server agreed to STARTTLS but the TLS handshake failed ({failure}).", observations)
-        return result(identifier, PASS, f"{protocol.upper()} confirmed and switched to TLS with STARTTLS ({details['tls_version']}).", observations, [f"{protocol}: upgraded, {details['tls_version']}"])
+        return result(identifier, PASS, f"{name} confirmed and switched to TLS with STARTTLS ({details['tls_version']}).", observations, [f"{protocol}: upgraded, {details['tls_version']}"])
 
     return run

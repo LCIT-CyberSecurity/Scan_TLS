@@ -93,6 +93,8 @@ def run_s_client(context: CheckContext, extra_args: list[str], server_name: str 
     command = ["openssl", "s_client", "-connect", format_endpoint(context.host, context.port)]
     if context.starttls:
         command.extend(["-starttls", S_CLIENT_NAMES.get(context.starttls, context.starttls)])
+        if context.starttls.startswith("xmpp"):  # the stream's `to` attribute: the virtual host, not the address
+            command.extend(["-name", safe_sni_name(server_name if server_name is not None else (context.sni or "")) or context.host])
     name = safe_sni_name(server_name if server_name is not None else (context.sni or ""))
     if name:
         command.extend(["-servername", name])

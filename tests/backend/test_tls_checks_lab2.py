@@ -114,7 +114,7 @@ def test_required_client_certificate_is_demonstrated(version_flag, versions):
 
 # --- STARTTLS protocols -------------------------------------------------------------------------
 
-UPGRADES = {8471: "imap", 8472: "pop3", 8473: "ftp", 8474: "ldap", 8475: "postgres", 8476: "xmpp"}
+UPGRADES = {8471: "imap", 8472: "pop3", 8473: "ftp", 8474: "ldap", 8475: "postgres", 8476: "xmpp", 8486: "xmpp_server"}
 
 
 @pytest.mark.parametrize("port, protocol", UPGRADES.items())

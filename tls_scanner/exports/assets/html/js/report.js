@@ -891,7 +891,7 @@
     hostname_san:'FQDN / SAN identity', ocsp_stapling:'OCSP stapling', tls_compression:'TLS compression', renegotiation:'Renegotiation',
     fallback_scsv:'TLS_FALLBACK_SCSV', extended_master_secret:'Extended Master Secret', ecdhe_groups:'ECDHE groups', ffdhe_groups:'FFDHE / DH parameters',
     session_resumption:'TLS session resumption', session_tickets:'TLS session tickets', early_data:'TLS 1.3 early data (0-RTT)', client_auth:'Client authentication (mTLS)',
-    starttls_imap:'IMAP STARTTLS', starttls_pop3:'POP3 STLS', starttls_ldap:'LDAP StartTLS', starttls_ftp:'FTP AUTH TLS', starttls_postgres:'PostgreSQL SSLRequest', starttls_xmpp:'XMPP STARTTLS',
+    starttls_imap:'IMAP STARTTLS', starttls_pop3:'POP3 STLS', starttls_ldap:'LDAP StartTLS', starttls_ftp:'FTP AUTH TLS', starttls_postgres:'PostgreSQL SSLRequest', starttls_xmpp:'XMPP STARTTLS', starttls_xmpp_server:'XMPP server-to-server STARTTLS',
   };
 
   function tlsCheckObservations(observations){

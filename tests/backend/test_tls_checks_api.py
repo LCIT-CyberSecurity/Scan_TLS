@@ -9,7 +9,7 @@ import pytest
 from conftest import LAB, PROFILE, make_definition, wait_final
 
 CHECK_IDS = ["hostname_san", "ocsp_stapling", "tls_compression", "renegotiation", "fallback_scsv", "extended_master_secret", "ecdhe_groups", "ffdhe_groups",
-             "session_resumption", "session_tickets", "early_data", "client_auth", *(f"starttls_{p}" for p in ("imap", "pop3", "ldap", "ftp", "postgres", "xmpp"))]
+             "session_resumption", "session_tickets", "early_data", "client_auth", *(f"starttls_{p}" for p in ("imap", "pop3", "ldap", "ftp", "postgres", "xmpp", "xmpp_server"))]
 TLS = {check: {"enabled": True} for check in CHECK_IDS}
 
 
@@ -39,7 +39,7 @@ def test_catalogue_lists_only_implemented_checks(user):
     assert [i["id"] for i in items] == CHECK_IDS
     assert {i["family"] for i in items} == {"identity", "handshake", "groups", "sessions", "authentication", "protocols"}
     assert {i["id"] for i in items if i["recommended"]} == {"hostname_san", "ocsp_stapling", "tls_compression", "renegotiation", "fallback_scsv", "extended_master_secret",
-                                                            "session_resumption", "session_tickets", "early_data", "client_auth", *(f"starttls_{p}" for p in ("imap", "pop3", "ldap", "ftp", "postgres", "xmpp"))}
+                                                            "session_resumption", "session_tickets", "early_data", "client_auth", *(f"starttls_{p}" for p in ("imap", "pop3", "ldap", "ftp", "postgres", "xmpp", "xmpp_server"))}
     assert next(i for i in items if i["id"] == "early_data")["options"][0]["name"] == "probe"
 
 

@@ -29,6 +29,7 @@ x-all-checks: &all_checks
     starttls_ftp: true
     starttls_postgres: true
     starttls_xmpp: true
+    starttls_xmpp_server: true
 reports:
   - name: lab_plain
     run_by_default: false
@@ -60,6 +61,6 @@ reports:
     run_by_default: false
     frequency: manual
     target_groups: [lab]
-    scan: {ports: "143,110,21,389,5432,5222"}
+    scan: {ports: "143,110,21,389,5432,5222"}  # XMPP server-to-server (5269) is not discovered by Nmap: covered by the check-level tests
     encryption_policies: {mode: strict_all, names: [anssi_encryption_policy]}
     checks: *all_checks

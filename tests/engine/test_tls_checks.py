@@ -339,6 +339,63 @@ class StaplingMessageTests(unittest.TestCase):
         self.assertIsNone(stapling.staple_from_status_message(b"\x01"))
 
 
+def tls13_certificate_dump(chain, staple=None) -> str:
+    """The `openssl s_client -msg` rendering of a TLS 1.3 Certificate message (leaf entry may carry a status_request extension)."""
+    entries = b""
+    for index, cert in enumerate(chain):
+        der = cert.public_bytes(serialization.Encoding.DER)
+        extensions = b""
+        if index == 0 and staple is not None:
+            status = b"\x01" + len(staple).to_bytes(3, "big") + staple
+            extensions = (5).to_bytes(2, "big") + len(status).to_bytes(2, "big") + status
+        entries += len(der).to_bytes(3, "big") + der + len(extensions).to_bytes(2, "big") + extensions
+    body = b"\x00" + len(entries).to_bytes(3, "big") + entries
+    message = b"\x0b" + len(body).to_bytes(3, "big") + body
+    rows = ["    " + " ".join(f"{b:02x}" for b in message[i:i + 16]) for i in range(0, len(message), 16)]
+    return "<<< TLS 1.3, Handshake [length %04x], Certificate\n" % (len(message) - 4) + "\n".join(rows) + "\n<<< TLS 1.3, Handshake [length 0104], CertificateVerify\n    0f 00 01 04\n"
+
+
+class Tls13MessageTests(unittest.TestCase):
+    def setUp(self):
+        self.ca, self.ca_key, self.leaf = make_pki()
+
+    def run_check(self, dump):
+        output = SClientOutput(dump + "Cipher is TLS_AES_256_GCM_SHA384\n", 0)
+        with patch.object(stapling, "_raw_tls12_staple", lambda c: ("no_tls12", [], None, "alert 70")), patch.object(stapling, "run_s_client", lambda *a, **k: output):
+            return stapling.check_ocsp_stapling(ctx(observed_versions=("TLSv1.3",)))
+
+    def test_message_is_parsed_into_chain_and_staple(self):
+        der = make_ocsp(self.leaf, self.ca, self.ca, self.ca_key)
+        chain, staple = stapling.parse_tls13_certificate_message(tls13_certificate_dump([self.leaf, self.ca], der))
+        self.assertEqual([c.serial_number for c in chain], [self.leaf.serial_number, self.ca.serial_number])
+        self.assertEqual(staple, der)
+        self.assertIsNone(stapling.parse_tls13_certificate_message(tls13_certificate_dump([self.leaf, self.ca]))[1])
+
+    def test_garbage_and_other_messages_are_not_parsed(self):
+        self.assertIsNone(stapling.parse_tls13_certificate_message("nothing here"))
+        self.assertIsNone(stapling.parse_tls13_certificate_message("<<< TLS 1.3, Handshake [length 0004], CertificateRequest\n    0d 00 00 00\n"))
+        self.assertIsNone(stapling.parse_tls13_certificate_message("<<< TLS 1.3, Handshake [length 0009], Certificate\n    0b 00 00 09 00 ff ff ff 01 02\n"))
+
+    def test_signature_is_now_verified_for_tls13(self):
+        outcome = self.run_check(tls13_certificate_dump([self.leaf, self.ca], make_ocsp(self.leaf, self.ca, self.ca, self.ca_key)))
+        self.assertEqual(outcome.status, PASS)
+        self.assertTrue(outcome.observations["signature_verified"])
+        self.assertEqual(outcome.observations["tls_version"], "TLSv1.3")
+
+    def test_revoked_and_forged_staples_fail(self):
+        revoked = make_ocsp(self.leaf, self.ca, self.ca, self.ca_key, status=ocsp.OCSPCertStatus.REVOKED)
+        self.assertEqual(self.run_check(tls13_certificate_dump([self.leaf, self.ca], revoked)).observations["certificate_status"], "revoked")
+        other_ca, other_key = make_certificate(cn="Other CA")
+        forged = make_ocsp(self.leaf, self.ca, other_ca, other_key)
+        outcome = self.run_check(tls13_certificate_dump([self.leaf, self.ca], forged))
+        self.assertEqual((outcome.status, outcome.observations["reason"]), (FAIL, "bad_signature"))
+
+    def test_absent_staple_and_certificate_without_ocsp_url(self):
+        self.assertEqual(self.run_check(tls13_certificate_dump([self.leaf, self.ca])).status, FAIL)
+        bare, _ = make_certificate(sans=["lab"])
+        self.assertEqual(self.run_check(tls13_certificate_dump([bare])).status, NOT_APPLICABLE)
+
+
 class StaplingCheckTests(unittest.TestCase):
     def setUp(self):
         self.ca, self.ca_key, self.leaf = make_pki()

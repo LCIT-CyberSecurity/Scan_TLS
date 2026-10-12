@@ -22,7 +22,7 @@ SERVICES = {
     8485: ("imap", "refused"),
     # standard ports (the container runs as root): the whole scan pipeline, Nmap included, sees them as the real services
     25: ("smtp", "ok"), 587: ("smtp", "ok"), 143: ("imap", "ok"), 110: ("pop3", "ok"), 21: ("ftp", "ok"),
-    389: ("ldap", "ok"), 5432: ("postgres", "ok"), 5222: ("xmpp", "ok"),
+    389: ("ldap", "ok"), 5432: ("postgres", "ok"), 5222: ("xmpp", "ok"), 5269: ("xmpp", "server"), 8486: ("xmpp", "server"),
 }
 
 
@@ -158,14 +158,18 @@ def postgres(s, variant):
 
 
 def xmpp(s, variant):
+    server_to_server = variant == "server"
     while b">" not in s.buffer:
         chunk = s.conn.recv(1024)
         if not chunk:
             return
         s.buffer += chunk
+    expected = b"jabber:server" if server_to_server else b"jabber:client"
+    if expected not in s.buffer:
+        return s.send("<stream:error><invalid-namespace xmlns='urn:ietf:params:xml:ns:xmpp-streams'/></stream:error>")
     log(s.port, "<- stream header")
     feature = "" if variant == "no_starttls" else "<starttls xmlns='urn:ietf:params:xml:ns:xmpp-tls'><required/></starttls>"
-    s.send(f"<?xml version='1.0'?><stream:stream from='lab' id='1' version='1.0' xmlns='jabber:client' xmlns:stream='http://etherx.jabber.org/streams'><stream:features>{feature}</stream:features>")
+    s.send(f"<?xml version='1.0'?><stream:stream from='lab' id='1' version='1.0' xmlns='{'jabber:server' if server_to_server else 'jabber:client'}' xmlns:stream='http://etherx.jabber.org/streams'><stream:features>{feature}</stream:features>")
     s.buffer = b""
     while b"/>" not in s.buffer:
         chunk = s.conn.recv(1024)

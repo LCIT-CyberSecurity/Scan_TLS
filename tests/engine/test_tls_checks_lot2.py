@@ -251,6 +251,13 @@ class XmppTests(unittest.TestCase):
         self.assertEqual(outcome.status, UPGRADED)
         self.assertNotIn(b"<x/>", received.split(b"xmlns='jabber:client'")[0])
 
+    def test_server_to_server_stream_uses_its_own_namespace(self):
+        outcome, received = upgrade("xmpp_server", self.play(b"<starttls xmlns='urn:ietf:params:xml:ns:xmpp-tls'/>"))
+        self.assertEqual((outcome.status, outcome.protocol), (UPGRADED, "xmpp_server"))
+        self.assertIn(b"xmlns='jabber:server'", received)
+        self.assertNotIn(b"jabber:client", received)
+        self.assertNotIn(b"dialback", received)
+
     def test_no_starttls_feature_failure_and_not_xmpp(self):
         self.assertEqual(upgrade("xmpp", self.play(b""))[0].status, NOT_OFFERED)
         failing = self.play(b"<starttls xmlns='urn:ietf:params:xml:ns:xmpp-tls'/>", b"<failure xmlns='urn:ietf:params:xml:ns:xmpp-tls'/>")

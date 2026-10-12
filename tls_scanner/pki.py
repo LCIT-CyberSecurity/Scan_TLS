@@ -251,8 +251,8 @@ def collect_peer_certificate_chain(host: str, port: int | str, fqdn: str = "", t
     if starttls_protocol is None:
         starttls_protocol = starttls_protocol_for_port(port)
     if starttls_protocol:
-        command.extend(["-starttls", starttls_protocol])
-        if starttls_protocol == "xmpp":
+        command.extend(["-starttls", starttls_protocol.replace("_", "-")])  # xmpp_server -> xmpp-server
+        if starttls_protocol.startswith("xmpp"):
             command.extend(["-name", fqdn or host])
     server_name = safe_sni_name(fqdn or host)
     if server_name:

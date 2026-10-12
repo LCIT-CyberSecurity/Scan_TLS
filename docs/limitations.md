@@ -37,8 +37,8 @@ IMAP/POP3/LDAP/FTP/PostgreSQL/XMPP STARTTLS ([reference](user/tls-checks.md)). K
 * **Not graded**: results are shown next to the findings; the historical grade, compliance status, CSV and CBOM are not modified. Taking them
   into the grade needs an explicit, tested decision (later lot).
 * Group checks prove *accepted* groups with one-group offers; they are not a complete inventory (no legacy curves, no hybrid ML-KEM here).
-* TLS 1.3-only servers: the stapled OCSP signature is not verified (text output of `openssl`), and compression / renegotiation / EMS /
-  SCSV are `NOT_APPLICABLE`.
+* TLS 1.3-only servers: the stapled OCSP response is read from the decrypted Certificate message and fully verified; only if that transcript cannot be
+  parsed does the text fallback apply (signature then not verified, and stated). Compression / renegotiation / EMS / SCSV are `NOT_APPLICABLE`.
 * Raw-handshake checks (compression, renegotiation, SCSV, EMS, stapling on TLS ≤ 1.2) support direct TLS, SMTP and the opt-in STARTTLS protocols
   (only when the `starttls_*` check of the port is selected; otherwise the service is not speaking TLS and the result is `INCONCLUSIVE`). SSLv3 / TLS 1.0 specific probing is not done (SCSV may choose TLS 1.1 or 1.2 as the downgraded version).
 * The client-initiated renegotiation test depends on `openssl s_client` behaviour and can be `undetermined`.
@@ -49,8 +49,9 @@ IMAP/POP3/LDAP/FTP/PostgreSQL/XMPP STARTTLS ([reference](user/tls-checks.md)). K
   information (replay exposure), never graded.
 * mTLS: no client certificate is supported (nothing secret is read or stored). A completed handshake does not prove the application does not authenticate users;
   a failed one does not prove mTLS by itself.
-* STARTTLS adapters speak the minimum dialogue and are validated against scripted lab services with real TLS behind them, not against Dovecot, vsftpd, OpenLDAP,
-  PostgreSQL or ejabberd. XMPP covers the client-to-server stream only. Which endpoints are scanned still comes from Nmap.
+* STARTTLS adapters speak the minimum dialogue. They are validated against scripted lab services and against Postfix, Dovecot, vsftpd, OpenLDAP, PostgreSQL and Prosody
+  (`tests/regression/real-servers.sh`); other implementations (ejabberd, Exim, Cyrus, ProFTPD...) have not been tried. XMPP is covered on the client-to-server and server-to-server
+  streams (no dialback). Which endpoints are scanned still comes from Nmap, which is the discovery engine and is not replaced: for non-standard ports use the `ports` option.
 * Heartbleed, ROBOT, CCS injection and the decision to grade these results do not exist yet (lot 3) and are not offered anywhere.
 
 ## Engine changes (the only modifications to `tls_scanner/`)

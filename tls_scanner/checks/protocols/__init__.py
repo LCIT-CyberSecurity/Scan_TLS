@@ -23,9 +23,10 @@ ADAPTERS: dict[str, Callable[[Wire, str], Upgrade]] = {
     ftp.PROTOCOL: ftp.upgrade,
     postgres.PROTOCOL: postgres.upgrade,
     xmpp.PROTOCOL: xmpp.upgrade,
+    xmpp.PROTOCOL_SERVER: xmpp.upgrade_server,
 }
 # Opt-in protocols of the lot 2 (SMTP is historical and always active on its ports).
-OPT_IN_PROTOCOLS = ("imap", "pop3", "ldap", "ftp", "postgres", "xmpp")
+OPT_IN_PROTOCOLS = ("imap", "pop3", "ldap", "ftp", "postgres", "xmpp", "xmpp_server")
 STANDARD_PORTS: dict[str, tuple[int, ...]] = {
     "smtp": (25, 587),
     "imap": (143,),
@@ -34,9 +35,10 @@ STANDARD_PORTS: dict[str, tuple[int, ...]] = {
     "ftp": (21,),
     "postgres": (5432,),
     "xmpp": (5222,),
+    "xmpp_server": (5269,),
 }
 # `openssl s_client -starttls` names, for the checks that rely on s_client
-S_CLIENT_NAMES = {"smtp": "smtp", "imap": "imap", "pop3": "pop3", "ldap": "ldap", "ftp": "ftp", "postgres": "postgres", "xmpp": "xmpp"}
+S_CLIENT_NAMES = {"smtp": "smtp", "imap": "imap", "pop3": "pop3", "ldap": "ldap", "ftp": "ftp", "postgres": "postgres", "xmpp": "xmpp", "xmpp_server": "xmpp-server"}
 
 
 def negotiate(protocol: str, sock: socket.socket, deadline: float, server_name: str = "", cancelled: Callable[[], bool] = lambda: False) -> Upgrade:

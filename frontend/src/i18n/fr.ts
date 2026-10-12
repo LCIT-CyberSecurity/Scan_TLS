@@ -219,6 +219,8 @@ export const fr: Messages = {
   "tls.check.starttls_postgres.desc": "Le serveur répond au SSLRequest natif et passe en TLS.",
   "tls.check.starttls_xmpp": "XMPP STARTTLS",
   "tls.check.starttls_xmpp.desc": "Le serveur annonce et accepte STARTTLS sur le flux client-serveur.",
+  "tls.check.starttls_xmpp_server": "XMPP STARTTLS serveur à serveur",
+  "tls.check.starttls_xmpp_server.desc": "Le serveur annonce et accepte STARTTLS sur le flux serveur-serveur (port 5269).",
   "tls.opt.advanced": "Options avancées",
   "tls.opt.attempts": "Tentatives de reprise",
   "tls.opt.ticket_wait_seconds": "Attente du ticket (s)",

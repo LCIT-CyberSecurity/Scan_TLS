@@ -318,7 +318,7 @@ checks:
     session_tickets: true
     early_data: { enabled: true, probe: false }          # probe: true sends an empty line as early data
     client_auth: true                                    # no client certificate is ever used
-    starttls_imap: { enabled: true, ports: [143] }       # also starttls_pop3, _ldap, _ftp, _postgres, _xmpp
+    starttls_imap: { enabled: true, ports: [143] }       # also starttls_pop3, _ldap, _ftp, _postgres, _xmpp, _xmpp_server
 ```
 
 Each result is `PASS`, `FAIL`, `NOT_APPLICABLE`, `NOT_TESTED`, `INCONCLUSIVE` or `ERROR`; the last three mean *unknown*, never *passed*.

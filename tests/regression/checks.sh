@@ -11,7 +11,11 @@ docker network create tlsscan-regress2 >/dev/null
 # KEEP=1 keeps .regression-checks (the exports of every scan) for inspection
 trap 'docker rm -f regress2-lab >/dev/null 2>&1; docker network rm tlsscan-regress2 >/dev/null 2>&1; [ -n "${KEEP:-}" ] || docker run --rm -v $PWD:/w alpine rm -rf /w/.regression-checks' EXIT
 docker run -d --rm --name regress2-lab --network tlsscan-regress2 --network-alias lab-tls tlsscan-lab >/dev/null
-sleep 4
+# wait until the lab really answers (a fixed sleep could let the first scan race the services)
+for _ in $(seq 1 40); do
+  docker run --rm --network tlsscan-regress2 tlsscan-regression python -c "import socket; [socket.create_connection(('lab-tls', p), 2).close() for p in (443, 587, 143, 5269, 8460)]" >/dev/null 2>&1 && break
+  sleep 1
+done
 rm -rf .regression-checks; mkdir -p .regression-checks/plain .regression-checks/checks .regression-checks/smtp_plain .regression-checks/smtp_checks .regression-checks/starttls; chmod 777 .regression-checks/*
 run() { # run <report> <outdir>
   docker run --rm --network tlsscan-regress2 -u $(id -u):$(id -g) -e HOME=/tmp -v "$PWD:/app" -v "$PWD/tests/regression/config:/app/config:ro" \
@@ -63,7 +67,7 @@ for plain_kind, plain, checks_kind, checked, label in (("plain", "lab_plain", "c
 starttls = section_of(read("starttls", "starttls_checks", "markdown/starttls_checks.md"))
 text = starttls.group(0) if starttls else ""
 for check in ("starttls_imap", "starttls_pop3", "starttls_ldap", "starttls_ftp", "starttls_postgres", "starttls_xmpp"):
-    label = {"starttls_imap": "IMAP STARTTLS", "starttls_pop3": "POP3 STLS", "starttls_ldap": "LDAP StartTLS", "starttls_ftp": "FTP AUTH TLS", "starttls_postgres": "PostgreSQL SSLRequest", "starttls_xmpp": "XMPP STARTTLS"}[check]
+    label = {"starttls_imap": "IMAP STARTTLS", "starttls_pop3": "POP3 STLS", "starttls_ldap": "LDAP StartTLS", "starttls_ftp": "FTP AUTH TLS", "starttls_postgres": "PostgreSQL SSLRequest", "starttls_xmpp": "XMPP STARTTLS", "starttls_xmpp_server": "XMPP server-to-server STARTTLS"}[check]
     ok = bool(re.search(r"\|[^\n]*" + re.escape(label) + r"[^\n]*\| PASS \|", text))
     print(("STARTTLS ok: " if ok else "STARTTLS MISSING: ") + label); fail |= not ok
 sys.exit(1 if fail else 0)

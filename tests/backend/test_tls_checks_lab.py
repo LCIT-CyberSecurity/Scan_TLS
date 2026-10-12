@@ -64,6 +64,15 @@ def test_certificate_without_ocsp_url_is_not_applicable():
     assert stapling.check_ocsp_stapling(lab(443, observed_versions=BOTH)).status == NOT_APPLICABLE
 
 
+def test_tls13_message_path_verifies_the_signature_of_the_staple():
+    kind, chain, der, _ = stapling._tls13_message_path(lab(8450))
+    assert kind == "present" and len(chain) >= 2
+    status, _, observations = stapling.evaluate_staple(der, chain[0], stapling._issuer_of(chain[0], chain))
+    assert status == PASS and observations["signature_verified"] is True and observations["certificate_status"] == "good"
+    kind, chain, der, _ = stapling._tls13_message_path(lab(8451))
+    assert stapling.evaluate_staple(der, chain[0], stapling._issuer_of(chain[0], chain))[0] == FAIL
+
+
 def test_tls13_text_path_reads_the_staple_but_does_not_claim_a_signature_check():
     kind, values, _ = stapling._tls13_status_text(lab(8450))
     assert kind == "present" and values["certificate_status"].lower() == "good"

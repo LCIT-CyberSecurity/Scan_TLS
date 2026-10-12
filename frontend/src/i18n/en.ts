@@ -218,6 +218,8 @@ export const en = {
   "tls.check.starttls_postgres.desc": "The server answers the native SSLRequest and switches to TLS.",
   "tls.check.starttls_xmpp": "XMPP STARTTLS",
   "tls.check.starttls_xmpp.desc": "The server announces and accepts STARTTLS on the client-to-server stream.",
+  "tls.check.starttls_xmpp_server": "XMPP server-to-server STARTTLS",
+  "tls.check.starttls_xmpp_server.desc": "The server announces and accepts STARTTLS on the server-to-server stream (port 5269).",
   "tls.opt.advanced": "Advanced options",
   "tls.opt.attempts": "Resumption attempts",
   "tls.opt.ticket_wait_seconds": "Ticket wait (s)",
