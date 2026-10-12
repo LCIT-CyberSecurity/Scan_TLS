@@ -47,7 +47,7 @@ export default function Dashboard() {
       </section>
       <section className="dash-section" aria-label={t("dash.section.activity")}>
         <h2 className="dash-heading">{t("dash.section.activity")}</h2>
-        <div className="metrics metrics--compact">
+        <div className="metrics">
           <Metric label={t("dash.running")} value={(counts.running ?? 0) + (counts.queued ?? 0)} icon={<Activity size={18} />} to="/scans" />
           <Metric label={t("dash.completed")} value={(counts.completed ?? 0) + (counts.partial ?? 0)} icon={<CheckCircle2 size={18} />} tone="green" to="/scans" />
           <Metric label={t("dash.failed")} value={(counts.failed ?? 0) + (counts.expired ?? 0)} icon={<XCircle size={18} />} tone="red" to="/scans" />
