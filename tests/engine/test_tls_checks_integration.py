@@ -124,9 +124,24 @@ class ReportTests(unittest.TestCase):
         for endpoint in enriched_dict["endpoints"]:
             self.assertEqual([c["check_id"] for c in endpoint.pop("complementary_checks")], ["hostname_san", "tls_compression"])
         self.assertEqual(enriched_dict["findings"], legacy_dict["findings"])
-        self.assertEqual(enriched_dict["statistics"], legacy_dict["statistics"])
+        enriched_stats, legacy_stats = enriched_dict["statistics"], legacy_dict["statistics"]
+        self.assertEqual(enriched_stats.pop("checks_not_tested") + 2 * len(enriched_dict["endpoints"]), legacy_stats.pop("checks_not_tested"))
+        self.assertEqual(enriched_stats, legacy_stats)
         self.assertEqual([e["overall_grade"] for e in enriched_dict["endpoints"]], [e["overall_grade"] for e in legacy_dict["endpoints"]])
+        for endpoint in enriched_dict["endpoints"]:  # the only intended difference: the identity check has settled name and SAN
+            self.assertNotIn("Hostname validation", endpoint["untested_checks"])
+            self.assertNotIn("SAN validation", endpoint["untested_checks"])
+            endpoint["untested_checks"] = ("Hostname validation", "SAN validation", *endpoint["untested_checks"])
         self.assertEqual(enriched_dict["endpoints"], legacy_dict["endpoints"])
+
+    def test_identity_check_only_clears_name_and_san_when_it_reached_a_verdict(self):
+        for status, cleared in ((PASS, True), (FAIL, True), ("INCONCLUSIVE", False), ("NOT_TESTED", False), ("ERROR", False), ("NOT_APPLICABLE", False)):
+            job = make_job(tls_checks=("hostname_san",))
+            with patch.object(scanner, "run_complementary_checks", return_value=fake_results(("hostname_san", status))):
+                results, _ = run_collect(job)
+            untested = report_model_to_dict(build_report_model(results, job, "2026-10-12T10:00:00+02:00"))["endpoints"][0]["untested_checks"]
+            self.assertEqual("Hostname validation" not in untested and "SAN validation" not in untested, cleared, status)
+            self.assertIn("Revocation status", untested)  # other entries are never touched
 
     def test_markdown_and_html_sections(self):
         model, _, _ = self.models(True)

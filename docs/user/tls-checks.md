@@ -4,6 +4,8 @@ Eight additional, non-destructive checks that enrich a scan. They are **opt-in**
 not mention them behaves exactly as before. Their results are shown **next to** the findings and never change the grade, the
 compliance status, the findings, the CSV or the CBOM.
 
+One historical field is aware of them: the list of *checks not performed* of an endpoint always contains "Hostname validation" and "SAN validation" (the historical engine never checks the name). When `hostname_san` ends with `PASS` or `FAIL`, those two entries are removed for that endpoint, since the verdict now exists; with any other status (`INCONCLUSIVE`, `NOT_TESTED`, `ERROR`, `NOT_APPLICABLE`) they stay.
+
 | Id | Family | Recommended | What it establishes |
 |---|---|---|---|
 | `hostname_san` | identity | yes | The certificate presented for the **requested name** covers it (SAN DNS or IP). |

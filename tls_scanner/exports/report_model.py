@@ -614,6 +614,8 @@ def build_report_model(
         cipher_suites = []
         endpoint_finding_ids: set[str] = set()
         untested_checks = ["Hostname validation", "SAN validation"]
+        if any(item.check_id == "hostname_san" and item.status in ("PASS", "FAIL") for item in job.tls_check_results.get(endpoint_id, ())):
+            untested_checks = []  # the complementary identity check established the verdict for the name and the SAN
         if certificate.chain_validation_status == "Not Tested":
             untested_checks.append("Trust chain validation")
         if certificate.revocation_status == REVOCATION_NOT_TESTED:
