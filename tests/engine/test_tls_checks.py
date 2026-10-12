@@ -388,7 +388,7 @@ class StaplingCheckTests(unittest.TestCase):
             self.assertEqual(stapling.check_ocsp_stapling(ctx()).status, INCONCLUSIVE)
 
     def test_unsupported_starttls_is_not_tested(self):
-        with patch.object(CheckContext, "starttls", "imap"):
+        with patch.object(CheckContext, "starttls", "irc"):
             self.assertEqual(stapling.check_ocsp_stapling(ctx()).status, NOT_TESTED)
 
 
@@ -676,7 +676,7 @@ class RawTransportTests(unittest.TestCase):
         self.assertEqual(reply.kind, "server_hello")
 
     def test_other_starttls_protocols_are_refused_explicitly(self):
-        with patch.object(CheckContext, "starttls", "imap"):
+        with patch.object(CheckContext, "starttls", "irc"):
             reply = transport.send_client_hello(ctx(host="127.0.0.1", port=1))
         self.assertIn("not supported", reply.error)
 
@@ -735,7 +735,7 @@ class CompressionTests(unittest.TestCase):
             self.assertEqual(handshake.check_tls_compression(ctx()).status, INCONCLUSIVE)
 
     def test_unsupported_starttls_is_not_tested(self):
-        with patch.object(CheckContext, "starttls", "imap"):
+        with patch.object(CheckContext, "starttls", "irc"):
             self.assertEqual(handshake.check_tls_compression(ctx()).status, NOT_TESTED)
 
 
@@ -906,11 +906,11 @@ class ConfigurationTests(unittest.TestCase):
     def test_historical_configuration_selects_nothing(self):
         for checks in (None, {}, {"certificate": {"enabled": True}}, {"tls": None}):
             with self.subTest(checks=checks):
-                self.assertEqual(self.parse(checks), ((), 10, 120))
+                self.assertEqual(self.parse(checks), ((), 10, 120, {}))
 
     def test_forms_boolean_and_mapping(self):
-        selected, timeout, budget = self.parse({"tls": {"fallback_scsv": True, "hostname_san": {"enabled": True}, "tls_compression": False, "timeout_seconds": 5, "time_budget_seconds": 60}})
-        self.assertEqual((selected, timeout, budget), (("hostname_san", "fallback_scsv"), 5, 60))
+        selected, timeout, budget, options = self.parse({"tls": {"fallback_scsv": True, "hostname_san": {"enabled": True}, "tls_compression": False, "timeout_seconds": 5, "time_budget_seconds": 60}})
+        self.assertEqual((selected, timeout, budget, options), (("hostname_san", "fallback_scsv"), 5, 60, {}))
 
     def test_unknown_check_and_invalid_values_are_rejected(self):
         for bad in ({"tls": {"heartbleed": True}}, {"tls": {"hostname_san": "yes"}}, {"tls": {"hostname_san": {"enabled": True, "x": 1}}},

@@ -22,6 +22,7 @@ from cryptography import x509
 from cryptography.x509 import ocsp
 
 from ..pki import extension_value, ocsp_urls, verify_ocsp_response_signature
+from .protocols import ADAPTERS, S_CLIENT_NAMES
 from .contracts import FAIL, INCONCLUSIVE, NOT_APPLICABLE, NOT_TESTED, PASS, CheckContext, CheckResult, result
 from .transport import (
     EXT_STATUS_REQUEST,
@@ -146,7 +147,7 @@ def _parse_openssl_time(text: str) -> datetime | None:
 
 
 def check_ocsp_stapling(context: CheckContext) -> CheckResult:
-    if context.starttls and context.starttls != "smtp":
+    if context.starttls and context.starttls not in ADAPTERS:
         return result(CHECK_ID, NOT_TESTED, f"STARTTLS {context.starttls} is not supported by this check")
     kind, chain, der, detail = _raw_tls12_staple(context)
     if kind == "absent":

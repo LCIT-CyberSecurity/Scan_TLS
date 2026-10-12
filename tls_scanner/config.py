@@ -375,19 +375,41 @@ def parse_checks_config(value):
     return (enabled, expires_within_days, trust_enabled, public_enabled, trust_stores, *revocation)
 
 
+def _parse_check_option(key, option, value):
+    name = f"checks.tls.{key}.{option.name}"
+    if option.kind == "bool":
+        if not isinstance(value, bool):
+            raise ConfigError(f"{name} must be a boolean")
+        return value
+    if option.kind == "int":
+        if not isinstance(value, int) or isinstance(value, bool) or not option.low <= value <= option.high:
+            raise ConfigError(f"{name} must be an integer between {option.low} and {option.high}")
+        return value
+    if option.kind == "ports":
+        if not isinstance(value, list) or not 1 <= len(value) <= 16 or len(set(value)) != len(value) or any(
+            not isinstance(port, int) or isinstance(port, bool) or not 1 <= port <= 65535 for port in value
+        ):
+            raise ConfigError(f"{name} must be a list of 1 to 16 distinct ports between 1 and 65535")
+        return list(value)
+    raise ConfigError(f"{name} has an unsupported kind")  # pragma: no cover - catalogue error
+
+
 def parse_tls_checks_config(checks_config):
     """`checks.tls`: complementary TLS checks. Absent section = nothing selected (historical behaviour).
 
-    Each check is `<id>: true|false` or `<id>: {enabled: true|false}`. Unknown ids are rejected so that
-    a typo can never silently skip a security check.
+    Each check is `<id>: true|false` or `<id>: {enabled: true|false, <option>: value}` where the options are
+    the ones the catalogue declares for that check. Unknown ids and options are rejected so that a typo can
+    never silently skip a security check. Returns (selected ids, timeout, budget, explicit options per check).
     """
-    from .checks.catalog import BUDGET_RANGE, CHECK_IDS, TIMEOUT_RANGE
+    from .checks.catalog import BUDGET_RANGE, CATALOG, CHECK_IDS, TIMEOUT_RANGE
     from .checks.contracts import DEFAULT_PROBE_TIMEOUT_SECONDS, DEFAULT_TIME_BUDGET_SECONDS
 
     section = require_mapping(require_mapping(checks_config, "checks").get("tls", {}), "checks.tls")
     settings = {"timeout_seconds": (DEFAULT_PROBE_TIMEOUT_SECONDS, TIMEOUT_RANGE), "time_budget_seconds": (DEFAULT_TIME_BUDGET_SECONDS, BUDGET_RANGE)}
+    specs = {spec.check_id: spec for spec in CATALOG}
     values = {}
     selected = []
+    check_options = {}
     for key, value in section.items():
         if key in settings:
             default, (low, high) = settings[key]
@@ -398,16 +420,22 @@ def parse_tls_checks_config(checks_config):
         if key not in CHECK_IDS:
             raise ConfigError(f"checks.tls.{key} is not a known check; available: {', '.join(CHECK_IDS)}")
         enabled = value.get("enabled", True) if isinstance(value, dict) else value
-        if isinstance(value, dict) and set(value) - {"enabled"}:
-            raise ConfigError(f"checks.tls.{key} only supports 'enabled'")
+        declared = {option.name: option for option in specs[key].options}
+        if isinstance(value, dict) and set(value) - {"enabled"} - set(declared):
+            supported = ", ".join(["enabled", *declared])
+            raise ConfigError(f"checks.tls.{key} only supports {supported}")
         if not isinstance(enabled, bool):
             raise ConfigError(f"checks.tls.{key}.enabled must be a boolean")
         if enabled:
             selected.append(key)
+            given = {name: _parse_check_option(key, declared[name], item) for name, item in value.items() if name != "enabled"} if isinstance(value, dict) else {}
+            if given:
+                check_options[key] = given
     return (
         tuple(check_id for check_id in CHECK_IDS if check_id in selected),
         values.get("timeout_seconds", settings["timeout_seconds"][0]),
         values.get("time_budget_seconds", settings["time_budget_seconds"][0]),
+        check_options,
     )
 
 
@@ -531,7 +559,7 @@ def build_job_from_sections(scan_config, export_config, logging_config, targets,
         certificate_revocation_max_response_bytes,
         certificate_revocation_allow_private_urls,
     ) = parse_checks_config(checks_config)
-    tls_checks, tls_checks_timeout_seconds, tls_checks_budget_seconds = parse_tls_checks_config(checks_config)
+    tls_checks, tls_checks_timeout_seconds, tls_checks_budget_seconds, tls_check_options = parse_tls_checks_config(checks_config)
 
     export_filename = export_config.get("filename")
     if export_filename is not None and not isinstance(export_filename, str):
@@ -596,6 +624,7 @@ def build_job_from_sections(scan_config, export_config, logging_config, targets,
         tls_checks=tls_checks,
         tls_checks_timeout_seconds=tls_checks_timeout_seconds,
         tls_checks_budget_seconds=tls_checks_budget_seconds,
+        tls_check_options=tls_check_options,
     )
 
 

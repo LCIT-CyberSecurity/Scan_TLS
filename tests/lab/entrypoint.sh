@@ -48,4 +48,6 @@ done
 # Diffie-Hellman parameters: 1024 bits (weak) and the named ffdhe2048 group.
 openssl dhparam -dsaparam -out dh1024.pem 1024 2>/dev/null
 openssl genpkey -genparam -algorithm DH -pkeyopt group:ffdhe2048 -out dh2048.pem 2>/dev/null
+# --- lot 2: STARTTLS services (real TLS behind scripted application dialogues)
+python3 -u /starttls_server.py &
 exec nginx -g 'daemon off;'

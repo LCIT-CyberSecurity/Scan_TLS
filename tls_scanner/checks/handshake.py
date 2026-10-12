@@ -16,6 +16,7 @@ import shutil
 import subprocess
 import time
 
+from .protocols import ADAPTERS, S_CLIENT_NAMES
 from .contracts import FAIL, INCONCLUSIVE, NOT_APPLICABLE, NOT_TESTED, PASS, CheckContext, CheckResult, result
 from .transport import (
     ALERT_INAPPROPRIATE_FALLBACK,
@@ -42,7 +43,7 @@ VERSION_ORDER = ("SSLv2", "SSLv3", "TLSv1.0", "TLSv1.1", "TLSv1.2", "TLSv1.3")
 
 
 def _starttls_unsupported(check_id: str, context: CheckContext) -> CheckResult | None:
-    if context.starttls and context.starttls != "smtp":
+    if context.starttls and context.starttls not in ADAPTERS:
         return result(check_id, NOT_TESTED, f"STARTTLS {context.starttls} is not supported by this check")
     return None
 
@@ -159,7 +160,7 @@ def client_initiated_renegotiation(context: CheckContext) -> tuple[str, str]:
         return "undetermined", "openssl is not available"
     command = ["openssl", "s_client", "-connect", format_endpoint(context.host, context.port), "-tls1_2", "-msg"]
     if context.starttls:
-        command.extend(["-starttls", context.starttls])
+        command.extend(["-starttls", S_CLIENT_NAMES.get(context.starttls, context.starttls)])
     name = safe_sni_name(context.sni or "")
     if name:
         command.extend(["-servername", name])

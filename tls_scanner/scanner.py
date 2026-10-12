@@ -18,10 +18,17 @@ import time
 
 from .checks import build_certificate_info, certificate_crypto_summary
 from .checks.catalog import run_complementary_checks
+from .checks.protocols import resolve_protocol
 from .crypto_policy import evaluate_compliance, extract_cipher_suites
 from .network import resolve_fqdn
 from .pki import REVOCATION_REVOKED, TRUST_UNTRUSTED, collect_peer_certificate_chain, revocation_result_not_tested, trust_result_not_tested, validate_certificate_revocation, validate_peer_chain
 from .pqc import evaluate_pqc_compliance, probe_pqc_key_exchange
+
+
+def starttls_for_chain(job, port):
+    if not job.tls_checks:
+        return {}
+    return {"starttls_protocol": resolve_protocol(port, job.tls_checks, job.tls_check_options)}
 
 
 def log_tls_check_results(job, endpoint_id):
@@ -135,7 +142,8 @@ def collect_scan_results(scanner, args, results, findings, fqdn_cache, cancel_ev
             certificate_info = build_certificate_info(certificate_output)
             endpoint_id = f"{host}:{port}/tcp"
             if args.certificate_trust_enabled or args.certificate_revocation_enabled:
-                chain = collect_peer_certificate_chain(host, port, fqdn)
+                # the STARTTLS protocol of an opt-in service (IMAP, POP3...) is only known when its check is selected
+                chain = collect_peer_certificate_chain(host, port, fqdn, **starttls_for_chain(args, port))
             else:
                 chain = None
             if args.certificate_trust_enabled and chain is not None:
@@ -191,6 +199,7 @@ def collect_scan_results(scanner, args, results, findings, fqdn_cache, cancel_ev
                     timeout_seconds=args.tls_checks_timeout_seconds,
                     budget_seconds=args.tls_checks_budget_seconds,
                     cancel_event=cancel_event,
+                    options=args.tls_check_options,
                 )
                 log_tls_check_results(args, endpoint_id)
 

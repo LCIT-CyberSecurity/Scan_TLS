@@ -8,7 +8,8 @@ import pytest
 
 from conftest import LAB, PROFILE, make_definition, wait_final
 
-CHECK_IDS = ["hostname_san", "ocsp_stapling", "tls_compression", "renegotiation", "fallback_scsv", "extended_master_secret", "ecdhe_groups", "ffdhe_groups"]
+CHECK_IDS = ["hostname_san", "ocsp_stapling", "tls_compression", "renegotiation", "fallback_scsv", "extended_master_secret", "ecdhe_groups", "ffdhe_groups",
+             "session_resumption", "session_tickets", "early_data", "client_auth", *(f"starttls_{p}" for p in ("imap", "pop3", "ldap", "ftp", "postgres", "xmpp"))]
 TLS = {check: {"enabled": True} for check in CHECK_IDS}
 
 
@@ -30,21 +31,24 @@ def run_with(user, operator, catalog, tls):
 
 def by_port(run) -> dict:
     return {e["port"]: e for e in run["endpoints"]}
+APPLICABLE_IDS = [i for i in CHECK_IDS if not i.startswith("starttls_")]
 
 
 def test_catalogue_lists_only_implemented_checks(user):
     items = user.get("/api/tls-checks").json()
     assert [i["id"] for i in items] == CHECK_IDS
-    assert {i["family"] for i in items} == {"identity", "handshake", "groups"}
-    assert {i["id"] for i in items if i["recommended"]} == {"hostname_san", "ocsp_stapling", "tls_compression", "renegotiation", "fallback_scsv", "extended_master_secret"}
+    assert {i["family"] for i in items} == {"identity", "handshake", "groups", "sessions", "authentication", "protocols"}
+    assert {i["id"] for i in items if i["recommended"]} == {"hostname_san", "ocsp_stapling", "tls_compression", "renegotiation", "fallback_scsv", "extended_master_secret",
+                                                            "session_resumption", "session_tickets", "early_data", "client_auth", *(f"starttls_{p}" for p in ("imap", "pop3", "ldap", "ftp", "postgres", "xmpp"))}
+    assert next(i for i in items if i["id"] == "early_data")["options"][0]["name"] == "probe"
 
 
 def test_profile_validation_uses_the_engine_rules(operator):
     base = {"scan": {"ports": "443"}, "checks": {}}
-    for tls in ({"heartbleed": {"enabled": True}}, {"hostname_san": "yes"}, {"timeout_seconds": 0}, {"time_budget_seconds": 5}, {"hostname_san": {"enabled": True, "x": 1}}):
+    for tls in ({"heartbleed": {"enabled": True}}, {"hostname_san": "yes"}, {"timeout_seconds": 0}, {"time_budget_seconds": 5}, {"hostname_san": {"enabled": True, "x": 1}}, {"starttls_imap": {"ports": [0]}}, {"session_resumption": {"attempts": 9}}, {"early_data": {"probe": "yes"}}):
         r = operator.post("/api/profiles", json={"name": f"bad-{uuid.uuid4().hex[:5]}", "content": {**base, "checks": {"tls": tls}}})
         assert r.status_code == 422, tls
-    ok = operator.post("/api/profiles", json={"name": f"ok-{uuid.uuid4().hex[:5]}", "content": {**base, "checks": {"tls": {"hostname_san": True, "timeout_seconds": 5}}}})
+    ok = operator.post("/api/profiles", json={"name": f"ok-{uuid.uuid4().hex[:5]}", "content": {**base, "checks": {"tls": {"hostname_san": True, "timeout_seconds": 5, "early_data": {"probe": False}, "starttls_imap": {"ports": [143, 1143]}}}}})
     assert ok.status_code == 201, ok.text
 
 
@@ -60,7 +64,7 @@ def test_results_are_stored_per_endpoint_and_exposed(user, auditor, runs):
     assert set(endpoints) >= {"443", "8450"}
     for port in ("443", "8450"):
         checks = {c["check_id"]: c for c in endpoints[port]["tls_checks"]}
-        assert list(checks) == CHECK_IDS
+        assert list(checks) == APPLICABLE_IDS  # protocol checks only appear on their own ports
         assert all(c["status"] in ("PASS", "FAIL", "NOT_TESTED", "NOT_APPLICABLE", "INCONCLUSIVE", "ERROR") and c["duration_ms"] is not None for c in checks.values())
     http_check = {c["check_id"]: c for c in endpoints["443"]["tls_checks"]}
     assert http_check["hostname_san"]["status"] == "PASS"  # the requested name is lab-tls, the SAN says lab-tls
@@ -71,7 +75,7 @@ def test_results_are_stored_per_endpoint_and_exposed(user, auditor, runs):
     # the read-only results API (and thus MCP, which shares the service) carries the same observations
     rest = auditor.get(f"/api/results/{run['id']}/endpoints").json()["items"]
     assert {e["endpoint_id"]: [c["check_id"] for c in e["tls_checks"]] for e in rest if e["port"] in (443, 8450)}
-    assert all(e["tls_checks"] == [] or len(e["tls_checks"]) == len(CHECK_IDS) for e in rest)
+    assert all(e["tls_checks"] == [] or len(e["tls_checks"]) == len(APPLICABLE_IDS) for e in rest)
 
 
 def test_historical_profile_keeps_its_behaviour_and_the_grade_is_unchanged(runs):

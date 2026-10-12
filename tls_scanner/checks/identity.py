@@ -113,7 +113,8 @@ def check_hostname_san(context: CheckContext) -> CheckResult:
             findings.append({"reference": reference, "status": INCONCLUSIVE, "error": "time budget exhausted or scan cancelled"})
             continue
         sni = "" if reference_kind(reference) == "ip" else reference
-        chain = collect_peer_certificate_chain(context.host, context.port, sni, int(context.probe_timeout()))
+        extra = {"starttls_protocol": context.starttls} if context.starttls_protocol is not None else {}
+        chain = collect_peer_certificate_chain(context.host, context.port, sni, int(context.probe_timeout()), **extra)
         if not chain.certificates:
             errors += 1
             findings.append({"reference": reference, "status": INCONCLUSIVE, "error": chain.error or "no certificate presented"})

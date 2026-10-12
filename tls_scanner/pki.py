@@ -241,14 +241,19 @@ def starttls_protocol_for_port(port: int | str) -> str:
     return ""
 
 
-def collect_peer_certificate_chain(host: str, port: int | str, fqdn: str = "", timeout: int = 10) -> PeerCertificateChain:
+def collect_peer_certificate_chain(host: str, port: int | str, fqdn: str = "", timeout: int = 10, starttls_protocol: str | None = None) -> PeerCertificateChain:
+    """`starttls_protocol=None` keeps the historical rule by port (SMTP only); a value from the complementary
+    checks (including "" for direct TLS) overrides it."""
     if shutil.which("openssl") is None:
         return PeerCertificateChain((), "error", "openssl is required to collect the peer certificate chain")
     endpoint = f"{host}:{port}"
     command = ["openssl", "s_client", "-showcerts", "-connect", endpoint]
-    starttls_protocol = starttls_protocol_for_port(port)
+    if starttls_protocol is None:
+        starttls_protocol = starttls_protocol_for_port(port)
     if starttls_protocol:
         command.extend(["-starttls", starttls_protocol])
+        if starttls_protocol == "xmpp":
+            command.extend(["-name", fqdn or host])
     server_name = safe_sni_name(fqdn or host)
     if server_name:
         command.extend(["-servername", server_name])

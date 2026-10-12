@@ -20,6 +20,8 @@ from dataclasses import dataclass, field
 
 from ..pki import safe_sni_name
 from .contracts import CheckContext
+from .protocols import ADAPTERS, S_CLIENT_NAMES, negotiate
+from .protocols.starttls import UPGRADED
 
 S_CLIENT_MAX_OUTPUT_BYTES = 262144
 RAW_MAX_BYTES = 262144
@@ -81,18 +83,23 @@ def format_endpoint(host: str, port: int) -> str:
     return f"[{host}]:{int(port)}" if ":" in host else f"{host}:{int(port)}"
 
 
-def run_s_client(context: CheckContext, extra_args: list[str], server_name: str | None = None, stdin: bytes = b"", timeout: float | None = None) -> SClientOutput:
-    """Run one `openssl s_client`. `extra_args` must only contain fixed, whitelisted option strings."""
+def run_s_client(context: CheckContext, extra_args: list[str], server_name: str | None = None, stdin: bytes = b"", timeout: float | None = None, hold: float = 0.0) -> SClientOutput:
+    """Run one `openssl s_client`. `extra_args` must only contain fixed, whitelisted option strings.
+
+    `hold` keeps stdin open for that many seconds after `stdin` was written, so that post-handshake
+    messages (TLS 1.3 session tickets) can be received before s_client closes the connection."""
     if shutil.which("openssl") is None:
         return SClientOutput("", None, error="openssl is not available")
     command = ["openssl", "s_client", "-connect", format_endpoint(context.host, context.port)]
     if context.starttls:
-        command.extend(["-starttls", context.starttls])
+        command.extend(["-starttls", S_CLIENT_NAMES.get(context.starttls, context.starttls)])
     name = safe_sni_name(server_name if server_name is not None else (context.sni or ""))
     if name:
         command.extend(["-servername", name])
     command.extend(extra_args)
     wait = timeout if timeout is not None else context.probe_timeout()
+    if hold > 0:
+        return _run_held(command, stdin, wait, hold)
     try:
         completed = subprocess.run(command, input=stdin, capture_output=True, timeout=wait, check=False)
     except subprocess.TimeoutExpired:
@@ -101,6 +108,30 @@ def run_s_client(context: CheckContext, extra_args: list[str], server_name: str 
         return SClientOutput("", None, error=str(error))
     raw = (completed.stdout + completed.stderr)[:S_CLIENT_MAX_OUTPUT_BYTES]
     return SClientOutput(raw.decode("utf-8", errors="replace"), completed.returncode)
+
+
+def _run_held(command: list[str], stdin: bytes, timeout: float, hold: float) -> SClientOutput:
+    try:
+        process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    except OSError as error:
+        return SClientOutput("", None, error=str(error))
+    try:
+        if stdin:
+            process.stdin.write(stdin)
+            process.stdin.flush()
+        time.sleep(min(hold, max(0.0, timeout - 0.5)))
+        process.stdin.close()
+        process.stdin = None  # communicate() must not flush a closed pipe
+        out, _ = process.communicate(timeout=max(1.0, timeout))
+    except subprocess.TimeoutExpired:
+        process.kill()
+        out, _ = process.communicate()
+        return SClientOutput(out[:S_CLIENT_MAX_OUTPUT_BYTES].decode("utf-8", errors="replace"), None, timed_out=True, error="timeout")
+    except OSError as error:
+        process.kill()
+        process.communicate()
+        return SClientOutput("", None, error=str(error))
+    return SClientOutput(out[:S_CLIENT_MAX_OUTPUT_BYTES].decode("utf-8", errors="replace"), process.returncode)
 
 
 def classify_s_client_failure(output: SClientOutput) -> str:
@@ -195,33 +226,6 @@ def _read_exact(sock: socket.socket, count: int, deadline: float) -> bytes:
     return data
 
 
-def _smtp_starttls(sock: socket.socket, deadline: float) -> None:
-    """Minimal SMTP STARTTLS prelude (the only STARTTLS protocol supported by the engine)."""
-
-    def read_reply() -> str:
-        text = b""
-        while len(text) < 8192:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                raise TimeoutError("timeout")
-            sock.settimeout(remaining)
-            chunk = sock.recv(1024)
-            if not chunk:
-                raise ConnectionError("closed")
-            text += chunk
-            lines = text.decode("latin-1").splitlines()
-            if lines and re.match(r"^\d{3} ", lines[-1]) and text.endswith(b"\n"):
-                return text.decode("latin-1")
-        raise ConnectionError("SMTP reply too long")
-
-    read_reply()
-    sock.sendall(b"EHLO tls-scan.invalid\r\n")
-    read_reply()
-    sock.sendall(b"STARTTLS\r\n")
-    if not read_reply().startswith("220"):
-        raise ConnectionError("STARTTLS refused")
-
-
 def parse_server_flight(sock: socket.socket, deadline: float) -> ServerReply:
     """Read TLS records until the ServerHello flight is complete, an alert arrives, or the limit is hit."""
     reply = ServerReply()
@@ -293,14 +297,16 @@ def send_client_hello(context: CheckContext, **hello_options) -> ServerReply:
     """Open one connection, send one ClientHello, parse the server flight, close. Never raises."""
     if not context.can_probe():
         return ServerReply(kind="error", error="no time left or scan cancelled")
-    if context.starttls not in ("", "smtp"):
+    if context.starttls and context.starttls not in ADAPTERS:
         return ServerReply(kind="error", error=f"STARTTLS {context.starttls} not supported by raw probes")
     deadline = time.monotonic() + context.probe_timeout()
     hello_options.setdefault("server_name", _hello_server_name(context.sni))
     try:
         with socket.create_connection((context.host, context.port), timeout=context.probe_timeout()) as sock:
-            if context.starttls == "smtp":
-                _smtp_starttls(sock, deadline)
+            if context.starttls:
+                upgrade = negotiate(context.starttls, sock, deadline, context.sni or context.host, context.cancelled)
+                if upgrade.status != UPGRADED:
+                    return ServerReply(kind="error", error=f"STARTTLS {context.starttls}: {upgrade.status} {upgrade.detail}".strip()[:120])
             sock.sendall(build_client_hello(**hello_options))
             return parse_server_flight(sock, deadline)
     except (TimeoutError, socket.timeout):

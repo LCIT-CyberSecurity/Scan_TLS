@@ -44,6 +44,11 @@ class CheckContext:
     timeout_seconds: int = DEFAULT_PROBE_TIMEOUT_SECONDS
     deadline: float | None = None  # time.monotonic() value after which no new probe may start
     cancel_event: threading.Event | None = None
+    starttls_protocol: str | None = None  # resolved by the catalogue (opt-in protocols); None = historical rule by port
+    shared: dict[str, Any] = field(default_factory=dict)  # per-endpoint cache so that related checks share their probes
+
+    def option(self, name: str, default: Any = None) -> Any:
+        return self.options.get(name, default)
 
     def cancelled(self) -> bool:
         return self.cancel_event is not None and self.cancel_event.is_set()
@@ -60,6 +65,8 @@ class CheckContext:
 
     @property
     def starttls(self) -> str:
+        if self.starttls_protocol is not None:
+            return self.starttls_protocol
         from ..pki import starttls_protocol_for_port
 
         return starttls_protocol_for_port(self.port)
