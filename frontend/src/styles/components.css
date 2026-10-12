@@ -43,19 +43,19 @@
   .brand > div { display: grid; min-width: 0; white-space: nowrap; }
   .brand span { font-size: 24px; font-weight: 700; line-height: 28px; letter-spacing: -0.02em; }
   .brand small { color: var(--text-secondary); font-size: 13.5px; font-weight: 500; }
-  .brand-logo { flex: none; width: 78px; height: 44px; object-fit: contain; }
+  .brand-logo { flex: none; width: 86px; height: 50px; object-fit: contain; }
   :root[data-appearance="dark"] .brand-logo { padding: 3px; background: #f4f5f8; border-radius: 8px; }
   .nav-heading {
-    flex: none; padding: 8px 14px 8px;
-    color: var(--text-faint); font-size: 12.5px; font-weight: 680; letter-spacing: 0.09em; text-transform: uppercase;
+    flex: none; padding: 8px 18px 10px;
+    color: var(--text-faint); font-size: 13px; font-weight: 680; letter-spacing: 0.09em; text-transform: uppercase;
   }
   .nav-link {
-    position: relative; display: flex; align-items: center; gap: 12px;
-    min-height: 50px; padding: 0 16px; border-radius: var(--radius-sm);
-    color: var(--text-secondary); font-size: 16px; font-weight: 500; text-decoration: none;
+    position: relative; display: flex; align-items: center; gap: 16px;
+    min-height: 58px; padding: 0 18px; border-radius: var(--radius-md, var(--radius-sm));
+    color: var(--text-secondary); font-size: 17px; font-weight: 520; text-decoration: none;
     transition: color var(--fast) ease, background var(--fast) ease;
   }
-  .nav-link svg { flex: none; width: 22px; height: 22px; stroke-width: 1.9; opacity: 0.9; }
+  .nav-link svg { flex: none; width: 25px; height: 25px; stroke-width: 1.9; opacity: 0.92; }
   .nav-link:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
   .nav-link:hover { color: var(--text-primary); background: var(--surface-secondary); }
   .nav-link.active {
@@ -68,11 +68,19 @@
     content: ""; position: absolute; left: -16px; top: 50%; width: 3px; height: 24px; margin-top: -12px;
     background: var(--primary-edge, var(--primary)); border-radius: 0 3px 3px 0;
   }
-  /* The groups keep their natural height. Between two groups a spacer takes the free height of the nav, but never more than 96 px
+  /* The groups keep their natural height. Between two groups a spacer takes the free height of the nav, but never more than 220 px
      (so a role with few groups is not stretched apart) and never less than 16 px: on a short window there is no free room, the
      groups stay compact and the nav scrolls. */
-  .nav-spacer { flex: 1 1 0; min-height: 16px; max-height: 96px; }
-  .nav-group { display: flex; flex: none; flex-direction: column; gap: 6px; }
+  .nav-spacer { flex: 1 1 0; min-height: 20px; max-height: 220px; }
+  /* Shorter windows (e.g. 1440x900): entries a little smaller so the four groups still fit without scrolling. */
+  @media (max-height: 980px) {
+    .nav-link { min-height: 50px; font-size: 16px; }
+    .nav-link svg { width: 22px; height: 22px; }
+    .nav-group { gap: 4px; }
+    .nav-spacer { min-height: 12px; }
+    .brand { padding-bottom: 14px; }
+  }
+  .nav-group { display: flex; flex: none; flex-direction: column; gap: 8px; }
   .sidebar-footer {
     margin-top: auto; padding: 14px 10px 2px; border-top: 1px solid var(--border);
     color: var(--text-faint); font-size: 12.5px; line-height: 16px;
