@@ -19,8 +19,8 @@ const endpointLabel = (e: Endpoint) => `${e.hostname || e.ip_address}:${e.port}`
 function endpointColumns(t: (key: never) => string): Column<Endpoint>[] {
   const tr = t as unknown as (k: string) => string;
   return [
-    { key: "endpoint", header: "Endpoint", values: (e) => [e.hostname || e.ip_address], sort: endpointLabel, render: (e) => <span className="row-link" title={`${e.hostname && e.hostname !== e.ip_address ? `${e.hostname}\n` : ""}${e.ip_address}:${e.port}`}>{endpointLabel(e)}</span> },
-    { key: "tags", header: tr("col.tags"), values: (e) => e.tags ?? [], render: (e) => (e.tags?.length ? <div className="tag-cell"><TagList tags={e.tags} /></div> : "—") },
+    { key: "endpoint", header: "Endpoint", values: (e) => [e.hostname || e.ip_address], sort: endpointLabel, render: (e) => <span className="row-link">{endpointLabel(e)}</span> },
+    { key: "tags", header: tr("col.tags"), values: (e) => e.tags ?? [], render: (e) => (e.tags?.length ? <TagList tags={e.tags} /> : "—") },
     { key: "grade", header: tr("run.grade"), values: (e) => [e.grade], render: (e) => e.grade },
     { key: "status", header: tr("col.status"), values: (e) => [e.compliance_status], render: (e) => e.compliance_status },
     { key: "tls", header: "TLS", values: (e) => e.tls_versions, sort: (e) => e.tls_versions.join(", "), render: (e) => e.tls_versions.join(", ") },
