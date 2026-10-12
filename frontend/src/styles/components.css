@@ -38,7 +38,7 @@
     background: linear-gradient(180deg, transparent 0, color-mix(in srgb, var(--primary) 5%, transparent) 100%), var(--rail, var(--surface));
     border-right: 1px solid var(--border);
   }
-  .sidebar nav { display: flex; flex: 1 1 auto; flex-direction: column; justify-content: flex-start; align-items: stretch; gap: 28px; min-height: 0; padding-bottom: 8px; overflow-y: auto; }
+  .sidebar nav { display: flex; flex: 1 1 auto; flex-direction: column; justify-content: flex-start; align-items: stretch; gap: 32px; min-height: 0; padding-bottom: 8px; overflow-y: auto; }
   .brand { display: flex; align-items: center; gap: 12px; padding: 2px 0 22px 2px; font-weight: 600; }
   .brand > div { display: grid; min-width: 0; white-space: nowrap; }
   .brand span { font-size: 24px; font-weight: 700; line-height: 28px; letter-spacing: -0.02em; }
@@ -71,8 +71,16 @@
   /* Groups stay together at the top at their natural height; the nav's gap is the only spacing between them and the free
      height lies between the last group and the footer. On a short window the nav scrolls. */
   .nav-group { display: flex; flex: 0 0 auto; flex-direction: column; gap: 4px; }
+  /* Bottom area: the last-scan panel sits above the footer (the nav takes the free height, so it lies between the last group and this panel, never between groups).
+     It is a secondary element: hidden on short windows. */
+  .side-activity { display: grid; gap: 6px; flex: none; margin: 12px 0 18px; padding: 14px 16px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface); color: var(--text-secondary); font-size: 13.5px; line-height: 19px; text-decoration: none; transition: border-color var(--fast) ease; }
+  .side-activity:hover, .side-activity:focus-visible { border-color: var(--primary-line); }
+  .side-activity__label { color: var(--text-faint); font-size: 12px; font-weight: 680; letter-spacing: 0.09em; text-transform: uppercase; }
+  .side-activity__name { overflow: hidden; color: var(--text-primary); font-size: 15px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+  .side-activity__meta { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  @media (max-height: 980px) { .side-activity { display: none; } }
   .sidebar-footer {
-    flex-shrink: 0; margin-top: auto; padding: 14px 10px 2px; border-top: 1px solid var(--border);
+    flex-shrink: 0; padding: 14px 10px 2px; border-top: 1px solid var(--border);
     color: var(--text-faint); font-size: 12.5px; line-height: 16px;
   }
   .sidebar-footer strong { display: block; color: var(--text-secondary); font-size: 14px; font-weight: 620; }

@@ -391,6 +391,8 @@ export const en = {
   "nav.section.admin": "Administration",
   "nav.openMenu": "Open the menu",
   "brand.tagline": "TLS compliance",
+  "side.lastScan": "Last scan",
+  "side.nonCompliant": "{n} non-compliant endpoints",
   "brand.signedInAs": "Signed in as {role}",
   "menu.account": "Account and settings",
   "menu.settings": "Settings",

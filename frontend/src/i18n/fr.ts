@@ -392,6 +392,8 @@ export const fr: Messages = {
   "nav.section.admin": "Administration",
   "nav.openMenu": "Ouvrir le menu",
   "brand.tagline": "Conformité TLS",
+  "side.lastScan": "Dernier scan",
+  "side.nonCompliant": "{n} endpoints non conformes",
   "brand.signedInAs": "Connecté en tant que {role}",
   "menu.account": "Compte et réglages",
   "menu.settings": "Réglages",
