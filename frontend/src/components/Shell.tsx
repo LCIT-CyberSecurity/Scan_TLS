@@ -5,7 +5,6 @@ import type { Role } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { useI18n } from "../i18n";
 import type { Messages } from "../i18n/en";
-import { SidebarActivity } from "./SidebarActivity";
 import UserMenu from "./UserMenu";
 
 interface Item { to: string; icon: ReactNode; label: keyof Messages; min: Role }
@@ -58,7 +57,6 @@ export default function Shell() {
             </Fragment>
           ))}
         </nav>
-        <SidebarActivity />
         <div className="sidebar-footer">
           <strong><ShieldCheck size={13} aria-hidden="true" /> LCIT Cybersecurity</strong>
           {t("brand.signedInAs", { role: (user?.role ?? "").toLowerCase() })}
