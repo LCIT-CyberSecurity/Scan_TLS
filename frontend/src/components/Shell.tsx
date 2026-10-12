@@ -12,17 +12,17 @@ interface Section { heading: keyof Messages; items: Item[] }
 // One sidebar for everybody; entries the role cannot use are hidden (the API enforces it anyway).
 const SECTIONS: Section[] = [
   { heading: "nav.section.workspace", items: [
-    { to: "/", icon: <BarChart3 size={20} />, label: "nav.dashboard", min: "AUDITOR" },
-    { to: "/tasks", icon: <ListChecks size={20} />, label: "nav.tasks", min: "USER" },
+    { to: "/", icon: <BarChart3 size={22} />, label: "nav.dashboard", min: "AUDITOR" },
+    { to: "/tasks", icon: <ListChecks size={22} />, label: "nav.tasks", min: "USER" },
   ] },
   { heading: "nav.section.scanning", items: [
-    { to: "/scans", icon: <Activity size={20} />, label: "nav.scans", min: "USER" },
-    { to: "/schedules", icon: <CalendarClock size={20} />, label: "nav.schedules", min: "USER" },
-    { to: "/targets", icon: <Network size={20} />, label: "nav.targets", min: "USER" },
-    { to: "/policies", icon: <SlidersHorizontal size={20} />, label: "nav.policies", min: "USER" },
+    { to: "/scans", icon: <Activity size={22} />, label: "nav.scans", min: "USER" },
+    { to: "/schedules", icon: <CalendarClock size={22} />, label: "nav.schedules", min: "USER" },
+    { to: "/targets", icon: <Network size={22} />, label: "nav.targets", min: "USER" },
+    { to: "/policies", icon: <SlidersHorizontal size={22} />, label: "nav.policies", min: "USER" },
   ] },
-  { heading: "nav.section.results", items: [{ to: "/reports", icon: <FileText size={20} />, label: "nav.reports", min: "AUDITOR" }] },
-  { heading: "nav.section.admin", items: [{ to: "/admin", icon: <ShieldCheck size={20} />, label: "nav.admin", min: "ADMIN" }] },
+  { heading: "nav.section.results", items: [{ to: "/reports", icon: <FileText size={22} />, label: "nav.reports", min: "AUDITOR" }] },
+  { heading: "nav.section.admin", items: [{ to: "/admin", icon: <ShieldCheck size={22} />, label: "nav.admin", min: "ADMIN" }] },
 ];
 const ALL = SECTIONS.flatMap((s) => s.items).concat([{ to: "/preferences", icon: null, label: "nav.preferences", min: "AUDITOR" }]);
 
@@ -73,7 +73,7 @@ export default function Shell() {
           </div>
           <div className="top-actions">{user && <UserMenu user={user} onSignOut={() => void logout()} />}</div>
         </header>
-        <main className="app-main"><Outlet /></main>
+        <main className={`app-main${pathname === "/" ? " app-main--wide" : ""}`}><Outlet /></main>
       </div>
     </div>
   );

@@ -20,6 +20,14 @@ export interface RunDetail extends Run { endpoints: Endpoint[]; findings: Findin
 export interface Schedule { id: string; definition_id: string; owner_id: string | null; kind: string; params: Record<string, unknown>; timezone: string; active: boolean; next_run_at: string | null; last_run_at: string | null; last_run: { id: string; status: string; duration_seconds: number | null } | null; triggers?: { due_at: string; outcome: string; reason: string; run_id: string | null }[] }
 export interface Comparison { old_run_id: string; new_run_id: string; warnings: string[]; new: FindingBrief[]; fixed: FindingBrief[]; persistent: FindingBrief[]; not_retested: FindingBrief[]; endpoints_added: string[]; endpoints_removed: string[]; endpoint_changes: Record<string, unknown>[]; counts: Record<string, number> }
 export interface FindingBrief { finding_id: string; title: string; severity: string; affected: string[] }
-export interface Posture { scans: number; endpoints: number; compliant: number; non_compliant: number; critical: number; high: number; not_tested: number; grades: Record<string, number> }
-export interface Dashboard { counts: Record<string, number>; posture?: Posture; recent: Run[]; compliance_trend: { run_id: string; name: string; finished_at: string; compliant: number; non_compliant: number }[]; upcoming: Schedule[] }
+export interface Posture {
+  scans: number; basis_run_ids: string[]; policies: { name: string; version: number }[]; mixed_policies: boolean; window_days: number;
+  endpoints: { total: number; compliant: number; non_compliant: number; unevaluated: number; rate: number | null };
+  findings: { critical: { unique: number; endpoints: number }; high: { unique: number; endpoints: number }; occurrences: number };
+  certificates: { expired: number; expiring: number; items: { subject: string; valid_until: string | null; remaining_days: number; endpoints: number; run_id: string }[] };
+  vigilance: { finding_id: string; title: string; category: string; severity: string | null; endpoints: number; run_id: string | null }[];
+}
+export interface TrendPoint { run_id: string; name: string; finished_at: string; rate: number | null; compliant: number; non_compliant: number; evaluated: number; total: number; comparable: boolean }
+export interface Trend { definition_id: string | null; definitions: { id: string; name: string; runs: number }[]; points: TrendPoint[] }
+export interface Dashboard { counts: Record<string, number>; posture?: Posture; trend?: Trend; recent: Run[]; compliance_trend: { run_id: string; name: string; finished_at: string; compliant: number; non_compliant: number }[]; upcoming: Schedule[] }
 export interface Tag { id: string; name: string; color: string }
