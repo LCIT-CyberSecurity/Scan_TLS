@@ -8,6 +8,7 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import unicodedata
 from typing import Any
 
 from sqlalchemy import select
@@ -176,5 +177,6 @@ def job_from_snapshot(snapshot: dict[str, Any], run_id: str, export_dir: str, lo
 
 
 def _safe_name(name: str) -> str:
-    cleaned = "".join(c if c.isalnum() or c in "-_" else "_" for c in name)[:60].strip("_-")
+    ascii_name = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode("ascii")  # the engine only accepts [A-Za-z0-9_-]
+    cleaned = "".join(c if c.isalnum() or c in "-_" else "_" for c in ascii_name)[:60].strip("_-")
     return cleaned or "scan"

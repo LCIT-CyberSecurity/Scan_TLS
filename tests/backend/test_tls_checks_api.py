@@ -118,3 +118,13 @@ def test_scan_comparison_between_a_run_with_and_without_checks_is_still_valid(us
     r = user.get(f"/api/scan-runs/{runs['tls']['id']}/compare", params={"against": runs["legacy"]["id"]})
     assert r.status_code in (200, 404, 422)  # the profile differs: a warning, never a crash
     assert r.status_code != 500
+
+
+def test_report_name_from_definition_is_ascii_safe():
+    from tls_scan_app.services.planner import _safe_name
+    from tls_scanner.config import validate_config_name
+
+    for name in ("test home avancé", "Scan été / prod", "日本語", "ok-name_1"):
+        validate_config_name(_safe_name(name), "report.name")
+    assert _safe_name("test home avancé") == "test_home_avance"
+    assert _safe_name("日本語") == "scan"
