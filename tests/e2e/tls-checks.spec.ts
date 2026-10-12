@@ -9,13 +9,13 @@ test("operator: the profile form offers the complementary TLS checks, recommende
   const dialog = page.getByRole("dialog");
 
   // the existing options are still there, the new zone sits under them
-  await expect(dialog.getByLabel("Ports")).toBeVisible();
+  await expect(dialog.getByLabel("Ports", { exact: true })).toBeVisible();
   const zone = dialog.getByRole("group", { name: "Complementary TLS checks" });
   await expect(zone).toBeVisible();
   const boxes = zone.getByRole("checkbox");
   await expect(boxes).toHaveCount(16);  // lots 1 and 2 recommended checks; the option fields sit in collapsed "Advanced options"
   for (let i = 0; i < 16; i++) await expect(boxes.nth(i)).toBeChecked();
-  for (const family of ["TLS sessions", "Authentication", "Protocols (STARTTLS)"]) await expect(zone.getByText(family)).toBeVisible();
+  for (const family of ["TLS sessions", "Authentication", "Protocols (STARTTLS)"]) await expect(zone.getByText(family, { exact: true })).toBeVisible();
   await expect(zone.getByText("ECDHE groups")).toHaveCount(0); // not recommended: behind "Add checks"
 
   // remove a recommended check, add another one
