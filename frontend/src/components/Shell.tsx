@@ -1,5 +1,5 @@
 import { Activity, BarChart3, CalendarClock, ChevronRight, FileText, ListChecks, Menu, Network, ShieldCheck, SlidersHorizontal } from "lucide-react";
-import { useState, type CSSProperties, type ReactNode } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import type { Role } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
@@ -46,18 +46,17 @@ export default function Shell() {
           <div><span>TLS Scan</span><small>{t("brand.tagline")}</small></div>
         </div>
         <nav aria-label="Main">
-          {SECTIONS.map((section) => {
-            const items = section.items.filter((i) => atLeast(i.min));
-            if (!items.length) return null;
-            return (
-              <div key={section.heading} className="nav-group" style={{ "--nav-links": items.length } as CSSProperties}>
+          {SECTIONS.map((section) => ({ ...section, items: section.items.filter((i) => atLeast(i.min)) })).filter((section) => section.items.length).map((section, index) => (
+            <Fragment key={section.heading}>
+              {index > 0 && <div className="nav-spacer" aria-hidden="true" />}
+              <div className="nav-group">
                 <div className="nav-heading">{t(section.heading)}</div>
-                {items.map((i) => (
+                {section.items.map((i) => (
                   <NavLink key={i.to} to={i.to} end={i.to === "/"} onClick={close} className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>{i.icon}<span>{t(i.label)}</span></NavLink>
                 ))}
               </div>
-            );
-          })}
+            </Fragment>
+          ))}
         </nav>
         <div className="sidebar-footer">
           <strong><ShieldCheck size={13} aria-hidden="true" /> LCIT Cybersecurity</strong>
