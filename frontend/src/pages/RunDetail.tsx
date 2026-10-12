@@ -44,15 +44,23 @@ function tlsCheckColumns(t: (key: never) => string): Column<TlsCheckRow>[] {
   ];
 }
 
-function findingColumns(t: (key: never) => string, label: (e: Endpoint) => string): Column<Finding>[] {
+function findingColumns(t: (key: never) => string, endpoints: Endpoint[]): Column<Finding>[] {
   const tr = t as unknown as (k: string) => string;
-  void label;
+  const byId = new Map(endpoints.map((e) => [e.endpoint_id, e]));
   return [
     { key: "severity", header: tr("run.severity"), values: (f) => [f.severity], sort: (f) => SEVERITY_RANK[f.severity.toLowerCase()] ?? 0, render: (f) => <SeverityBadge severity={f.severity} /> },
     { key: "finding", header: tr("run.finding"), sort: (f) => f.title, values: (f) => [f.title],
       render: (f) => <><div className="font-medium">{f.title}</div><div className="text-xs text-muted">{f.evidence}</div><div className="mt-1 text-xs">{f.remediation}</div></> },
     { key: "category", header: "Category", values: (f) => [f.category], render: (f) => f.category || "—" },
-    { key: "affected", header: tr("run.affected"), values: (f) => f.affected_endpoint_ids, sort: (f) => f.affected_endpoint_ids.length, render: (f) => <span className="text-xs">{f.affected_endpoint_ids.join(", ")}</span> },
+    { key: "affected", header: tr("run.affected"), values: (f) => f.affected_endpoint_ids, sort: (f) => f.affected_endpoint_ids.length, render: (f) => (
+      <span className="text-xs">
+        {f.affected_endpoint_ids.map((id, i) => {
+          const e = byId.get(id);
+          // the name when known, the id otherwise; the tooltip gives both the FQDN and the IP
+          return <span key={id}>{i > 0 && ", "}<span title={e ? `${e.hostname && e.hostname !== e.ip_address ? `${e.hostname}\n` : ""}${e.ip_address}:${e.port}` : id}>{e ? endpointLabel(e) : id}</span></span>;
+        })}
+      </span>
+    ) },
   ];
 }
 
@@ -135,7 +143,7 @@ export default function RunDetail() {
         </Card>
       )}
       <Card><CardHeader><CardTitle>{t("run.findings")}</CardTitle></CardHeader>
-        {run.findings.length ? <DataTable rows={run.findings} rowKey={(f) => f.finding_id} columns={findingColumns(t as never, endpointLabel)} /> : <Empty>—</Empty>}
+        {run.findings.length ? <DataTable rows={run.findings} rowKey={(f) => f.finding_id} columns={findingColumns(t as never, run.endpoints)} /> : <Empty>—</Empty>}
       </Card>
     </>
   );
