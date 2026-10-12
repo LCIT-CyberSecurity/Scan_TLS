@@ -71,7 +71,7 @@ export default function Shell() {
           </div>
           <div className="top-actions">{user && <UserMenu user={user} onSignOut={() => void logout()} />}</div>
         </header>
-        <main className={`app-main${pathname === "/" ? " app-main--wide" : ""}`}><Outlet /></main>
+        <main className="app-main"><Outlet /></main>
       </div>
     </div>
   );
