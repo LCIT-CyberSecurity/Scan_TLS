@@ -9,6 +9,7 @@ import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { DataTable, type Column } from "../components/DataTable";
+import { GroupedEndpoints } from "../components/GroupedEndpoints";
 import { useI18n } from "../i18n";
 import type { TlsCheckResult } from "../lib/tlsChecks";
 import { formatDate, formatDuration } from "../lib/utils";
@@ -26,8 +27,6 @@ function endpointColumns(t: (key: never) => string): Column<Endpoint>[] {
     { key: "tls", header: "TLS", values: (e) => e.tls_versions, sort: (e) => e.tls_versions.join(", "), render: (e) => e.tls_versions.join(", ") },
     { key: "cert", header: tr("run.certificate"), values: (e) => [String(e.certificate.subject ?? "")], sort: (e) => String(e.certificate.valid_until ?? ""),
       render: (e) => <span className="text-xs">{String(e.certificate.subject ?? "")}<br /><span className="text-muted">{String(e.certificate.valid_until ?? "")}</span></span> },
-    { key: "errors", header: tr("run.errors"), values: (e) => (e.errors.length ? ["errors"] : e.untested_checks.length ? ["untested"] : []), sort: (e) => e.errors.length * 1000 + e.untested_checks.length,
-      render: (e) => <>{e.errors.length ? <Badge tone="danger">{e.errors.length}</Badge> : "—"}{e.untested_checks.length > 0 && <Badge tone="warning" className="ml-1">{tr("run.notTested")}: {e.untested_checks.length}</Badge>}</> },
   ];
 }
 
@@ -96,6 +95,7 @@ export default function RunDetail() {
   const { t, locale } = useI18n();
   const { user, atLeast } = useAuth();
   const navigate = useNavigate();
+  const [byHost, setByHost] = useState(true);
   const [cmp, setCmp] = useState(false);
   const [error, setError] = useState<unknown>();
   const { data: run, error: loadError, reload } = useLoad(() => api<Detail>(`/scan-runs/${id}`), [id], 3000);
@@ -133,8 +133,14 @@ export default function RunDetail() {
           {run.reports.some((r) => r.format === "html") && <Button asChild size="sm"><a href={downloadUrl(id, "html", true)} target="_blank" rel="noreferrer">{t("run.openHtml")}</a></Button>}
         </CardContent></Card>
       )}
-      <Card className="mb-6"><CardHeader><CardTitle>{t("run.endpointsTitle")}</CardTitle></CardHeader>
-        {run.endpoints.length ? <DataTable rows={run.endpoints} rowKey={(e) => e.endpoint_id} columns={endpointColumns(t as never)} /> : <Empty>—</Empty>}
+      <Card className="mb-6">
+        <CardHeader><CardTitle>{t("run.endpointsTitle")}</CardTitle>
+          <div className="segmented" role="group" aria-label={t("run.endpointsTitle")}>
+            <button type="button" aria-pressed={byHost} className={byHost ? "active" : ""} onClick={() => setByHost(true)}>{t("run.byHost")}</button>
+            <button type="button" aria-pressed={!byHost} className={!byHost ? "active" : ""} onClick={() => setByHost(false)}>{t("run.allEndpoints")}</button>
+          </div>
+        </CardHeader>
+        {run.endpoints.length ? (byHost ? <GroupedEndpoints rows={run.endpoints} columns={endpointColumns(t as never)} /> : <DataTable rows={run.endpoints} rowKey={(e) => e.endpoint_id} columns={endpointColumns(t as never)} />) : <Empty>—</Empty>}
       </Card>
       {tlsCheckRows.length > 0 && (
         <Card className="mb-6"><CardHeader><CardTitle>{t("run.tlsChecks")}</CardTitle></CardHeader>
