@@ -78,6 +78,17 @@ class Certificate(BaseModel):
     status: str | None = Field(None, description="Engine verdict on the certificate (e.g. Valid, Expired).")
 
 
+class TlsCheck(BaseModel):
+    """Result of one complementary TLS check. Reported next to, never inside, the grade and the findings."""
+    check_id: str = Field(description="Stable check identifier (e.g. hostname_san, ocsp_stapling, tls_compression).")
+    status: Literal["PASS", "FAIL", "NOT_TESTED", "NOT_APPLICABLE", "INCONCLUSIVE", "ERROR"] = Field(
+        description="NOT_TESTED, INCONCLUSIVE and ERROR mean unknown, not passed.")
+    message: str = ""
+    observations: dict[str, Any] = Field({}, description="Structured technical observations proven by the check.")
+    evidence: list[str] = Field([], description="Short, non-sensitive facts supporting the result.")
+    duration_ms: int | None = None
+
+
 class Endpoint(BaseModel):
     model_config = example(ex.ENDPOINT)
     endpoint_id: str = Field(description="Stable identifier `ip:port/tcp`.")
@@ -92,6 +103,7 @@ class Endpoint(BaseModel):
     certificate: Certificate | None = None
     errors: list[str] = Field([], description="Technical errors met while scanning this endpoint.")
     untested_checks: list[str] = Field([], description="Checks that could not be run. They are unknown, not passed.")
+    tls_checks: list[TlsCheck] = Field([], description="Complementary TLS checks selected by the scan profile; empty when none was selected.")
     tags: list[str] = []
 
 

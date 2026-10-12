@@ -11,7 +11,9 @@ import { Dialog } from "../components/ui/dialog";
 import { Field, Input, Textarea } from "../components/ui/input";
 import { Table, Td, Th } from "../components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
+import { TlsChecksPicker } from "../components/TlsChecksPicker";
 import { useI18n } from "../i18n";
+import { recommendedSection, type TlsCheckSpec } from "../lib/tlsChecks";
 
 type Content = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
 const list = (v: unknown) => (Array.isArray(v) ? v.join(", ") : "");
@@ -49,6 +51,7 @@ function ProfileForm({ value, onChange }: { value: Content; onChange: (c: Conten
       {check(t("prof.trust"), cert.trust?.enabled ?? true, (b) => setCert({ trust: { ...cert.trust, enabled: b } }))}
       {check(t("prof.revocation"), rev.enabled ?? false, (b) => setCert({ revocation: { ...rev, enabled: b } }))}
       {rev.enabled && <div className="ml-6 space-y-2">{check("OCSP", rev.ocsp ?? true, (b) => setCert({ revocation: { ...rev, ocsp: b } }))}{check("CRL", rev.crl ?? true, (b) => setCert({ revocation: { ...rev, crl: b } }))}</div>}
+      <TlsChecksPicker value={value} onChange={onChange} />
     </div>
   );
 }
@@ -147,13 +150,16 @@ function TemplatesTab() {
 
 export default function Policies() {
   const { t } = useI18n();
+  const { data: tlsCatalog } = useLoad(() => api<TlsCheckSpec[]>("/tls-checks"));
+  // New profiles start with the recommended complementary checks; existing profiles are never modified.
+  const tlsDefaults = tlsCatalog?.length ? { tls: recommendedSection(tlsCatalog) } : {};
   return (
     <>
       <PageHeader title={t("nav.policies")} subtitle={t("pol.subtitle")} />
       <Tabs defaultValue="policies">
         <TabsList><TabsTrigger value="policies">{t("pol.policies")}</TabsTrigger><TabsTrigger value="profiles">{t("pol.profiles")}</TabsTrigger><TabsTrigger value="templates">{t("pol.templates")}</TabsTrigger></TabsList>
         <TabsContent value="policies"><VersionedTab kind="policies" Form={PolicyForm} blank={{ allowed_versions: ["TLSv1.2", "TLSv1.3"], allowed_cipher_algorithms: ["AES-GCM", "CHACHA20-POLY1305"], allowed_signature_hashes: ["SHA-256", "SHA-384", "SHA-512"], minimum_rsa_bits: 2048 }} /></TabsContent>
-        <TabsContent value="profiles"><VersionedTab kind="profiles" Form={ProfileForm} blank={{ scan: { ports: "fast", crypto: "standard", resolve_dns: true, workers: 4 }, checks: { certificate: { enabled: true, expires_within_days: 30, trust: { enabled: true }, revocation: { enabled: false } } } }} /></TabsContent>
+        <TabsContent value="profiles"><VersionedTab kind="profiles" Form={ProfileForm} blank={{ scan: { ports: "fast", crypto: "standard", resolve_dns: true, workers: 4 }, checks: { certificate: { enabled: true, expires_within_days: 30, trust: { enabled: true }, revocation: { enabled: false } }, ...tlsDefaults } }} /></TabsContent>
         <TabsContent value="templates"><TemplatesTab /></TabsContent>
       </Tabs>
     </>

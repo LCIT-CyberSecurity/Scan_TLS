@@ -10,6 +10,7 @@ import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { DataTable, type Column } from "../components/DataTable";
 import { useI18n } from "../i18n";
+import type { TlsCheckResult } from "../lib/tlsChecks";
 import { formatDate, formatDuration } from "../lib/utils";
 
 const SEVERITY_RANK: Record<string, number> = { critical: 5, high: 4, medium: 3, low: 2, info: 1 };
@@ -27,6 +28,19 @@ function endpointColumns(t: (key: never) => string): Column<Endpoint>[] {
       render: (e) => <span className="text-xs">{String(e.certificate.subject ?? "")}<br /><span className="text-muted">{String(e.certificate.valid_until ?? "")}</span></span> },
     { key: "errors", header: tr("run.errors"), values: (e) => (e.errors.length ? ["errors"] : e.untested_checks.length ? ["untested"] : []), sort: (e) => e.errors.length * 1000 + e.untested_checks.length,
       render: (e) => <>{e.errors.length ? <Badge tone="danger">{e.errors.length}</Badge> : "—"}{e.untested_checks.length > 0 && <Badge tone="warning" className="ml-1">{tr("run.notTested")}: {e.untested_checks.length}</Badge>}</> },
+  ];
+}
+
+type TlsCheckRow = { endpoint: string; check: TlsCheckResult };
+const TLS_STATUS_TONE: Record<string, "success" | "danger" | "warning" | "neutral"> = { PASS: "success", FAIL: "danger", ERROR: "danger", INCONCLUSIVE: "warning", NOT_TESTED: "warning", NOT_APPLICABLE: "neutral" };
+
+function tlsCheckColumns(t: (key: never) => string): Column<TlsCheckRow>[] {
+  const tr = t as unknown as (k: string) => string;
+  return [
+    { key: "endpoint", header: "Endpoint", values: (r) => [r.endpoint], sort: (r) => r.endpoint, render: (r) => r.endpoint },
+    { key: "check", header: tr("run.tlsCheck"), values: (r) => [tr(`tls.check.${r.check.check_id}`)], sort: (r) => r.check.check_id, render: (r) => tr(`tls.check.${r.check.check_id}`) },
+    { key: "status", header: tr("col.status"), values: (r) => [r.check.status], sort: (r) => r.check.status, render: (r) => <Badge tone={TLS_STATUS_TONE[r.check.status] ?? "neutral"}>{r.check.status}</Badge> },
+    { key: "result", header: tr("run.tlsResult"), values: (r) => [r.check.message], render: (r) => <span className="text-xs">{r.check.message}</span> },
   ];
 }
 
@@ -81,6 +95,7 @@ export default function RunDetail() {
   if (!run) return <Loading />;
   const active = run.status === "queued" || run.status === "running";
   const s = run.summary;
+  const tlsCheckRows = run.endpoints.flatMap((e) => (e.tls_checks ?? []).map((check) => ({ endpoint: endpointLabel(e), check })));
   return (
     <>
       <PageHeader title={run.name} subtitle={`${formatDate(run.queued_at, locale)} · ${formatDuration(run.duration_seconds)}`} actions={
@@ -113,6 +128,12 @@ export default function RunDetail() {
       <Card className="mb-6"><CardHeader><CardTitle>{t("run.endpointsTitle")}</CardTitle></CardHeader>
         {run.endpoints.length ? <DataTable rows={run.endpoints} rowKey={(e) => e.endpoint_id} columns={endpointColumns(t as never)} /> : <Empty>—</Empty>}
       </Card>
+      {tlsCheckRows.length > 0 && (
+        <Card className="mb-6"><CardHeader><CardTitle>{t("run.tlsChecks")}</CardTitle></CardHeader>
+          <p className="px-5 pb-2 text-xs text-muted">{t("run.tlsChecksHint")}</p>
+          <DataTable rows={tlsCheckRows} rowKey={(r) => `${r.endpoint}/${r.check.check_id}`} columns={tlsCheckColumns(t as never)} />
+        </Card>
+      )}
       <Card><CardHeader><CardTitle>{t("run.findings")}</CardTitle></CardHeader>
         {run.findings.length ? <DataTable rows={run.findings} rowKey={(f) => f.finding_id} columns={findingColumns(t as never, endpointLabel)} /> : <Empty>—</Empty>}
       </Card>

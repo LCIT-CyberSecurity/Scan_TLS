@@ -152,6 +152,8 @@ class RunEndpoint(Base):
     certificate: Mapped[dict] = mapped_column(JsonType, default=dict)
     errors: Mapped[list] = mapped_column(JsonType, default=list)
     untested_checks: Mapped[list] = mapped_column(JsonType, default=list)
+    # complementary TLS checks (tls_scanner.checks): [{check_id, status, message, observations, evidence, duration_ms}]
+    tls_checks: Mapped[list] = mapped_column(JsonType, default=list)
 
 
 class RunFinding(Base):

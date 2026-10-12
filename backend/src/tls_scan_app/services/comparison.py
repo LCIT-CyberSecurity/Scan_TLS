@@ -24,6 +24,13 @@ def scope_of(run: ScanRun) -> set[str]:
     return set(run.scanned_hosts or [])
 
 
+def _tls_check_changes(old: list[dict], new: list[dict]) -> list[dict]:
+    """Status changes of the complementary checks present in both runs (a check run on one side only is not a change)."""
+    old_status = {c["check_id"]: c.get("status") for c in old}
+    return [{"check_id": c["check_id"], "before": old_status[c["check_id"]], "after": c.get("status")}
+            for c in new if c["check_id"] in old_status and old_status[c["check_id"]] != c.get("status")]
+
+
 def compare_runs(db: DbSession, old: ScanRun, new: ScanRun) -> dict[str, Any]:
     old_f, new_f = _findings(db, old), _findings(db, new)
     old_e, new_e = _endpoints(db, old), _endpoints(db, new)
@@ -67,6 +74,9 @@ def compare_runs(db: DbSession, old: ScanRun, new: ScanRun) -> dict[str, Any]:
             change["compliance"] = {"before": [a.grade, a.compliance_status], "after": [b.grade, b.compliance_status]}
         if b.errors and not a.errors:
             change["new_errors"] = b.errors
+        tls_check_changes = _tls_check_changes(a.tls_checks or [], b.tls_checks or [])
+        if tls_check_changes:
+            change["tls_checks"] = tls_check_changes
         if change:
             endpoint_changes.append({"endpoint_id": eid, **change})
 

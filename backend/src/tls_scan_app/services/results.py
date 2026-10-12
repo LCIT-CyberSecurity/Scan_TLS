@@ -54,6 +54,7 @@ def endpoint_out(e: RunEndpoint, by_value: dict[str, set[str]]) -> dict[str, Any
     return {"endpoint_id": e.endpoint_id, "hostname": e.hostname, "ip_address": e.ip_address, "port": e.port, "grade": e.grade,
             "compliance_status": e.compliance_status, "highest_severity": e.highest_severity, "tls_versions": e.supported_tls_versions,
             "certificate": e.certificate, "errors": e.errors, "untested_checks": e.untested_checks,
+            "tls_checks": e.tls_checks or [],
             "tags": sorted(by_value.get(e.hostname, set()) | by_value.get(e.ip_address, set()))}
 
 

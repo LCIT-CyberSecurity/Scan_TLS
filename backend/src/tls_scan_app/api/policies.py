@@ -205,6 +205,14 @@ def _check_formats(formats: list[str]) -> None:
         raise HTTPException(422, f"export_formats must be a non-empty subset of {sorted(ALLOWED_EXPORT_FORMATS)}")
 
 
+@router.get("/tls-checks")
+def tls_checks_catalog(_: User = Depends(reader)) -> list[dict]:
+    """Complementary TLS checks the engine implements (id, family, recommended); labels live in the frontend i18n."""
+    from tls_scanner.checks.catalog import catalog_as_dicts
+
+    return catalog_as_dicts()
+
+
 @router.get("/report-templates")
 def list_templates(db: DbSession = Depends(get_db), _: User = Depends(reader)) -> list[dict]:
     return [template_out(t) for t in db.execute(select(ReportTemplate).order_by(ReportTemplate.name)).scalars()]

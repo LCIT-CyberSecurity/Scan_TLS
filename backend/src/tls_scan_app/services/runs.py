@@ -152,6 +152,7 @@ def persist_results(db: DbSession, run: ScanRun, outcome: dict[str, Any], status
                                                    "signature_algorithm", "fingerprint", "trust_status", "chain_validation_status",
                                                    "revocation_status", "self_signed", "status")},
             errors=list(endpoint.get("errors", [])), untested_checks=list(endpoint.get("untested_checks", [])),
+            tls_checks=list(endpoint.get("complementary_checks", [])),
         ))
     for finding in model.get("findings", []):
         db.add(RunFinding(
