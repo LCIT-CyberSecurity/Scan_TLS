@@ -20,7 +20,7 @@
   a { color: inherit; }
   :focus-visible { outline: none; box-shadow: var(--ring); }
   input, select, textarea {
-    font: inherit; font-size: 15.5px; min-height: 44px; padding: 9px 12px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
+    font: inherit; font-size: 15px; min-height: 42px; padding: 8px 12px; border: 1px solid var(--border-strong); border-radius: var(--radius-sm);
     background: var(--surface); color: var(--text-primary);
   }
   input[type="checkbox"], input[type="radio"] { flex: none; width: 18px; height: 18px; min-height: 0; padding: 0; accent-color: var(--primary); }
@@ -114,7 +114,7 @@
   .page-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 24px; flex-wrap: wrap; margin-bottom: 24px; }
   .page-title {
     position: relative; display: flex; align-items: center; gap: 12px; margin: 0 0 18px;
-    font-size: 28px; line-height: 36px; font-weight: 650; letter-spacing: -0.03em;
+    font-size: 27px; line-height: 34px; font-weight: 650; letter-spacing: -0.03em;
   }
   .page-title::after { content: ""; position: absolute; left: 0; bottom: -10px; width: 44px; height: 3px; border-radius: 3px; background: var(--accent-wash); }
   .page-header .page-title { margin-bottom: 0; }
@@ -128,20 +128,20 @@
   /* ===== Cards, metrics ===== */
   .card {
     background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
-    box-shadow: var(--shadow-card); padding: 24px 28px;
+    box-shadow: var(--shadow-card); padding: 22px 26px;
   }
   .card--flush { padding: 0; overflow: hidden; }
   .card-head {
     display: flex; align-items: center; justify-content: space-between; gap: 12px;
-    padding: 18px 28px; border-bottom: 1px solid var(--hairline);
+    padding: 16px 26px; border-bottom: 1px solid var(--hairline);
   }
   .card-title { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 17px; font-weight: 620; letter-spacing: -0.01em; }
-  .card-body { padding: 24px 28px 26px; }
+  .card-body { padding: 22px 26px 24px; }
   .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin-bottom: 24px; }  /* 7 cards of a scan fit on one row from 1560 px of content */
   .metric { padding: 22px 24px 24px; }
   .metric-label { display: flex; align-items: center; justify-content: space-between; color: var(--text-secondary); font-size: 16px; font-weight: 500; }
   .metric strong {
-    display: block; margin: 14px 0 6px; font-size: 32px; line-height: 38px; font-weight: 620;
+    display: block; margin: 12px 0 4px; font-size: 30px; line-height: 36px; font-weight: 620;
     letter-spacing: -0.034em; font-variant-numeric: tabular-nums;
   }
   .metric small { color: var(--text-faint); font-size: 14.5px; }
@@ -222,10 +222,10 @@
   /* ===== Buttons ===== */
   .button {
     display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-    min-height: 44px; padding: 0 18px; border: 1px solid transparent; border-radius: var(--radius-sm);
-    font-size: 0.94rem; font-weight: 600; line-height: 1.2; cursor: pointer; text-decoration: none;
+    min-height: 42px; padding: 0 16px; border: 1px solid transparent; border-radius: var(--radius-sm);
+    font-size: 0.9rem; font-weight: 600; line-height: 1.2; cursor: pointer; text-decoration: none;
   }
-  .button svg { flex: none; width: 18px; height: 18px; }
+  .button svg { flex: none; width: 17px; height: 17px; }
   .button:disabled { opacity: 0.6; cursor: not-allowed; }
   .button--primary { background: var(--accent-wash, var(--primary)); color: var(--text-on-accent); box-shadow: 0 1px 2px rgba(16, 24, 40, 0.08); }
   .button--primary:hover:not(:disabled) { background: var(--primary-hover); }
@@ -235,8 +235,8 @@
   .button--ghost:hover:not(:disabled) { background: var(--surface-secondary); }
   .button--danger { color: #fff; background: var(--danger); border-color: var(--danger); }
   .button--danger:hover:not(:disabled) { filter: brightness(1.08); }
-  .button--sm { min-height: 36px; padding: 0 14px; font-size: 0.86rem; }
-  .button--icon { min-height: 36px; width: 36px; padding: 0; }
+  .button--sm { min-height: 34px; padding: 0 13px; font-size: 0.82rem; }
+  .button--icon { min-height: 34px; width: 34px; padding: 0; }
   .button--block { width: 100%; }
   .row-actions { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; align-items: center; }
 
@@ -258,13 +258,13 @@
   .table-wrap { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; box-shadow: var(--shadow-card); }
   .table-scroll { overflow-x: auto; }
   .table-scroll > .simple-table { min-width: 860px; }
-  .simple-table { width: 100%; border-collapse: collapse; font-size: 15.5px; line-height: 22px; }
+  .simple-table { width: 100%; border-collapse: collapse; font-size: 15px; line-height: 21px; }
   .simple-table th {
-    padding: 13px 14px; text-align: left; white-space: nowrap; background: var(--surface-sunken);
-    color: var(--text-secondary); font-size: 13px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
+    padding: 11px 14px; text-align: left; white-space: nowrap; background: var(--surface-sunken);
+    color: var(--text-secondary); font-size: 12.5px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase;
     border-bottom: 1px solid var(--border);
   }
-  .simple-table td { padding: 16px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  .simple-table td { padding: 13px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
   .simple-table td.wrap-anywhere { overflow-wrap: anywhere; min-width: 0; }
   .simple-table tbody tr:hover { background: var(--surface-sunken); }
   .card--flush .simple-table tbody tr:last-child td, .table-wrap .simple-table tbody tr:last-child td { border-bottom: 0; }
@@ -273,7 +273,7 @@
   .simple-table .row-link { display: inline-block; max-width: 44ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }  /* long names are cut, the full value is in the tooltip */
   .row-link:hover { color: var(--primary); }
   :root[data-theme="studio"] .simple-table th { padding: 11px 16px; background: var(--surface); letter-spacing: 0.02em; text-transform: none; }
-  :root[data-theme="studio"] .simple-table td { padding: 13px 16px; font-size: 15.5px; line-height: 22px; }
+  :root[data-theme="studio"] .simple-table td { padding: 11px 16px; font-size: 15.5px; line-height: 22px; }
   :root[data-appearance="dark"][data-theme="studio"] .simple-table th { background: var(--surface); }
 
   /* Sortable / filterable headers */
@@ -294,9 +294,9 @@
 
   /* ===== Badges ===== */
   .badge {
-    display: inline-flex; align-items: center; gap: 4px; padding: 4px 11px; border: 1px solid transparent; border-radius: 999px;
+    display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; border: 1px solid transparent; border-radius: 999px;
     background: var(--neutral-soft); color: var(--text-secondary);
-    font-size: 13px; font-weight: 650; letter-spacing: 0.02em; white-space: nowrap;
+    font-size: 12.5px; font-weight: 650; letter-spacing: 0.02em; white-space: nowrap;
   }
   .badge--info { background: var(--info-soft); color: var(--info); border-color: var(--info-line); }
   .badge--success { background: var(--success-soft); color: var(--success); border-color: var(--success-line); }
