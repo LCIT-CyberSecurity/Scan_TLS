@@ -20,6 +20,9 @@ SERVICES = {
     8477: ("imap", "no_starttls"), 8478: ("pop3", "no_stls"), 8479: ("ftp", "no_auth_tls"), 8480: ("postgres", "no_ssl"),
     8481: ("ldap", "refused"), 8482: ("xmpp", "no_starttls"), 8483: ("http", "not_the_protocol"), 8484: ("silent", "silent"),
     8485: ("imap", "refused"),
+    # standard ports (the container runs as root): the whole scan pipeline, Nmap included, sees them as the real services
+    25: ("smtp", "ok"), 587: ("smtp", "ok"), 143: ("imap", "ok"), 110: ("pop3", "ok"), 21: ("ftp", "ok"),
+    389: ("ldap", "ok"), 5432: ("postgres", "ok"), 5222: ("xmpp", "ok"),
 }
 
 

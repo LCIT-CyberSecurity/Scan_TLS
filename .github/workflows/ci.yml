@@ -15,7 +15,7 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y nmap
       - run: pip install -r requirements.txt
       - run: python -m unittest -q test_tls_scanner
-      - run: PYTHONPATH=. python -m unittest tests/engine/test_runner.py tests/engine/test_tls_checks.py tests/engine/test_tls_checks_integration.py
+      - run: PYTHONPATH=. python -m unittest tests/engine/test_runner.py tests/engine/test_tls_checks.py tests/engine/test_tls_checks_integration.py tests/engine/test_tls_checks_lot2.py
 
   backend:
     runs-on: ubuntu-latest

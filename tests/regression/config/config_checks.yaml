@@ -1,6 +1,6 @@
-# Same scan as config.yaml with the complementary TLS checks enabled: everything historical must stay identical.
+# Same scans with and without the complementary TLS checks (lot 1 and lot 2): everything historical must stay identical.
 defaults:
-  scan: {ports: "443,8443,8444,8445,8450,8452", crypto: standard, resolve_dns: true, workers: 2}
+  scan: {ports: "443,8443,8444,8445,8450,8452,8460,8461,8462,8463", crypto: standard, resolve_dns: true, workers: 2}
   logging: {level: info, file: null}
   export: {directory: /out, formats: [csv, cbom, md, html], filename_template: "{report_name}"}
   checks:
@@ -9,6 +9,26 @@ defaults:
       expires_within_days: 30
       trust: {enabled: true, public_store: {enabled: true}, custom_stores: []}
       revocation: {enabled: false}
+x-all-checks: &all_checks
+  tls:
+    hostname_san: true
+    ocsp_stapling: true
+    tls_compression: true
+    renegotiation: true
+    fallback_scsv: true
+    extended_master_secret: true
+    ecdhe_groups: true
+    ffdhe_groups: true
+    session_resumption: true
+    session_tickets: true
+    early_data: true
+    client_auth: true
+    starttls_imap: true
+    starttls_pop3: true
+    starttls_ldap: true
+    starttls_ftp: true
+    starttls_postgres: true
+    starttls_xmpp: true
 reports:
   - name: lab_plain
     run_by_default: false
@@ -20,13 +40,26 @@ reports:
     frequency: manual
     target_groups: [lab]
     encryption_policies: {mode: strict_all, names: [anssi_encryption_policy]}
-    checks:
-      tls:
-        hostname_san: true
-        ocsp_stapling: true
-        tls_compression: true
-        renegotiation: true
-        fallback_scsv: true
-        extended_master_secret: true
-        ecdhe_groups: true
-        ffdhe_groups: true
+    checks: *all_checks
+  # SMTP keeps its historical handling: the scan of ports 25 and 587 must be identical with the checks selected
+  - name: smtp_plain
+    run_by_default: false
+    frequency: manual
+    target_groups: [lab]
+    scan: {ports: "25,587"}
+    encryption_policies: {mode: strict_all, names: [anssi_encryption_policy]}
+  - name: smtp_checks
+    run_by_default: false
+    frequency: manual
+    target_groups: [lab]
+    scan: {ports: "25,587"}
+    encryption_policies: {mode: strict_all, names: [anssi_encryption_policy]}
+    checks: *all_checks
+  # IMAP, POP3, LDAP, FTP, PostgreSQL and XMPP on their standard ports, through STARTTLS
+  - name: starttls_checks
+    run_by_default: false
+    frequency: manual
+    target_groups: [lab]
+    scan: {ports: "143,110,21,389,5432,5222"}
+    encryption_policies: {mode: strict_all, names: [anssi_encryption_policy]}
+    checks: *all_checks

@@ -109,7 +109,8 @@ CHECK_LABELS = {
     TICKETS_ID: "TLS session tickets",
     EARLY_DATA_ID: "TLS 1.3 early data (0-RTT)",
     CLIENT_AUTH_ID: "Client authentication (mTLS)",
-    **{protocol_check_id(protocol): f"{protocol.upper() if protocol != 'postgres' else 'PostgreSQL'} STARTTLS" for protocol in OPT_IN_PROTOCOLS},
+    "starttls_imap": "IMAP STARTTLS", "starttls_pop3": "POP3 STLS", "starttls_ldap": "LDAP StartTLS",
+    "starttls_ftp": "FTP AUTH TLS", "starttls_postgres": "PostgreSQL SSLRequest", "starttls_xmpp": "XMPP STARTTLS",
 }
 
 

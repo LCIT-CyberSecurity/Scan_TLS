@@ -54,7 +54,8 @@ WebUI documentation: [architecture](docs/architecture/overview.md) ·
 - Provides an optional Post-Quantum Cryptography (PQC) profile that actively
   tests TLS 1.3 hybrid ML-KEM key exchange groups.
 - Offers optional, non-destructive **complementary TLS checks** (FQDN/SAN identity, OCSP stapling, ECDHE and
-  FFDHE groups, compression, renegotiation, `TLS_FALLBACK_SCSV`, Extended Master Secret), reported next to the
+  FFDHE groups, compression, renegotiation, `TLS_FALLBACK_SCSV`, Extended Master Secret, session resumption and tickets, TLS 1.3 early data,
+  client authentication, IMAP/POP3/LDAP/FTP/PostgreSQL/XMPP STARTTLS), reported next to the
   results without changing the grade. See [Complementary TLS checks](#complementary-tls-checks).
 
 ## Requirements
@@ -313,6 +314,11 @@ checks:
     extended_master_secret: true
     ecdhe_groups: false        # about 18 connections per endpoint
     ffdhe_groups: false
+    session_resumption: { enabled: true, attempts: 2 }   # lot 2: sessions, 0-RTT, mTLS, STARTTLS protocols
+    session_tickets: true
+    early_data: { enabled: true, probe: false }          # probe: true sends an empty line as early data
+    client_auth: true                                    # no client certificate is ever used
+    starttls_imap: { enabled: true, ports: [143] }       # also starttls_pop3, _ldap, _ftp, _postgres, _xmpp
 ```
 
 Each result is `PASS`, `FAIL`, `NOT_APPLICABLE`, `NOT_TESTED`, `INCONCLUSIVE` or `ERROR`; the last three mean *unknown*, never *passed*.

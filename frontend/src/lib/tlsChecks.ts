@@ -1,5 +1,6 @@
 /** Helpers for the `checks.tls` section of a scan profile (complementary TLS checks). Pure functions, no React. */
-export interface TlsCheckSpec { id: string; family: string; recommended: boolean }
+export interface TlsOptionSpec { name: string; kind: "int" | "bool" | "ports"; default: unknown; min: number | null; max: number | null }
+export interface TlsCheckSpec { id: string; family: string; recommended: boolean; options?: TlsOptionSpec[] }
 export type TlsSection = Record<string, unknown>;
 export type TlsCheckStatus = "PASS" | "FAIL" | "NOT_TESTED" | "NOT_APPLICABLE" | "INCONCLUSIVE" | "ERROR";
 export interface TlsCheckResult { check_id: string; status: TlsCheckStatus; message: string; observations?: Record<string, unknown>; evidence?: string[]; duration_ms?: number | null }
@@ -16,6 +17,30 @@ export function setEnabled(section: TlsSection | undefined, id: string, enabled:
   if (enabled) next[id] = { enabled: true };
   else delete next[id];
   return next;
+}
+
+/** Value of a technical option of an enabled check, or `undefined` when the profile does not set it (the engine default applies). */
+export function getOption(section: TlsSection | undefined, id: string, name: string): unknown {
+  const entry = section?.[id];
+  return entry && typeof entry === "object" ? (entry as Record<string, unknown>)[name] : undefined;
+}
+
+/** Sets (or, with `undefined`, removes) an option of a check; the check stays enabled and a boolean shorthand becomes a mapping. */
+export function setOption(section: TlsSection | undefined, id: string, name: string, value: unknown): TlsSection {
+  const current = section?.[id];
+  const entry: Record<string, unknown> = current && typeof current === "object" ? { ...(current as Record<string, unknown>) } : { enabled: current === true };
+  if (value === undefined) delete entry[name];
+  else entry[name] = value;
+  return { ...(section ?? {}), [id]: entry };
+}
+
+/** "143, 1143" -> [143, 1143]; empty -> undefined (standard ports); invalid, duplicated or too many ports -> null. */
+export function parsePorts(text: string): number[] | undefined | null {
+  const parts = text.split(/[\s,;]+/).filter(Boolean);
+  if (!parts.length) return undefined;
+  const ports = parts.map((p) => (/^\d{1,5}$/.test(p) ? Number(p) : NaN));
+  if (ports.some((p) => !(p >= 1 && p <= 65535)) || new Set(ports).size !== ports.length || ports.length > 16) return null;
+  return ports;
 }
 
 /** Selection pre-filled for NEW profiles only. */

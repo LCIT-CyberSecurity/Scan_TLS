@@ -33,7 +33,7 @@ and records `retention.purge` in the audit log. Deleting a run (OPERATOR) also r
 ## Complementary TLS checks
 
 They add connections to each endpoint of a profile that enables them: 1–3 for most checks, up to about 18 for `ecdhe_groups` and 7
-for `ffdhe_groups`, each bounded by `timeout_seconds` and by a per-endpoint `time_budget_seconds` (defaults 10 s / 120 s, YAML
+for `ffdhe_groups`, up to about 10 for the shared session probes, 2–4 for 0-RTT and client authentication, 1 per STARTTLS protocol check (only on its ports), each bounded by `timeout_seconds` and by a per-endpoint `time_budget_seconds` (defaults 10 s / 120 s, YAML
 `checks.tls`), inside the worker that scans the host (`scan.workers` limits concurrency as before). Consider `TLS_SCAN_MAX_SCAN_DURATION_SECONDS`
 if you enable them on large ranges. They need `openssl` in the worker image (already present). A failing check
 is logged and stored as `ERROR` without failing the run. Nothing sensitive is stored: results hold observations and short evidence

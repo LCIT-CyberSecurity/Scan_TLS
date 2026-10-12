@@ -33,6 +33,13 @@ something; results are stored on the `ScanJob` (like trust and revocation result
 `EndpointReport.complementary_checks` (omitted when empty) and never touch rows, findings or grades. No plugin loader or class hierarchy:
 adding a check = a function + one `CheckSpec` line + i18n labels. See [the checks](../user/tls-checks.md).
 
+Lot 2 adds `sessions.py` (resumption and tickets, one shared set of probes cached per endpoint in `CheckContext.shared`), `early_data.py`,
+`client_auth.py` and the package `checks/protocols/` (`starttls.py`: bounded `Wire`, `Upgrade` result; one module per protocol: SMTP, IMAP, POP3, LDAP,
+FTP, PostgreSQL, XMPP; `__init__.py`: registry, `open_channel`, `resolve_protocol`; `checks.py`: the `starttls_*` checks). A `CheckSpec` may now declare
+`options` (validated by the common YAML parser, rendered as *Advanced options* in the profile form) and `applies` (a check that does not concern the
+endpoint, such as a protocol check on another port, is skipped). The adapter of the endpoint's protocol is also used by the raw handshake probes and
+`openssl s_client -starttls` so that every selected check runs on the negotiated channel; SMTP keeps its historical rule by port.
+
 ## Boundaries
 
 * The engine knows nothing about users, roles, SSO, FastAPI, PostgreSQL or the frontend. It receives a
