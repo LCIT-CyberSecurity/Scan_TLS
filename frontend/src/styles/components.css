@@ -3,6 +3,11 @@
    (signature, document preparation, wizard…) are left out. Tailwind utilities stay stronger (own layer order). */
 
 @layer base {
+  /* The application is drawn at 80 % (what a user would get with the browser zoom at 80 %): --ui-zoom is the single knob. Viewport
+     units are not affected by zoom, hence the divisions by --ui-zoom wherever a rule is meant to follow the real window. The sign-in
+     page keeps its own scale. */
+  :root { --ui-zoom: 0.8; }
+  body:not(:has(.login-page)) { zoom: var(--ui-zoom); }
   html { background: var(--background); }
   body {
     margin: 0;
@@ -30,11 +35,11 @@
 
 @layer components {
   /* ===== Shell / layout ===== */
-  .app-shell { display: flex; min-height: 100vh; }
+  .app-shell { display: flex; min-height: calc(100vh / var(--ui-zoom)); }
   .sidebar {
     position: sticky; top: 0; z-index: 6; flex-shrink: 0;
     display: flex; flex-direction: column;
-    width: 264px; height: 100vh; padding: 22px 16px 16px;
+    width: 264px; height: calc(100vh / var(--ui-zoom)); padding: 22px 16px 16px;
     background: linear-gradient(180deg, transparent 0, color-mix(in srgb, var(--primary) 5%, transparent) 100%), var(--rail, var(--surface));
     border-right: 1px solid var(--border);
   }
@@ -96,7 +101,7 @@
   }
   .user-name { font-size: 15px; font-weight: 600; line-height: 18px; text-align: left; }
   .user-name span { display: block; color: var(--text-faint); font-size: 12.5px; font-weight: 400; }
-  .app-main { flex: 1; width: 100%; max-width: 1780px; margin: 0 auto; padding: 32px clamp(20px, 2.2vw, 40px) 64px; display: block; }
+  .app-main { flex: 1; width: 100%; max-width: calc(1780px / var(--ui-zoom)); margin: 0 auto; padding: 32px clamp(20px, 2.2vw, 40px) 64px; display: block; }
   @media (max-width: 860px) {
     .sidebar { position: fixed; inset: 0 auto 0 0; transform: translateX(-100%); transition: transform 180ms ease; box-shadow: var(--shadow-lg); }
     .sidebar--open { transform: none; }
@@ -353,12 +358,12 @@
   .modal-backdrop { position: fixed; inset: 0; z-index: 50; background: var(--scrim); backdrop-filter: var(--scrim-blur); }
   .modal {
     position: fixed; left: 50%; top: 50%; z-index: 51; transform: translate(-50%, -50%);
-    width: min(460px, calc(100vw - 32px)); max-height: 88vh; overflow-y: auto; display: grid; gap: 14px;
+    width: min(460px, calc(100vw / var(--ui-zoom) - 32px)); max-height: calc(88vh / var(--ui-zoom)); overflow-y: auto; display: grid; gap: 14px;
     background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg);
     padding: 22px 24px; box-shadow: var(--shadow-overlay);
     animation: modal-in var(--normal) var(--ease);
   }
-  .modal--wide { width: min(760px, calc(100vw - 32px)); }
+  .modal--wide { width: min(760px, calc(100vw / var(--ui-zoom) - 32px)); }
   .modal-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
   .modal-head h2 { margin: 0; font-size: 18px; font-weight: 620; letter-spacing: -0.01em; }
   @keyframes modal-in { from { opacity: 0; transform: translate(-50%, calc(-50% + 6px)); } to { opacity: 1; transform: translate(-50%, -50%); } }
