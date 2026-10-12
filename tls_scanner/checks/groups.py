@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import re
 
-from .contracts import FAIL, INCONCLUSIVE, NOT_APPLICABLE, NOT_TESTED, PASS, CheckContext, CheckResult, result
+from .contracts import FAIL, INCONCLUSIVE, NOT_APPLICABLE, PASS, CheckContext, CheckResult, result
 from .transport import SClientOutput, classify_s_client_failure, run_s_client
 
 ECDHE_ID = "ecdhe_groups"

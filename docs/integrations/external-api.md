@@ -67,3 +67,10 @@ Use `-k` only for a self-signed certificate on a test installation.
 | 429 | Rate limit reached |
 
 See also: [MCP server](mcp.md) · [administration](../admin/operations.md#external-api-and-mcp-access) · [user guide](../user/guide.md#api-and-mcp-access).
+
+## Complementary TLS checks
+
+Each endpoint (`/scans/{id}/endpoints`) carries `tls_checks`: the results of the complementary TLS checks enabled by the scan profile
+(`check_id`, `status` ∈ PASS / FAIL / NOT_APPLICABLE / NOT_TESTED / INCONCLUSIVE / ERROR, `message`, `observations`, `evidence`,
+`duration_ms`), or an empty list when none was enabled. They are reported separately from `grade`, `compliance_status` and the
+findings. NOT_TESTED, INCONCLUSIVE and ERROR mean *unknown*, not *passed*. See [the checks](../user/tls-checks.md).

@@ -5,8 +5,6 @@ import re
 import socket
 import subprocess
 
-import pytest
-
 from conftest import LAB
 from tls_scanner.checks import groups, handshake, identity, stapling
 from tls_scanner.checks.contracts import FAIL, INCONCLUSIVE, NOT_APPLICABLE, PASS, CheckContext

@@ -77,9 +77,13 @@ def test_results_are_stored_per_endpoint_and_exposed(user, auditor, runs):
 def test_historical_profile_keeps_its_behaviour_and_the_grade_is_unchanged(runs):
     legacy, enriched = runs["legacy"], runs["tls"]
     assert all(e["tls_checks"] == [] for e in legacy["endpoints"])
-    pick = lambda run: {(e["port"]): (e["grade"], e["compliance_status"], e["highest_severity"], sorted(e["tls_versions"])) for e in run["endpoints"]}
+    def pick(run):
+        return {e["port"]: (e["grade"], e["compliance_status"], e["highest_severity"], sorted(e["tls_versions"])) for e in run["endpoints"]}
+
     assert pick(legacy) == pick(enriched)
-    key = lambda f: (f["finding_id"], f["status"], tuple(f["affected_endpoint_ids"]))
+    def key(finding):
+        return (finding["finding_id"], finding["status"], tuple(finding["affected_endpoint_ids"]))
+
     assert sorted(map(key, legacy["findings"])) == sorted(map(key, enriched["findings"]))
     assert legacy["summary"]["overall_grade"] == enriched["summary"]["overall_grade"]
     assert legacy["summary"]["total_endpoints"] == enriched["summary"]["total_endpoints"]

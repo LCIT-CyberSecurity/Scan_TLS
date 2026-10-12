@@ -24,7 +24,7 @@ test("operator: the profile form offers the complementary TLS checks, recommende
   await zone.getByRole("checkbox", { name: /ECDHE groups/ }).check();
 
   const name = `e2e-tls-checks-${Date.now()}`;
-  await dialog.getByLabel("Name").fill(name);
+  await dialog.getByLabel("Name", { exact: true }).fill(name);
   await dialog.getByRole("button", { name: "Save" }).click();
   await expect(page.getByRole("cell", { name })).toBeVisible();
 

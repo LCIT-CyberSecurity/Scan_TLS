@@ -175,7 +175,7 @@ export const de: Messages = {
   "prof.portsHint": "fast, all oder eine Liste wie 443,8443,9000-9010",
   "prof.revocation": "Sperrstatus prüfen (OCSP/CRL)",
   "prof.tlsChecks": "Ergänzende TLS-Prüfungen",
-  "prof.tlsChecksHint": "Zusätzliche, nicht destruktive Prüfungen. Sie werden neben den Ergebnissen ausgewiesen und ändern die Note nicht. Alles abgewählt lassen, um das bisherige Verhalten beizubehalten.",
+  "prof.tlsChecksHint": "Zusätzliche, nicht destruktive Prüfungen. Sie werden neben den Ergebnissen ausgewiesen und ändern die Note nicht. Alles abwählen, um das bisherige Verhalten beizubehalten.",
   "prof.addChecks": "Prüfungen hinzufügen",
   "tls.family.identity": "Identität und Zertifikat",
   "tls.family.handshake": "Aushandlung",

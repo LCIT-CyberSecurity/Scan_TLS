@@ -10,6 +10,7 @@ Produces:
 - per-endpoint findings later used for grading.
 """
 
+import logging
 import sys
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -21,6 +22,16 @@ from .crypto_policy import evaluate_compliance, extract_cipher_suites
 from .network import resolve_fqdn
 from .pki import REVOCATION_REVOKED, TRUST_UNTRUSTED, collect_peer_certificate_chain, revocation_result_not_tested, trust_result_not_tested, validate_certificate_revocation, validate_peer_chain
 from .pqc import evaluate_pqc_compliance, probe_pqc_key_exchange
+
+
+def log_tls_check_results(job, endpoint_id):
+    """One line per endpoint: check ids and statuses only (no observation, certificate or network capture)."""
+    logger = logging.LoggerAdapter(logging.getLogger("tls_scan"), {"scan_run_id": job.scan_run_id})
+    results = job.tls_check_results.get(endpoint_id, ())
+    logger.info("tls_checks endpoint=%s %s", endpoint_id, " ".join(f"{item.check_id}={item.status}" for item in results))
+    for item in results:
+        if item.status == "ERROR":
+            logger.warning("tls_check_error endpoint=%s check=%s detail=%s", endpoint_id, item.check_id, item.message)
 
 
 def trust_display_values(trust_result):
@@ -181,6 +192,7 @@ def collect_scan_results(scanner, args, results, findings, fqdn_cache, cancel_ev
                     budget_seconds=args.tls_checks_budget_seconds,
                     cancel_event=cancel_event,
                 )
+                log_tls_check_results(args, endpoint_id)
 
             for tls_version, cipher_suite in cipher_suites:
                 if args.crypto == "pqc":

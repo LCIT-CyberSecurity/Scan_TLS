@@ -174,7 +174,7 @@ export const en = {
   "prof.portsHint": "fast, all, or a list like 443,8443,9000-9010",
   "prof.revocation": "Check revocation (OCSP/CRL)",
   "prof.tlsChecks": "Complementary TLS checks",
-  "prof.tlsChecksHint": "Additional non-destructive checks. They are reported next to the results and do not change the grade. Leave all unchecked to keep the historical behaviour.",
+  "prof.tlsChecksHint": "Additional non-destructive checks. They are reported next to the results and do not change the grade. Untick them all to keep the historical behaviour.",
   "prof.addChecks": "Add checks",
   "tls.family.identity": "Identity and certificate",
   "tls.family.handshake": "Negotiation",

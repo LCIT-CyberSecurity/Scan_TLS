@@ -20,3 +20,6 @@ A JSON API to consult scan results, documented in **Swagger UI** at `https://<se
 Data semantics: values are those collected by the engine. Anything not collected is `null` (for instance the certificate start of validity, which the engine does not store, or `summary` on a scan that has no results). A finding on an endpoint that was not tested again is `not_retested`, never `fixed`.
 
 Notes: the internal `/api/docs` and `/api/openapi.json` are no longer published; `/swagger` is the only API documentation. Behind Nginx, `/swagger` is proxied to the API (see `ops/docker/nginx/default.conf`).
+
+Endpoints also expose `tls_checks` (complementary TLS checks, empty when the profile did not enable any), separate from the grade and
+the findings: see [Complementary TLS checks](tls-checks.md).

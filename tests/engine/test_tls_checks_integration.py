@@ -72,6 +72,14 @@ class ExecutionTests(unittest.TestCase):
         self.assertEqual((kwargs["timeout_seconds"], kwargs["budget_seconds"], kwargs["cancel_event"]), (7, 33, event))
         self.assertEqual(set(job.tls_check_results), {"192.0.2.10:443/tcp"})
 
+    def test_logs_carry_ids_and_statuses_only(self):
+        job = make_job(tls_checks=("hostname_san",), scan_run_id="run-1")
+        with patch.object(scanner, "run_complementary_checks", return_value=fake_results(("hostname_san", FAIL))), self.assertLogs("tls_scan", "INFO") as logs:
+            run_collect(job)
+        line = next(record for record in logs.records if "tls_checks" in record.getMessage()).getMessage()
+        self.assertIn("endpoint=192.0.2.10:443/tcp hostname_san=FAIL", line)
+        self.assertNotIn("script", line)
+
     def test_a_failing_check_does_not_fail_the_scan(self):
         def boom(context):
             raise RuntimeError("boom")

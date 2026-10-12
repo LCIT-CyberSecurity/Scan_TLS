@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import ec, rsa
+from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.x509 import ocsp
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
@@ -516,7 +516,7 @@ class FfdheTests(unittest.TestCase):
         self.assertIn("not a proof", outcome.observations["tls12_dhe"]["note"])
 
     def test_tls13_only_endpoint_skips_the_tls12_probe(self):
-        with patch.object(groups, "run_s_client", fake_s_client(lambda args: "handshake failure\n")) as run:
+        with patch.object(groups, "run_s_client", fake_s_client(lambda args: "handshake failure\n")):
             outcome = groups.check_ffdhe_groups(ctx(observed_versions=("TLSv1.3",)))
         self.assertIsNone(outcome.observations["tls12_dhe"]["negotiated"])
 
@@ -679,6 +679,12 @@ class RawTransportTests(unittest.TestCase):
         with patch.object(CheckContext, "starttls", "imap"):
             reply = transport.send_client_hello(ctx(host="127.0.0.1", port=1))
         self.assertIn("not supported", reply.error)
+
+    def test_server_name_for_a_raw_hello_is_always_ascii_or_absent(self):
+        self.assertEqual(transport._hello_server_name("www.example.org."), "www.example.org")
+        self.assertEqual(transport._hello_server_name("bücher.example"), "xn--bcher-kva.example")
+        for unusable in ("", "192.0.2.1", "2001:db8::1", "a" * 300, "\udcff.example"):
+            self.assertEqual(transport._hello_server_name(unusable), "", unusable)
 
     def test_no_probe_when_cancelled(self):
         event = threading.Event()

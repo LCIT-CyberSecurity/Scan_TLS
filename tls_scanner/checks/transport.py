@@ -296,7 +296,7 @@ def send_client_hello(context: CheckContext, **hello_options) -> ServerReply:
     if context.starttls not in ("", "smtp"):
         return ServerReply(kind="error", error=f"STARTTLS {context.starttls} not supported by raw probes")
     deadline = time.monotonic() + context.probe_timeout()
-    hello_options.setdefault("server_name", safe_sni_name(context.sni) if context.sni and not _is_ip(context.sni) else "")
+    hello_options.setdefault("server_name", _hello_server_name(context.sni))
     try:
         with socket.create_connection((context.host, context.port), timeout=context.probe_timeout()) as sock:
             if context.starttls == "smtp":
@@ -307,6 +307,18 @@ def send_client_hello(context: CheckContext, **hello_options) -> ServerReply:
         return ServerReply(kind="error", error="timeout")
     except (OSError, ConnectionError) as error:
         return ServerReply(kind="error", error=str(error)[:120])
+
+
+def _hello_server_name(name: str) -> str:
+    """SNI for a raw ClientHello: ASCII host name (A-label), never an IP address, at most 253 characters, else none."""
+    if not name or _is_ip(name):
+        return ""
+    candidate = name.strip().rstrip(".")
+    try:
+        candidate = candidate.encode("idna").decode("ascii")
+    except UnicodeError:
+        return ""
+    return candidate if 0 < len(candidate) <= 253 else ""
 
 
 def _is_ip(value: str) -> bool:

@@ -66,3 +66,8 @@ async with httpx2.AsyncClient(headers={"Authorization": "Bearer tls_scan_mcp_…
 
 A refused HTTP request is `401` (key, service or authorisation), `403` (Origin), `421`/`400` (Host), `413` (body too large), `429` (rate limit). A tool error (unknown scan, invalid parameter, insufficient role) is returned as a tool result with `isError` set.
 See also [administration](../admin/operations.md#external-api-and-mcp-access).
+
+## Complementary TLS checks
+
+`tls_scan_list_endpoints` and `tls_scan_get_endpoint_details` include `tls_checks` for each endpoint (same structure as the REST API:
+[details](external-api.md#complementary-tls-checks)). They never change the grade or compliance fields.
