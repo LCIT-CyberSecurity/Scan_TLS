@@ -1,26 +1,42 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import type { Trend, TrendPoint } from "../../api/types";
 import { Select } from "../ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { useI18n } from "../../i18n";
 
-const W = 640, H = 280, PAD = { l: 44, r: 20, t: 16, b: 34 };
+const PAD = { l: 44, r: 20, t: 16, b: 34 };
+/** Narrow screens get a narrower drawing so that text keeps a readable size instead of shrinking with the page. */
+function useCompact() {
+  const query = "(max-width: 640px)";
+  const [compact, setCompact] = useState(() => typeof window !== "undefined" && !!window.matchMedia?.(query).matches);
+  useEffect(() => {
+    const media = window.matchMedia?.(query);
+    if (!media) return;
+    const update = () => setCompact(media.matches);
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+  return compact;
+}
 const GRID = [0, 25, 50, 75, 100];
 
 /** Compliance rate (0-100 %) of the successive runs of ONE scan definition. Runs with nothing evaluated leave a gap, never a 0 %. */
 export function ComplianceTrend({ trend, onDefinition }: { trend: Trend | undefined; onDefinition: (id: string) => void }) {
   const { t, locale } = useI18n();
+  const compact = useCompact();
+  const W = compact ? 340 : 640, H = compact ? 260 : 280;
   const points = trend?.points ?? [];
   const [focus, setFocus] = useState<string | null>(null);
   const x = (i: number) => PAD.l + (points.length < 2 ? (W - PAD.l - PAD.r) / 2 : (i * (W - PAD.l - PAD.r)) / (points.length - 1));
   const y = (rate: number) => PAD.t + ((100 - rate) * (H - PAD.t - PAD.b)) / 100;
-  const dateOf = (p: TrendPoint) => new Date(p.finished_at).toLocaleDateString(locale, { day: "2-digit", month: "short" });
+  const sameDay = new Set(points.map((p) => p.finished_at.slice(0, 10))).size === 1;  // one day only: show the time instead
+  const dateOf = (p: TrendPoint) => new Date(p.finished_at).toLocaleString(locale, sameDay ? { hour: "2-digit", minute: "2-digit" } : { day: "2-digit", month: "short" });
   const rated = points.map((p, i) => ({ p, i })).filter((q) => q.p.rate != null);
   // a line segment only joins two consecutive runs that both have a rate
   const segments = points.slice(1).map((b, i) => ({ a: points[i], ai: i, b, bi: i + 1 })).filter((q) => q.a.rate != null && q.b.rate != null);
   const shown = points.find((p) => p.run_id === focus) ?? points[points.length - 1];
-  const labelEvery = Math.max(1, Math.ceil(points.length / 8));
+  const labelEvery = Math.max(1, Math.ceil(points.length / (compact ? 4 : 8)));
   return (
     <Card>
       <CardHeader>

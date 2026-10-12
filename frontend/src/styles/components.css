@@ -205,7 +205,7 @@
   .trend-point--changed { fill: var(--surface); stroke: var(--primary); stroke-width: 2.5; }
   .trend-detail { margin: 16px 0 0; font-size: 14.5px; line-height: 22px; color: var(--text-secondary); }
   .trend-detail strong { color: var(--text-primary); }
-  .trend-select { max-width: 240px; }
+  .trend-select { width: min(340px, 100%); }
   .trend-legend-dot { display: inline-block; width: 10px; height: 10px; margin-right: 8px; border: 2px solid var(--primary); border-radius: 50%; }
   .watch-list { display: grid; margin: 0; padding: 0; list-style: none; }
   .watch-list li { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 0; border-bottom: 1px solid var(--hairline); }

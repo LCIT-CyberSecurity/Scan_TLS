@@ -21,7 +21,7 @@ export function Vigilance({ posture }: { posture: Posture | undefined }) {
               <li key={i.finding_id}>
                 <div className="watch-main">
                   <span className="watch-title">{i.category === "complementary_check" ? t(`tls.check.${i.finding_id}` as keyof Messages) : i.title}</span>
-                  <span className="watch-meta">{i.severity ? <SeverityBadge severity={i.severity} /> : <Badge tone="neutral">{t("dash.watchCheck")}</Badge>}<span>{t("dash.watchEndpoints", { n: i.endpoints })}</span></span>
+                  <span className="watch-meta">{i.severity ? <SeverityBadge severity={i.severity} /> : <Badge tone="neutral">{t("dash.watchCheck")}</Badge>}<span>{t(i.endpoints === 1 ? "dash.watchEndpoint" : "dash.watchEndpoints", { n: i.endpoints })}</span></span>
                 </div>
                 {i.run_id && <Link className="button button--ghost button--icon" to={`/scans/${i.run_id}`} aria-label={`${t("dash.watchOpen")}: ${i.title}`}><ChevronRight /></Link>}
               </li>
