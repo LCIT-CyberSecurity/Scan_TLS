@@ -46,13 +46,13 @@
   .brand-logo { flex: none; width: 78px; height: 44px; object-fit: contain; }
   :root[data-appearance="dark"] .brand-logo { padding: 3px; background: #f4f5f8; border-radius: 8px; }
   .nav-heading {
-    flex: none; margin-top: 24px; padding: 8px 14px 6px;
+    flex: none; margin-top: 28px; padding: 8px 14px 8px;
     color: var(--text-faint); font-size: 12.5px; font-weight: 680; letter-spacing: 0.09em; text-transform: uppercase;
   }
   .nav-group:first-child > .nav-heading { margin-top: 10px; }
   .nav-link {
     position: relative; display: flex; align-items: center; gap: 12px;
-    min-height: 44px; padding: 0 14px; border-radius: var(--radius-sm);
+    min-height: 48px; padding: 0 14px; border-radius: var(--radius-sm);
     color: var(--text-secondary); font-size: 15.5px; font-weight: 500; text-decoration: none;
     transition: color var(--fast) ease, background var(--fast) ease;
   }
@@ -71,8 +71,8 @@
   /* Groups share the free height in proportion to their links; links stretch from 44 to 54 px and a group
      never grows past that, so any surplus lands after the last group instead of opening a gap in the middle.
      --nav-links (the link count) is set by Shell.tsx. When the window is too short the nav scrolls. */
-  .nav-group { display: flex; flex-direction: column; gap: 4px; flex: var(--nav-links, 1) 0 auto; max-height: calc(var(--nav-links, 1) * 58px + 64px); }
-  .nav-group > .nav-link { flex: 1 0 44px; max-height: 54px; }
+  .nav-group { display: flex; flex-direction: column; gap: 6px; flex: var(--nav-links, 1) 0 auto; max-height: calc(var(--nav-links, 1) * 62px + 68px); }
+  .nav-group > .nav-link { flex: 1 0 48px; max-height: 56px; }
   .sidebar-footer {
     margin-top: auto; padding: 14px 10px 2px; border-top: 1px solid var(--border);
     color: var(--text-faint); font-size: 12.5px; line-height: 16px;
@@ -139,11 +139,11 @@
   }
   .card-title { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 16px; font-weight: 620; letter-spacing: -0.01em; }
   .card-body { padding: 20px 24px 22px; }
-  .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-bottom: 24px; }
-  .metric { padding: 14px 16px 15px; }
+  .metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px; margin-bottom: 24px; }
+  .metric { padding: 22px 24px 24px; }
   .metric-label { display: flex; align-items: center; justify-content: space-between; color: var(--text-secondary); font-size: 15.5px; font-weight: 500; }
   .metric strong {
-    display: block; margin: 8px 0 2px; font-size: 26px; line-height: 32px; font-weight: 620;
+    display: block; margin: 14px 0 6px; font-size: 32px; line-height: 38px; font-weight: 620;
     letter-spacing: -0.034em; font-variant-numeric: tabular-nums;
   }
   .metric small { color: var(--text-faint); font-size: 14.5px; }
@@ -156,6 +156,27 @@
   .metric-icon.red { color: var(--danger); background: var(--danger-soft); }
   .metric-icon.green { color: var(--success); background: var(--success-soft); }
   .metric-icon.blue { color: var(--info); background: var(--info-soft); }
+
+  /* Dashboard: two sections (posture, activity) separated by generous space, cards 20-24 px apart. */
+  .dash-section { margin-top: 40px; }
+  .dash-section:first-of-type { margin-top: 8px; }
+  .dash-heading { margin: 0 0 20px; font-size: 18px; font-weight: 650; letter-spacing: -0.01em; }
+  .dash-grid { display: grid; gap: 24px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .dash-grid--wide { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
+  .dash-chart { display: flex; align-items: flex-end; gap: 8px; height: 200px; }
+  .dash-bar { display: flex; flex: 1; flex-direction: column; justify-content: flex-end; overflow: hidden; border-radius: 4px; min-height: 6px; }
+  .dash-grades { display: grid; gap: 16px; margin: 0; padding: 0; list-style: none; }
+  .dash-grades li { display: grid; grid-template-columns: 36px 1fr 36px; align-items: center; gap: 16px; }
+  .dash-grade { font-weight: 700; font-size: 18px; }
+  .dash-grade-bar { height: 10px; border-radius: 6px; background: var(--surface-secondary); overflow: hidden; }
+  .dash-grade-bar i { display: block; height: 100%; border-radius: 6px; background: var(--primary); }
+  .dash-grade-n { text-align: right; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+  .dash-list { display: grid; gap: 4px; }
+  .dash-row { display: flex; justify-content: space-between; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--hairline); font-size: 15px; }
+  .dash-row:last-child { border-bottom: 0; }
+  .simple-table td, .simple-table th { padding-top: 14px; padding-bottom: 14px; }
+  @media (max-width: 1100px) { .dash-grid, .dash-grid--wide { grid-template-columns: 1fr; } .dash-section { margin-top: 32px; } }
+  @media (max-width: 860px) { .metrics { gap: 16px; } .metric { padding: 18px 20px 20px; } .dash-grid { gap: 16px; } .dash-chart { height: 160px; } }
 
   /* ===== Buttons ===== */
   .button {
