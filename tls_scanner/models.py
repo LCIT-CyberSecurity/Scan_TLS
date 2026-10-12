@@ -149,3 +149,9 @@ class ScanJob:
     certificate_revocation_max_response_bytes: int = 1048576
     certificate_revocation_allow_private_urls: bool = False
     certificate_revocation_results: dict[str, CertificateRevocationResult] = field(default_factory=dict)
+    # complementary TLS checks (tls_scanner.checks): none selected = historical behaviour
+    tls_checks: tuple[str, ...] = ()
+    tls_checks_timeout_seconds: int = 10
+    tls_checks_budget_seconds: int = 120
+    tls_check_requested_names: dict[str, tuple[str, ...]] = field(default_factory=dict)
+    tls_check_results: dict[str, tuple[Any, ...]] = field(default_factory=dict)

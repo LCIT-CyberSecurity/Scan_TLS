@@ -20,6 +20,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
+from .checks.identity import resolve_requested_names
 from .crypto_policy import apply_endpoint_grades
 from .exports.paths import build_export_paths, local_report_timestamp, local_scan_timestamp, write_exports
 from .exports.report_model import build_report_model, report_model_to_dict
@@ -95,6 +96,9 @@ def collect_job_results(job, targets, logger, nmap, tqdm, cancel_event=None, on_
     findings = {}
     fqdn_cache = resolve_target_fqdns(targets)
     logger.debug("fqdn_cache_entries=%s", len(fqdn_cache))
+    if "hostname_san" in job.tls_checks:
+        # names the user actually asked for (never a PTR), used as reference identity by the SAN check
+        job.tls_check_requested_names.update(resolve_requested_names(targets))
     logger.debug("tls_scan_arguments=%s", TLS_ARGUMENTS)
 
     if job.ports in ["fast", "all"]:
@@ -113,7 +117,7 @@ def collect_job_results(job, targets, logger, nmap, tqdm, cancel_event=None, on_
         logger.info("tls_scan_start targets=%s ports=%s", targets, job.ports)
         emit("phase", {"phase": "tls_scan", "hosts": targets.split()})
         run_scan_with_progress(scanner, tqdm, "TLS scan", hosts=targets, ports=job.ports, arguments=TLS_ARGUMENTS)
-        collect_scan_results(scanner, job, results, findings, fqdn_cache)
+        collect_scan_results(scanner, job, results, findings, fqdn_cache, cancel_event)
         logger.info("tls_scan_done targets=%s ports=%s", targets, job.ports)
 
     emit("phase", {"phase": "grading"})

@@ -887,6 +887,29 @@
     root.append(el('p','muted','This is an internal TLS Scan indicator, not a certification or an official standard.'));
   }
 
+  const tlsCheckLabels = {
+    hostname_san:'FQDN / SAN identity', ocsp_stapling:'OCSP stapling', tls_compression:'TLS compression', renegotiation:'Renegotiation',
+    fallback_scsv:'TLS_FALLBACK_SCSV', extended_master_secret:'Extended Master Secret', ecdhe_groups:'ECDHE groups', ffdhe_groups:'FFDHE / DH parameters',
+  };
+
+  function tlsCheckObservations(observations){
+    return Object.entries(observations || {}).filter(([, value]) => value !== null && (typeof value !== 'object' || (Array.isArray(value) && value.every((item) => typeof item !== 'object'))))
+      .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(', ') || 'none' : value}`).join(' · ');
+  }
+
+  function tlsCheckRows(endpoint){
+    return (endpoint.complementary_checks || []).map((check) => [tlsCheckLabels[check.check_id] || check.check_id, check.status, check.message, tlsCheckObservations(check.observations)]);
+  }
+
+  function initTlsChecks(){
+    const root = $('tlsChecks');
+    if(!root) return;
+    root.append(el('p','muted','These controls enrich the scan. They do not change the grade, the compliance status or the findings above.'));
+    data.endpoints.filter((endpoint) => (endpoint.complementary_checks || []).length).forEach((endpoint) => {
+      root.append(el('h3','',endpoint.endpoint_id), table(['Check','Status','Result','Observations'], tlsCheckRows(endpoint)));
+    });
+  }
+
   function openEndpoint(id){
     const endpoint = data.endpoints.find((item) => item.endpoint_id === id);
     if(!endpoint) return;
@@ -903,6 +926,7 @@
     root.append(el('h3','trust-store-heading','Trust Store Results'), table(['Trust Store','Result','Trust Anchor','Error'], (endpoint.certificate.trust_store_results || []).map((result) => [result.store_name, result.status, result.trust_anchor_subject || 'None', result.validation_error || ''])));
     root.append(el('h3','','PKI Validation'), table(['Check','Status'], Object.entries(endpoint.pki)));
     root.append(el('h3','','PQC'), table(['Field','Value'], Object.entries(endpoint.pqc).map(([key,value]) => [key, Array.isArray(value) ? value.join(', ') : value])));
+    if((endpoint.complementary_checks || []).length) root.append(el('h3','','Complementary TLS Checks'), table(['Check','Status','Result','Observations'], tlsCheckRows(endpoint)));
     $('endpointDrawer').classList.add('open');
     $('endpointDrawer').setAttribute('aria-hidden','false');
     $('drawerBackdrop').classList.add('open');
@@ -951,5 +975,6 @@
   initCommunicationSecurity();
   initCompliance();
   initPqc();
+  initTlsChecks();
   initTechnical();
 })();

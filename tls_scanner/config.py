@@ -375,6 +375,42 @@ def parse_checks_config(value):
     return (enabled, expires_within_days, trust_enabled, public_enabled, trust_stores, *revocation)
 
 
+def parse_tls_checks_config(checks_config):
+    """`checks.tls`: complementary TLS checks. Absent section = nothing selected (historical behaviour).
+
+    Each check is `<id>: true|false` or `<id>: {enabled: true|false}`. Unknown ids are rejected so that
+    a typo can never silently skip a security check.
+    """
+    from .checks.catalog import BUDGET_RANGE, CHECK_IDS, TIMEOUT_RANGE
+    from .checks.contracts import DEFAULT_PROBE_TIMEOUT_SECONDS, DEFAULT_TIME_BUDGET_SECONDS
+
+    section = require_mapping(require_mapping(checks_config, "checks").get("tls", {}), "checks.tls")
+    settings = {"timeout_seconds": (DEFAULT_PROBE_TIMEOUT_SECONDS, TIMEOUT_RANGE), "time_budget_seconds": (DEFAULT_TIME_BUDGET_SECONDS, BUDGET_RANGE)}
+    values = {}
+    selected = []
+    for key, value in section.items():
+        if key in settings:
+            default, (low, high) = settings[key]
+            if not isinstance(value, int) or isinstance(value, bool) or not low <= value <= high:
+                raise ConfigError(f"checks.tls.{key} must be an integer between {low} and {high}")
+            values[key] = value
+            continue
+        if key not in CHECK_IDS:
+            raise ConfigError(f"checks.tls.{key} is not a known check; available: {', '.join(CHECK_IDS)}")
+        enabled = value.get("enabled", True) if isinstance(value, dict) else value
+        if isinstance(value, dict) and set(value) - {"enabled"}:
+            raise ConfigError(f"checks.tls.{key} only supports 'enabled'")
+        if not isinstance(enabled, bool):
+            raise ConfigError(f"checks.tls.{key}.enabled must be a boolean")
+        if enabled:
+            selected.append(key)
+    return (
+        tuple(check_id for check_id in CHECK_IDS if check_id in selected),
+        values.get("timeout_seconds", settings["timeout_seconds"][0]),
+        values.get("time_budget_seconds", settings["time_budget_seconds"][0]),
+    )
+
+
 def load_policy_file(policy_file):
     config = load_yaml_config(policy_file)
     name = validate_config_name(config.get("name"), "policy name")
@@ -495,6 +531,7 @@ def build_job_from_sections(scan_config, export_config, logging_config, targets,
         certificate_revocation_max_response_bytes,
         certificate_revocation_allow_private_urls,
     ) = parse_checks_config(checks_config)
+    tls_checks, tls_checks_timeout_seconds, tls_checks_budget_seconds = parse_tls_checks_config(checks_config)
 
     export_filename = export_config.get("filename")
     if export_filename is not None and not isinstance(export_filename, str):
@@ -556,6 +593,9 @@ def build_job_from_sections(scan_config, export_config, logging_config, targets,
         certificate_revocation_timeout_seconds=certificate_revocation_timeout_seconds,
         certificate_revocation_max_response_bytes=certificate_revocation_max_response_bytes,
         certificate_revocation_allow_private_urls=certificate_revocation_allow_private_urls,
+        tls_checks=tls_checks,
+        tls_checks_timeout_seconds=tls_checks_timeout_seconds,
+        tls_checks_budget_seconds=tls_checks_budget_seconds,
     )
 
 

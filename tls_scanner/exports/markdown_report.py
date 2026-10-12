@@ -771,6 +771,19 @@ def build_markdown_report_from_model(model):
     ])
     for label, value in stats.pqc_readiness.items():
         lines.append(f"| {markdown_escape(label)} | {markdown_escape(value)} |")
+    if any(endpoint.complementary_checks for endpoint in model.endpoints):
+        from ..checks.catalog import CHECK_LABELS, summarize_observations
+
+        lines.extend([
+            "", "## Complementary TLS Checks", "",
+            "These controls enrich the scan; they do not change the grade, the compliance status or the findings.", "",
+            "| Endpoint | Check | Status | Result | Observations |", "| --- | --- | --- | --- | --- |",
+        ])
+        for endpoint in model.endpoints:
+            for check in endpoint.complementary_checks:
+                lines.append("| " + " | ".join(markdown_escape(value) for value in [
+                    endpoint.endpoint_id, CHECK_LABELS.get(check["check_id"], check["check_id"]), check["status"], check["message"], summarize_observations(check["observations"]),
+                ]) + " |")
     lines.extend(["", "## Security Findings", ""])
     if model.findings:
         for finding in model.findings:

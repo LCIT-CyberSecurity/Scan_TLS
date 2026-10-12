@@ -154,6 +154,8 @@ class EndpointReport:
     technical_rows: tuple[tuple[Any, ...], ...]
     errors: tuple[str, ...] = ()
     untested_checks: tuple[str, ...] = ()
+    # Complementary TLS checks (tls_scanner.checks): reported next to, never inside, findings and grades.
+    complementary_checks: tuple[dict[str, Any], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -732,6 +734,7 @@ def build_report_model(
             technical_rows=tuple(tuple(row) for row in endpoint_rows),
             errors=tuple(errors),
             untested_checks=tuple(untested_checks),
+            complementary_checks=tuple(item.to_dict() for item in job.tls_check_results.get(endpoint_id, ())),
         )
         endpoints.append(endpoint)
         existing_host = hosts.get(host_id)
@@ -922,7 +925,11 @@ def build_statistics(
 
 
 def report_model_to_dict(model: ReportModel) -> dict[str, Any]:
-    return asdict(model)
+    data = asdict(model)
+    for endpoint in data["endpoints"]:
+        if not endpoint.get("complementary_checks"):
+            endpoint.pop("complementary_checks", None)  # keeps the historical model identical when no check ran
+    return data
 
 
 def build_metadata_document(model: ReportModel, basename: str, written_files: list[str]) -> dict[str, Any]:

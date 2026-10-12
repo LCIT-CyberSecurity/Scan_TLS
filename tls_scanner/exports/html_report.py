@@ -76,6 +76,12 @@ def build_html_report_from_model(model: ReportModel):
         f'<div><dt>Scanner version</dt><dd>{scanner_version}</dd></div>'
         '</dl></section>'
     )
+    has_tls_checks = any(endpoint.complementary_checks for endpoint in model.endpoints)
+    tls_checks_section = (
+        '    <section class="panel report-chapter" id="tlschecks"><div class="section-heading"><div><p class="eyebrow">Complementary Checks</p><h2>Complementary TLS Checks</h2>'
+        '<p class="section-subtitle">Reported separately from findings and from the grade</p></div></div><div id="tlsChecks"></div></section>'
+        if has_tls_checks else None
+    )
     parts = [
         "<!doctype html>", '<html lang="en">', "<head>",
         '  <meta charset="utf-8">', '  <meta name="viewport" content="width=device-width, initial-scale=1">',
@@ -103,6 +109,7 @@ def build_html_report_from_model(model: ReportModel):
         '    <section class="panel report-chapter" id="trust"><div class="section-heading"><div><p class="eyebrow">Certificate Trust</p><h2>TLS Scan Public Web PKI</h2><p class="section-subtitle">Mozilla-derived public trust store</p></div></div><div id="certificateTrust"></div></section>',
         '    <section class="panel report-chapter" id="compliance"><div class="section-heading"><div><p class="eyebrow">Policy Results</p><h2>Compliance</h2></div></div><div id="policyCompliance" class="stack"></div></section>',
         '    <section class="panel report-chapter" id="pqc"><div class="section-heading"><div><p class="eyebrow">PQC Details</p><h2>Post-Quantum Cryptography</h2></div></div><div id="pqcReadiness" class="section-grid"></div></section>',
+        *([tls_checks_section] if tls_checks_section else []),
         '    <section class="panel"><details><summary>Complete Technical Details</summary><div id="technicalDetails"></div></details></section>',
         '    <footer class="report-footer" aria-label="Report footer"><span>LCIT Cybersecurity | TLS Scan | TLS Security Report</span><span id="pageFooterMeta"></span></footer>',
         '  </main><aside class="drawer" id="endpointDrawer" aria-hidden="true" aria-labelledby="drawerTitle"><button class="icon-button no-print" type="button" id="closeDrawer" aria-label="Close endpoint details">&times;</button><div id="drawerContent"></div></aside><div class="drawer-backdrop no-print" id="drawerBackdrop"></div>',

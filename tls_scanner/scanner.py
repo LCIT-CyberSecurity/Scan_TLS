@@ -16,6 +16,7 @@ from concurrent.futures import ThreadPoolExecutor
 import time
 
 from .checks import build_certificate_info, certificate_crypto_summary
+from .checks.catalog import run_complementary_checks
 from .crypto_policy import evaluate_compliance, extract_cipher_suites
 from .network import resolve_fqdn
 from .pki import REVOCATION_REVOKED, TRUST_UNTRUSTED, collect_peer_certificate_chain, revocation_result_not_tested, trust_result_not_tested, validate_certificate_revocation, validate_peer_chain
@@ -106,7 +107,7 @@ def discover_open_tcp_ports(nmap, tqdm, targets, mode):
 
 
 # Convert each TLS cipher finding into a row while keeping endpoint findings for grading.
-def collect_scan_results(scanner, args, results, findings, fqdn_cache):
+def collect_scan_results(scanner, args, results, findings, fqdn_cache, cancel_event=None):
     for host in scanner.all_hosts():
         if "tcp" not in scanner[host]:
             continue
@@ -165,6 +166,20 @@ def collect_scan_results(scanner, args, results, findings, fqdn_cache):
                     port,
                     fqdn,
                     args.pqc_groups,
+                )
+
+            if args.tls_checks:
+                # Complementary checks only enrich the endpoint; they never change rows, compliance or grades.
+                args.tls_check_results[endpoint_id] = run_complementary_checks(
+                    args.tls_checks,
+                    host,
+                    port,
+                    reference_names=args.tls_check_requested_names.get(host, ()),
+                    sni=fqdn,
+                    observed_versions=sorted({version for version, _ in cipher_suites}),
+                    timeout_seconds=args.tls_checks_timeout_seconds,
+                    budget_seconds=args.tls_checks_budget_seconds,
+                    cancel_event=cancel_event,
                 )
 
             for tls_version, cipher_suite in cipher_suites:
@@ -238,7 +253,7 @@ def collect_scan_results(scanner, args, results, findings, fqdn_cache):
 
 
 # Each worker owns its PortScanner instance; python-nmap scanner objects are not shared across threads.
-def scan_tls_host(nmap, tqdm, host, ports, job, fqdn_cache, tls_arguments):
+def scan_tls_host(nmap, tqdm, host, ports, job, fqdn_cache, tls_arguments, cancel_event=None):
     scanner = nmap.PortScanner()
     host_results = []
     host_findings = {}
@@ -256,6 +271,7 @@ def scan_tls_host(nmap, tqdm, host, ports, job, fqdn_cache, tls_arguments):
         host_results,
         host_findings,
         fqdn_cache,
+        cancel_event,
     )
     return host_results, host_findings
 
@@ -278,7 +294,9 @@ def scan_tls_hosts_parallel(nmap, tqdm, open_ports, job, fqdn_cache, tls_argumen
                 if on_host_done:
                     on_host_done(host, False)
                 return [], {}
-            outcome = scan_tls_host(nmap, tqdm, host, ports, job, fqdn_cache, tls_arguments)
+            # the cancel event is only forwarded when complementary checks need it: the historical call stays unchanged
+            extra = (cancel_event,) if job.tls_checks else ()
+            outcome = scan_tls_host(nmap, tqdm, host, ports, job, fqdn_cache, tls_arguments, *extra)
             if on_host_done:
                 on_host_done(host, True)
             return outcome
