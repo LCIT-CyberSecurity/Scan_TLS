@@ -15,6 +15,14 @@ engine's own YAML parser: what the WebUI accepts is exactly what the Standalone 
 refused. Custom trust-store files are not available in the WebUI V1 (they read server paths). The PQC profile needs
 OpenSSL ≥ 3.5 in the worker image; otherwise the run fails with the engine's explicit prerequisite error.
 
+## Complementary TLS checks
+Under the existing options, the profile form has a **Complementary TLS checks** zone (YAML: `checks.tls`). The recommended
+controls are listed and pre-selected **for new profiles only**; untick one to remove it, or use *Add checks* for the others
+(ECDHE / FFDHE groups). An existing profile (without `checks.tls`) shows them unticked and keeps its behaviour until you tick one.
+`Fast` / `All` still only mean port discovery. The list comes from the engine's catalogue (`GET /api/tls-checks`), so only
+implemented checks are offered. Reference, statuses, limits and YAML: [Complementary TLS checks](tls-checks.md). Their results do not
+change the grade, and PKI trust / revocation stay in their own options above.
+
 ## Lifecycle
 `draft → published → archived`. Editing a published item creates a **new draft**; publishing archives the previous
 version. Published versions are never modified: each run stores the exact version ids it used and the snapshot of

@@ -4,6 +4,10 @@ The existing generators produce the reports unchanged; the WebUI stores them on 
 (`reports/<definition>_<timestamp>/{html,markdown,csv,cbom,metadata}`) and serves them through the API (role check,
 SHA-256 verified, CSP `sandbox`, audit event `report.download`).
 
+When the profile enables the complementary TLS checks, the HTML and Markdown reports gain a **Complementary TLS Checks**
+section and the endpoint drawer lists them; CSV, findings CSV and CBOM keep exactly their historical content
+([details](tls-checks.md)). Without those checks nothing is added.
+
 Every report states the targets actually checked, date, profile, policy versions, conformity conclusions, errors,
 checks not performed and limitations — a control that did not run is never presented as compliant.
 

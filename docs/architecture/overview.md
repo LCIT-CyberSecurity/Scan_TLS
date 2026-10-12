@@ -23,6 +23,16 @@
 | External access | `api/external.py`, `mcp_server.py`, `services/external_access.py`, `api/access.py` | Read-only REST API v1 (`/api/v1`) and MCP server (`/mcp`), both off by default, authenticated by hashed access keys instead of sessions; they reuse the results API's handlers and output schemas. Details below. |
 | Frontend | `frontend/` | Vite + React + TypeScript + Tailwind + shadcn-style components + lucide-react. Design tokens are LCIT-Sign's. FR/EN/DE. |
 
+### Complementary TLS checks
+
+`tls_scanner/checks/` holds one module per family behind a light contract (`contracts.py`: `CheckContext`, `CheckResult`, `run_check`):
+`identity.py` (SAN/FQDN), `stapling.py`, `groups.py` (ECDHE/FFDHE), `handshake.py` (compression, renegotiation, FALLBACK_SCSV, EMS),
+`transport.py` (bounded `openssl s_client` runner and raw ClientHello probe, shared) and `catalog.py` (the single list of checks:
+id, family, recommended, function). `scanner.collect_scan_results` calls `run_complementary_checks` only when `checks.tls` selected
+something; results are stored on the `ScanJob` (like trust and revocation results), flow into the report model as
+`EndpointReport.complementary_checks` (omitted when empty) and never touch rows, findings or grades. No plugin loader or class hierarchy:
+adding a check = a function + one `CheckSpec` line + i18n labels. See [the checks](../user/tls-checks.md).
+
 ## Boundaries
 
 * The engine knows nothing about users, roles, SSO, FastAPI, PostgreSQL or the frontend. It receives a

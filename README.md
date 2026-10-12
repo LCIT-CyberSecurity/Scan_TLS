@@ -53,6 +53,9 @@ WebUI documentation: [architecture](docs/architecture/overview.md) ·
 - Exports professional client-ready reports to HTML, Markdown, CSV, CycloneDX CBOM, and metadata JSON.
 - Provides an optional Post-Quantum Cryptography (PQC) profile that actively
   tests TLS 1.3 hybrid ML-KEM key exchange groups.
+- Offers optional, non-destructive **complementary TLS checks** (FQDN/SAN identity, OCSP stapling, ECDHE and
+  FFDHE groups, compression, renegotiation, `TLS_FALLBACK_SCSV`, Extended Master Secret), reported next to the
+  results without changing the grade. See [Complementary TLS checks](#complementary-tls-checks).
 
 ## Requirements
 
@@ -290,6 +293,30 @@ scan_reports/
         └── 2026-08-01-151245_external_anssi_weekly.metadata.json
 ```
 
+
+## Complementary TLS checks
+
+Enabled per configuration under `checks.tls` (all off when the section is absent, so existing YAML files behave exactly as
+before). Results appear in the HTML and Markdown reports in a separate section; the grade, the findings, the CSV and the CBOM are
+not modified.
+
+```yaml
+checks:
+  tls:
+    timeout_seconds: 10        # per connection
+    time_budget_seconds: 120   # per endpoint
+    hostname_san: true         # certificate covers the requested name (SAN DNS/IP)
+    ocsp_stapling: true
+    tls_compression: true
+    renegotiation: true
+    fallback_scsv: true
+    extended_master_secret: true
+    ecdhe_groups: false        # about 18 connections per endpoint
+    ffdhe_groups: false
+```
+
+Each result is `PASS`, `FAIL`, `NOT_APPLICABLE`, `NOT_TESTED`, `INCONCLUSIVE` or `ERROR`; the last three mean *unknown*, never *passed*.
+Method, limits and statuses: [docs/user/tls-checks.md](docs/user/tls-checks.md). They need `openssl` (already required by the PKI controls).
 
 ## Professional reports
 

@@ -33,6 +33,12 @@ If someone already runs an identical scan (same effective targets/ports, profile
 attaches to it — you will find the result in *My scans* and get the notification — without extra network load. You
 gain no right to modify the other user's definitions or schedules. After it finishes, run again for fresh data.
 
+## Complementary TLS checks
+If the profile enables them, the scan detail page has a **Complementary TLS checks** table (identity of the certificate, OCSP
+stapling, compression, renegotiation, TLS_FALLBACK_SCSV, Extended Master Secret, ECDHE/FFDHE groups). It is separate from the
+findings: these results do not change the grade or the compliance status. `NOT_TESTED` / `INCONCLUSIVE` mean *unknown*, not
+*passed*. See [Complementary TLS checks](tls-checks.md).
+
 ## Preferences
 Language (FR/EN/DE; browser language by default, your choice wins and is stored on your profile), light/dark/system,
 palette, e-mail notification events, local password change.

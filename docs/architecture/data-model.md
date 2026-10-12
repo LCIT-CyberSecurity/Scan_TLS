@@ -15,6 +15,10 @@ Migrations: `backend/migrations/versions` (Alembic, applied automatically when t
 | Discovery | `dns_discoveries` (DNS discovery requests and their result; migration `0004`) |
 | Operations | `audit_events` (no FK to users: audit outlives accounts), `system_settings` (retention, SMTP), `notifications` (queue + delivery status) |
 
+`run_endpoints.tls_checks` (JSON, nullable, migration `0006`) keeps the results of the complementary TLS checks of an endpoint
+(`check_id`, `status`, `message`, `observations`, `evidence`, `duration_ms`). Rows stored before the migration have no value and are
+never requalified; the scan fingerprint already includes `checks`, so enabling a check never de-duplicates onto a run made without it.
+
 Run results mirror the engine's `ReportModel` (`tls_scanner/exports/report_model.py`): `run_endpoints` keeps
 grade, compliance, TLS versions, cipher suite names, certificate summary, errors and *untested checks*;
 `run_findings` keeps id, severity, evidence, remediation and affected endpoints. The full engine model is also
