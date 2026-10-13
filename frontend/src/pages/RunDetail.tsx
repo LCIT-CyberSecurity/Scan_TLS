@@ -118,6 +118,11 @@ export default function RunDetail() {
       } />
       <ErrorNote error={error} />
       {active && <ScanProgress run={run} />}
+      {run.exclusions && run.exclusions.entries.length > 0 && (
+        <details className="mb-4 rounded-sm border border-hairline p-3 text-sm"><summary className="cursor-pointer">{t("excl.run", { n: run.exclusions.entries.length })}{run.exclusions.removed_targets.length ? ` — ${t("excl.removed", { list: run.exclusions.removed_targets.join(", ") })}` : ""}</summary>
+          <ul className="mt-2 space-y-1 text-xs">{run.exclusions.entries.map((e) => <li key={e.value}><code>{e.value}</code> <Badge>{t(`excl.scope.${e.scope}` as never)}</Badge></li>)}</ul>
+          {run.exclusions.partial_targets.length > 0 && <p className="mt-2 text-xs text-muted">{t("excl.partial", { list: run.exclusions.partial_targets.join(", ") })}</p>}</details>
+      )}
       {run.error && <ErrorNote error={new Error(run.error)} />}
       {run.status === "completed" && run.endpoints.length === 0 && <Note tone="info" className="mb-4">{t("run.noTls")}</Note>}
       {run.status === "partial" || run.skipped_hosts?.length ? <Note tone="warning" className="mb-4">{t("run.partial")} {run.skipped_hosts?.length ? `(${t("run.skipped")}: ${run.skipped_hosts.join(", ")})` : ""}</Note> : null}

@@ -3,6 +3,10 @@
 DNS discovery **feeds and enriches the Targets inventory**. It does not create a second inventory, scans nothing, and
 changes nothing until you confirm: **Discover → Consolidate → Compare → Select → Add or enrich.**
 
+## History: Targets → DNS discoveries
+
+The **DNS discoveries** tab (next to Groups) lists your discoveries (all of them for an administrator): domain, date, status, number of names, methods and their outcome. *Open* shows the results again, so you can select **all, some, or only the new names** and import or enrich later; *Delete* forgets a finished discovery (the targets already imported are not affected). Finished discoveries are purged after 90 days.
+
 ## The wizard
 
 1. **Configuration** – the domain, a *Fast* or *Advanced* mode, the methods, and the confirmation that you are authorised to query the domain.
@@ -64,4 +68,4 @@ what was imported).
 `POST /api/targets/discover` (unchanged: `domain`, `authorized`; new optional `mode`, `methods`, `dns_server`, `axfr_servers`,
 `dictionary`, `custom_words`, `reverse`, `timeout_seconds`, `concurrency`, `max_duration_seconds`; without them the call behaves as before), `GET /api/targets/discover/{id}`,
 `POST …/{id}/cancel`, `GET …/{id}/results` (compared with the inventory, filtered and paged), `POST …/{id}/apply` (`dry_run`,
-`on_conflict`, `confirm_business_changes`), `GET /api/targets/discover-config`, `GET /api/targets/{id}/dns`.
+`on_conflict`, `confirm_business_changes`), `GET /api/targets/discover` (history), `DELETE /api/targets/discover/{id}`, `GET /api/targets/discover-config`, `GET /api/targets/{id}/dns`.

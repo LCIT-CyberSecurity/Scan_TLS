@@ -15,13 +15,14 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session as DbSession
 
 from tls_scan_app.models import (
-    DefinitionGroup, DefinitionPolicy, DefinitionTarget, PolicyVersion, ReportTemplate, ScanDefinition,
+    SystemSetting, DefinitionGroup, DefinitionPolicy, DefinitionTarget, PolicyVersion, ReportTemplate, ScanDefinition,
     ScanProfileVersion, Target, TargetGroupMember,
 )
 from tls_scan_app.models.policy import PUBLISHED
 from tls_scan_app.services.targets import address_count
 from tls_scan_app.services.trust_stores import TrustStoreError, resolve_for_snapshot
 from tls_scanner.config import build_job_from_sections
+from tls_scanner.exclusions import Exclusions, parse_entries as parse_exclusions
 from tls_scanner.constants import ALLOWED_EXPORT_FORMATS
 from tls_scanner.models import ConfigError, EncryptionPolicy
 
@@ -97,6 +98,25 @@ def build_snapshot(db: DbSession, definition: ScanDefinition, max_addresses: int
     targets = resolve_targets(db, definition)
     if not targets:
         raise PlanError("the scan definition has no target")
+    # exclusions: the administrator's global list, the definition's own list and the profile's `scan.exclude`
+    sources: dict[str, str] = {}
+    try:
+        glob = db.get(SystemSetting, "scan_exclusions")
+        for scope, raw in (("global", (glob.value if glob else {}).get("entries", [])), ("definition", definition.exclusions or []), ("profile", scan_cfg.get("exclude") or [])):
+            for entry in parse_exclusions(raw):
+                sources.setdefault(entry, scope)
+    except ConfigError as error:
+        raise PlanError(f"invalid exclusion: {error}") from error
+    exclusions = Exclusions(tuple(sources))
+    removed: list[str] = []
+    partial: list[str] = []
+    if exclusions:
+        by_value = {t.value: t for t in targets}
+        kept, removed, partial = exclusions.filter_targets(list(by_value))
+        targets = [t for t in targets if t.value in set(kept)]
+        if not targets:
+            raise PlanError("every target is excluded: nothing to scan")
+        scan_cfg["exclude"] = list(sources)
     total = sum(address_count(t.value, t.kind) for t in targets)
     if total > max_addresses:
         raise PlanError(f"too many addresses ({total} > {max_addresses})")
@@ -132,6 +152,7 @@ def build_snapshot(db: DbSession, definition: ScanDefinition, max_addresses: int
         "definition": {"id": str(definition.id), "name": definition.name},
         "profile": {"id": str(definition.profile_id), "version_id": str(profile_version.id), "version": profile_version.version},
         "scan": scan_cfg,
+        "exclusions": {"entries": [{"value": v, "scope": s} for v, s in sources.items()], "removed_targets": sorted(set(removed)), "partial_targets": sorted(set(partial))},
         "checks": checks,
         "trust_stores": trust_stores,
         "passes": passes,

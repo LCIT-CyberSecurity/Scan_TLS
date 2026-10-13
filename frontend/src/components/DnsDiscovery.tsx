@@ -1,13 +1,16 @@
 import { Loader2, Radar } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
-import type { DdApplyItem, DdConfig, DdInventory, DdItem, DdJob, DdMethod, DdReport, DdResults, Group, SI } from "../api/types";
+import type { DdApplyItem, DdConfig, DdInventory, DdItem, DdJob, DdMethod, DdReport, DdResults, DdSummary, Group, SI } from "../api/types";
 import { useI18n } from "../i18n";
-import { CheckList, ErrorNote, Note, TagsInput, useLoad } from "./common";
+import { CheckList, Empty, ErrorNote, Note, TagsInput, useLoad } from "./common";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Dialog } from "./ui/dialog";
+import { Card } from "./ui/card";
 import { Field, Input, Select, Textarea } from "./ui/input";
+import { Table, Td, Th } from "./ui/table";
+import { formatDate } from "../lib/utils";
 
 type Step = "config" | "run" | "results" | "review";
 type Choice = { action: "add" | "enrich"; targetId?: string };
@@ -30,7 +33,7 @@ function Methods({ methods }: { methods: Record<string, DdMethod> }) {
   );
 }
 
-function Wizard({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
+function Wizard({ onClose, onDone, resumeId }: { onClose: () => void; onDone: () => void; resumeId?: string }) {
   const { t } = useI18n();
   const tr = t as unknown as (k: string, v?: Record<string, string | number>) => string;
   const config = useLoad(() => api<DdConfig>("/targets/discover-config"));
@@ -68,6 +71,10 @@ function Wizard({ onClose, onDone }: { onClose: () => void; onDone: () => void }
   const [plan, setPlan] = useState<DdReport>();
   const [report, setReport] = useState<DdReport>();
   const [busy, setBusy] = useState(false);
+  useEffect(() => {  // reopening a past discovery: load it, the polling/results effects do the rest
+    if (!resumeId) return;
+    api<DdJob>(`/targets/discover/${resumeId}`).then((j) => { setDomain(j.domain); setJob(j); setStep("run"); }).catch(setError);
+  }, [resumeId]);
   const allowed = config.data?.allowed_servers ?? [];
   const advanced = mode === "advanced";
   const activeMethods = useMemo(() => METHODS.filter((m) => methods.has(m)).concat(advanced && methods.has("reverse") ? ["reverse" as never] : []), [methods, advanced]);
@@ -118,11 +125,11 @@ function Wizard({ onClose, onDone }: { onClose: () => void; onDone: () => void }
   };
   const toggle = (item: DdItem, on: boolean) => setSelection((s) => { const n = { ...s }; const c = choiceFor(item); if (on && c) n[item.fqdn] = c; else delete n[item.fqdn]; return n; });
   const pickTarget = (item: DdItem, targetId: string) => setSelection((s) => { const n = { ...s }; if (targetId) n[item.fqdn] = { action: "enrich", targetId }; else delete n[item.fqdn]; return n; });
-  async function selectWhere(inventory: DdInventory) {
+  async function selectWhere(inventory?: DdInventory) {
     if (!job) return;
     const picked: Record<string, Choice> = { ...selection };
     for (let start = 0; ; start += 500) {
-      const page = await api<DdResults>(`/targets/discover/${job.id}/results`, { params: { inventory, offset: String(start), limit: "500" } });
+      const page = await api<DdResults>(`/targets/discover/${job.id}/results`, { params: { inventory: inventory ?? filters.inventory, source: inventory ? "" : filters.source, q: inventory ? "" : filters.q, offset: String(start), limit: "500" } });
       for (const item of page.items) { const c = choiceFor(item); if (c && !item.wildcard && !item.notes.includes("ct_historical")) picked[item.fqdn] = c; }
       if (start + 500 >= page.total) break;
     }
@@ -226,6 +233,7 @@ function Wizard({ onClose, onDone }: { onClose: () => void; onDone: () => void }
                   <Field label={t("dd.source")}><Select value={filters.source} onChange={(e) => setFilter({ source: e.target.value })}><option value="">{t("dd.all")}</option>{Object.entries(data.sources).map(([k, n]) => <option key={k} value={k}>{k} ({n})</option>)}</Select></Field>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
+                  <Button size="sm" variant="outline" onClick={() => void selectWhere()}>{t("dd.selectAll")}</Button>
                   <Button size="sm" variant="outline" onClick={() => void selectWhere("NEW")}>{t("dd.selectNew")}</Button>
                   <Button size="sm" variant="outline" onClick={() => void selectWhere("ENRICHABLE")}>{t("dd.selectEnrich")}</Button>
                   <Button size="sm" variant="outline" onClick={() => setSelection({})}>{t("dd.selectNone")}</Button>
@@ -300,4 +308,36 @@ function Wizard({ onClose, onDone }: { onClose: () => void; onDone: () => void }
   );
 }
 
-export function DnsDiscoveryDialog(props: { onClose: () => void; onDone: () => void }) { return <Wizard {...props} />; }
+export function DnsDiscoveryDialog(props: { onClose: () => void; onDone: () => void; resumeId?: string }) { return <Wizard {...props} />; }
+
+const STATUS_BADGE: Record<string, "success" | "danger" | "warning" | "info" | "neutral"> = { done: "success", failed: "danger", running: "info", queued: "neutral" };
+
+/** The "DNS discoveries" tab of the Targets page: past and running discoveries, to read again or import from. */
+export function DiscoveriesTab({ onOpen, onNew, reloadKey }: { onOpen: (id: string) => void; onNew: () => void; reloadKey: number }) {
+  const { t, locale } = useI18n();
+  const tr = t as unknown as (k: string) => string;
+  const { data, error, reload } = useLoad(() => api<DdSummary[]>("/targets/discover"), [reloadKey], 5000);
+  const [err, setErr] = useState<unknown>();
+  return (
+    <>
+      <div className="mb-3 flex justify-end"><Button onClick={onNew}><Radar />{t("dd.newDiscovery")}</Button></div>
+      <ErrorNote error={error ?? err} />
+      <Card>{data?.length ? (
+        <Table><thead><tr><Th>{t("discover.domain")}</Th><Th>{t("dd.col.when")}</Th><Th>{t("col.status")}</Th><Th>{t("dd.col.names")}</Th><Th>{t("dd.col.methods")}</Th><Th>{t("dd.col.by")}</Th><Th /></tr></thead>
+          <tbody>{data.map((d) => (
+            <tr key={d.id}>
+              <Td className="font-medium">{d.domain}<div className="text-xs font-normal text-muted">{d.mode} · {d.resolver}</div></Td>
+              <Td className="whitespace-nowrap text-xs">{formatDate(d.created_at, locale)}</Td>
+              <Td><Badge tone={STATUS_BADGE[d.status]}>{tr(`dd.status.${d.status}`)}</Badge>{d.partial && <Badge tone="warning" className="ml-1">{t("dd.m.status.partial")}</Badge>}{d.error && <div className="max-w-xs text-xs text-danger">{d.error}</div>}</Td>
+              <Td>{d.names}<div className="text-xs text-muted">{t("dd.inScope", { n: d.in_scope })}{d.transfer_possible ? ` · ${t("dd.axfrOpen")}` : ""}</div></Td>
+              <Td><div className="flex flex-wrap gap-1">{Object.entries(d.methods).map(([m, s]) => <Badge key={m} tone={STATUS_TONE[s] ?? "neutral"} title={tr(`dd.m.status.${s}`)}>{m}</Badge>)}</div></Td>
+              <Td className="text-xs">{d.requested_by}</Td>
+              <Td><div className="flex justify-end gap-2">
+                <Button size="sm" variant="outline" onClick={() => onOpen(d.id)}>{t("dd.open")}</Button>
+                {(d.status === "done" || d.status === "failed") && <Button size="sm" variant="outline" onClick={() => { if (window.confirm(t("dd.confirmDelete"))) void api(`/targets/discover/${d.id}`, { method: "DELETE" }).then(reload).catch(setErr); }}>{t("dd.delete")}</Button>}
+              </div></Td>
+            </tr>))}</tbody></Table>
+      ) : <Empty>{t("dd.listEmpty")}</Empty>}</Card>
+    </>
+  );
+}

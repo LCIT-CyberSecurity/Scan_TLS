@@ -91,7 +91,7 @@ def run_scan_with_progress(scanner, tqdm, description, **scan_options):
 
 
 # Discovery modes reduce TLS scan time by probing only ports Nmap reports as open.
-def discover_open_tcp_ports(nmap, tqdm, targets, mode):
+def discover_open_tcp_ports(nmap, tqdm, targets, mode, exclude=""):
     scanner = nmap.PortScanner()
     scan_options = {
         "fast": {
@@ -102,12 +102,15 @@ def discover_open_tcp_ports(nmap, tqdm, targets, mode):
             "arguments": "-T4 --open --max-retries 1",
         },
     }
+    options = dict(scan_options[mode])
+    if exclude:  # networks, addresses and names that must never be probed
+        options["arguments"] += f" --exclude {exclude}"
     run_scan_with_progress(
         scanner,
         tqdm,
         "TCP discovery",
         hosts=targets,
-        **scan_options[mode],
+        **options,
     )
 
     open_ports = {}

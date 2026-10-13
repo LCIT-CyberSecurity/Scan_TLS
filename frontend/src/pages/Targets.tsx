@@ -3,7 +3,7 @@ import { useState } from "react";
 import { api } from "../api/client";
 import type { Group, SI, Tag, Target } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
-import { DnsDiscoveryDialog } from "../components/DnsDiscovery";
+import { DiscoveriesTab, DnsDiscoveryDialog } from "../components/DnsDiscovery";
 import { CheckList, ConfirmButton, Empty, ErrorNote, PageHeader, TagList, TagsInput, useLoad } from "../components/common";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -116,6 +116,8 @@ export default function Targets() {
   const [tag, setTag] = useState("");
   const [si, setSi] = useState("");
   const [mine, setMine] = useState(false);
+  const [discoverId, setDiscoverId] = useState<string | undefined>();
+  const [discoveries, setDiscoveries] = useState(0);
   const [dialog, setDialog] = useState<"target" | "import" | "group" | "discover" | null>(null);
   const [editT, setEditT] = useState<Target | undefined>();
   const [editG, setEditG] = useState<Group | undefined>();
@@ -134,7 +136,7 @@ export default function Targets() {
       <PageHeader title={t("nav.targets")} />
       <ErrorNote error={err} />
       <Tabs defaultValue="targets">
-        <TabsList><TabsTrigger value="targets">{t("targets.targets")}</TabsTrigger><TabsTrigger value="groups">{t("targets.groups")}</TabsTrigger><TabsTrigger value="si">{t("targets.si")}</TabsTrigger><TabsTrigger value="tags">{t("targets.tags")}</TabsTrigger></TabsList>
+        <TabsList><TabsTrigger value="targets">{t("targets.targets")}</TabsTrigger><TabsTrigger value="groups">{t("targets.groups")}</TabsTrigger><TabsTrigger value="dns">{t("dd.tab")}</TabsTrigger><TabsTrigger value="si">{t("targets.si")}</TabsTrigger><TabsTrigger value="tags">{t("targets.tags")}</TabsTrigger></TabsList>
         <TabsContent value="targets">
           <div className="mb-3 flex flex-wrap items-center gap-3">
             <Input aria-label={t("action.search")} placeholder={t("action.search")} className="w-56" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -143,7 +145,7 @@ export default function Targets() {
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} />{t("scans.onlyMine")}</label>
             <div className="ml-auto flex flex-wrap gap-2">
               <Button variant="outline" asChild><a href="/api/targets-export" download="targets.txt"><Download />{t("target.export")}</a></Button>
-              {atLeast("OPERATOR") && <Button variant="outline" onClick={() => setDialog("discover")}><Radar />{t("discover.title")}</Button>}
+              {atLeast("OPERATOR") && <Button variant="outline" onClick={() => { setDiscoverId(undefined); setDialog("discover"); }}><Radar />{t("discover.title")}</Button>}
               <Button variant="outline" onClick={() => setDialog("import")}><Upload />{t("target.import")}</Button>
               <Button onClick={() => { setEditT(undefined); setDialog("target"); }}><Plus />{t("target.new")}</Button>
             </div>
@@ -164,6 +166,7 @@ export default function Targets() {
                 <Td>{own(g.owner_id) && <div className="flex justify-end gap-2"><Button size="sm" variant="outline" aria-label={t("action.edit")} onClick={() => { setEditG(g); setDialog("group"); }}><Pencil /></Button><ConfirmButton variant="outline" label={<Trash2 className="size-4" />} confirm={t("confirm.delete")} onConfirm={remove(`/target-groups/${g.id}`, groups.reload)} /></div>}</Td></tr>)}</tbody></Table>
           ) : <Empty>{t("group.none")}</Empty>}</Card>
         </TabsContent>
+        <TabsContent value="dns"><DiscoveriesTab reloadKey={discoveries} onNew={() => { setDiscoverId(undefined); setDialog("discover"); }} onOpen={(id) => { setDiscoverId(id); setDialog("discover"); }} /></TabsContent>
         <TabsContent value="si">
           <Card className="mb-4 p-4"><div className="flex flex-wrap items-end gap-3">
             <Field label={t("col.name")}><Input value={siForm.name} onChange={(e) => setSiForm({ ...siForm, name: e.target.value })} /></Field>
@@ -177,7 +180,7 @@ export default function Targets() {
         </TabsContent>
       </Tabs>
       {dialog === "target" && systems.data && <TargetDialog initial={editT} systems={systems.data} onClose={() => setDialog(null)} onSaved={() => { void targets.reload(); void tags.reload(); }} />}
-      {dialog === "discover" && <DnsDiscoveryDialog onClose={() => setDialog(null)} onDone={() => { void targets.reload(); void groups.reload(); }} />}
+      {dialog === "discover" && <DnsDiscoveryDialog resumeId={discoverId} onClose={() => { setDialog(null); setDiscoverId(undefined); setDiscoveries((n) => n + 1); }} onDone={() => { void targets.reload(); void groups.reload(); }} />}
       {dialog === "import" && <ImportDialog onClose={() => setDialog(null)} onDone={() => { void targets.reload(); }} />}
       {dialog === "group" && systems.data && <GroupDialog initial={editG} targets={targets.data ?? []} systems={systems.data} onClose={() => setDialog(null)} onSaved={() => void groups.reload()} />}
     </>

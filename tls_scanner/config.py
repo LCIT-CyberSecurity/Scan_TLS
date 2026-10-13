@@ -30,6 +30,7 @@ from .constants import (
 DEFAULT_POLICY_NAME = "anssi_encryption_policy"
 from .models import ConfigError, EncryptionPolicy, ScanJob, TargetGroup, TrustStoreConfig
 from .pki import load_inline_store, load_trust_stores
+from .exclusions import parse_entries
 from .network import parse_ports
 
 
@@ -575,6 +576,7 @@ def build_job_from_sections(scan_config, export_config, logging_config, targets,
     if not isinstance(resolve_dns, bool):
         raise ConfigError("scan.resolve_dns must be a boolean")
     workers = validate_workers(scan_config.get("workers", DEFAULT_WORKERS))
+    exclude = parse_entries(scan_config.get("exclude"))
     (
         certificate_findings_enabled,
         certificate_expires_within_days,
@@ -639,6 +641,7 @@ def build_job_from_sections(scan_config, export_config, logging_config, targets,
         export_formats=tuple(export_formats),
         filename_template=filename_template,
         workers=workers,
+        exclude=exclude,
         certificate_findings_enabled=certificate_findings_enabled,
         certificate_expires_within_days=certificate_expires_within_days,
         certificate_trust_enabled=certificate_trust_enabled,
@@ -735,6 +738,7 @@ def build_cli_scan_job(args):
         csv_filename=getattr(args, "csv_filename", None),
         export_format=getattr(args, "export_format", None),
         workers=getattr(args, "workers", DEFAULT_WORKERS),
+        exclude=parse_entries([e for e in (getattr(args, "exclude", None) or "").split(",") if e.strip()]),
         log_level=getattr(args, "log_level", "info"),
         log_file=(
             None

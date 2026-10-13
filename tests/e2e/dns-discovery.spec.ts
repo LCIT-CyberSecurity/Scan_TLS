@@ -88,3 +88,19 @@ test("the wizard works on a phone and in dark mode without horizontal scrolling"
     await context.close();
   }
 });
+
+test("the DNS discoveries tab keeps the history: reopen the results, nothing is relaunched", async ({ browser }) => {
+  const page = await (await browser.newContext({ ignoreHTTPSErrors: true, locale: "en-US" })).newPage();
+  await login(page, "operator@crashtest.example.com", DEMO);
+  await page.getByRole("link", { name: /Targets/ }).click();
+  await page.getByRole("tab", { name: "DNS discoveries" }).click();
+  const row = page.getByRole("row", { name: /client\.test/ }).first();
+  await expect(row.getByText("Done")).toBeVisible();
+  await expect(row.getByText(/zone transfer accepted/)).toBeVisible();
+  await row.getByRole("button", { name: "Open" }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByText("srv01.client.test")).toBeVisible({ timeout: 30_000 });
+  await dialog.getByRole("button", { name: "Select all (current filter)" }).click();
+  await expect(dialog.getByText(/\d+ selected/)).not.toHaveText("0 selected");
+  await page.screenshot({ path: "results/dns-discoveries-tab.png", fullPage: true });
+});

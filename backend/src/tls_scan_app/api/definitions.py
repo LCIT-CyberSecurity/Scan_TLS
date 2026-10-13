@@ -16,6 +16,8 @@ from tls_scan_app.models import (
 )
 from tls_scan_app.services import audit, runs
 from tls_scan_app.services.planner import PlanError, build_snapshot, fingerprint
+from tls_scanner.exclusions import parse_entries
+from tls_scanner.models import ConfigError
 
 router = APIRouter(prefix="/api/scan-definitions", tags=["definitions"])
 reader = require_role(Role.USER)  # AUDITOR only consults reports
@@ -32,6 +34,7 @@ class DefinitionBody(BaseModel):
     policy_mode: str = "strict_all"
     tags: list[str] | None = None
     si_ids: list[uuid.UUID] | None = None
+    exclusions: list[str] = Field(default_factory=list, max_length=500)  # IP, CIDR, FQDN or *.domain that this scan never touches
 
 
 def out(db: DbSession, d: ScanDefinition) -> dict:
@@ -39,7 +42,7 @@ def out(db: DbSession, d: ScanDefinition) -> dict:
     return {
         "id": str(d.id), "name": d.name, "description": d.description, "owner_id": str(d.owner_id) if d.owner_id else None,
         "profile_id": str(d.profile_id), "report_template_id": str(d.report_template_id) if d.report_template_id else None,
-        "policy_mode": d.policy_mode, "tags": cls["tags"], "si_ids": cls["si"],
+        "policy_mode": d.policy_mode, "exclusions": d.exclusions or [], "tags": cls["tags"], "si_ids": cls["si"],
         "target_ids": [str(x) for x in db.execute(select(DefinitionTarget.target_id).where(DefinitionTarget.definition_id == d.id)).scalars()],
         "group_ids": [str(x) for x in db.execute(select(DefinitionGroup.group_id).where(DefinitionGroup.definition_id == d.id)).scalars()],
         "policy_ids": [str(x) for x in db.execute(select(DefinitionPolicy.policy_id).where(DefinitionPolicy.definition_id == d.id)).scalars()],
@@ -61,6 +64,10 @@ def _apply(db: DbSession, d: ScanDefinition, body: DefinitionBody) -> None:
             get_or_404(db, model, i, label)
     d.name, d.description, d.profile_id = body.name.strip(), body.description, body.profile_id
     d.report_template_id, d.policy_mode = body.report_template_id, body.policy_mode
+    try:
+        d.exclusions = list(parse_entries(body.exclusions))
+    except ConfigError as error:
+        raise HTTPException(422, str(error)) from error
     for link in (DefinitionTarget, DefinitionGroup, DefinitionPolicy):
         db.execute(delete(link).where(link.definition_id == d.id))
     db.flush()

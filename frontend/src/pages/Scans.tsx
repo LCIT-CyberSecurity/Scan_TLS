@@ -31,11 +31,12 @@ function DefinitionDialog({ initial, onClose, onSaved }: { initial?: Definition;
   const { data: systems } = useLoad(() => api<SI[]>("/information-systems"));
   const publishedPolicies = policies?.filter((p) => !p.archived && p.versions.some((v) => v.status === "published")) ?? [];
   const publishedProfiles = profiles?.filter((p) => !p.archived && p.versions.some((v) => v.status === "published")) ?? [];
+  const [exclText, setExclText] = useState((initial?.exclusions ?? []).join("\n"));
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v }));
 
   async function save() {
     try {
-      const body = { ...form, report_template_id: form.report_template_id || null };
+      const body = { ...form, report_template_id: form.report_template_id || null, exclusions: exclText.split(/[\s,;]+/).filter(Boolean) };
       if (initial) await api(`/scan-definitions/${initial.id}`, { method: "PUT", body }); else await api("/scan-definitions", { method: "POST", body });
       onSaved(); onClose();
     } catch (e) { setError(e); }
@@ -48,6 +49,7 @@ function DefinitionDialog({ initial, onClose, onSaved }: { initial?: Definition;
         <Field label={t("def.targets")}><CheckList items={(targets ?? []).map((x) => ({ id: x.id, label: x.name || x.value, sub: [x.name ? x.value : "", x.ports].filter(Boolean).join(" · ") }))} selected={form.target_ids} onChange={(v) => set("target_ids", v)} empty={t("def.noTargets")} /></Field>
         <div><Button type="button" variant="outline" size="sm" onClick={() => setNewTarget(true)}><Plus />{t("target.new")}</Button></div>
         <Field label={t("def.groups")}><CheckList items={(groups ?? []).map((x) => ({ id: x.id, label: x.name, sub: `${x.target_ids.length}` }))} selected={form.group_ids} onChange={(v) => set("group_ids", v)} empty={t("def.noGroups")} /></Field>
+        <Field label={t("excl.label")} hint={t("excl.hint")}><Textarea rows={3} value={exclText} onChange={(e) => setExclText(e.target.value)} placeholder={"10.20.0.0/24\nlegacy.example.org\n*.test.example.org"} className="font-mono text-xs" /></Field>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label={t("def.profile")}><Select value={form.profile_id} onChange={(e) => set("profile_id", e.target.value)}><option value="">—</option>{publishedProfiles.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></Field>
           <Field label={t("def.template")}><Select value={form.report_template_id} onChange={(e) => set("report_template_id", e.target.value)}><option value="">{t("def.defaultTemplate")}</option>{templates?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></Field>

@@ -383,6 +383,38 @@ def start_discovery(body: DiscoverBody, db: DbSession = Depends(get_db), user: U
     return _discovery_out(row)
 
 
+def _discovery_summary(row: DnsDiscovery, names: dict) -> dict:
+    result = row.result or {}
+    observations = result.get("observations", [])
+    return {"id": str(row.id), "domain": row.domain, "status": row.status, "error": row.error, "created_at": row.created_at, "finished_at": row.finished_at,
+            "mode": (row.options or {}).get("mode", "fast"), "resolver": result.get("resolver") or ((row.options or {}).get("dns_server") or "system"),
+            "methods": {k: v.get("status") for k, v in result.get("methods", {}).items()} or {m: "pending" for m in (row.options or {}).get("methods", [])},
+            "names": len(observations), "in_scope": sum(1 for o in observations if o.get("in_scope")), "transfer_possible": result.get("transfer_possible", False),
+            "partial": result.get("partial", False), "requested_by": names.get(row.requested_by, "")}
+
+
+@router.get("/targets/discover")
+def list_discoveries(db: DbSession = Depends(get_db), user: User = Depends(operator)) -> list[dict]:
+    """Your discoveries (all of them for an administrator), newest first, to read their results again or import later."""
+    stmt = select(DnsDiscovery).order_by(DnsDiscovery.created_at.desc()).limit(100)
+    if user.role != Role.ADMIN:
+        stmt = stmt.where(DnsDiscovery.requested_by == user.id)
+    rows = db.execute(stmt).scalars().all()
+    names = {u.id: u.email for u in db.execute(select(User).where(User.id.in_({r.requested_by for r in rows if r.requested_by}))).scalars()} if rows else {}
+    return [_discovery_summary(r, names) for r in rows]
+
+
+@router.delete("/targets/discover/{discovery_id}", status_code=204)
+def delete_discovery(discovery_id: uuid.UUID, db: DbSession = Depends(get_db), user: User = Depends(operator)) -> None:
+    """Forget a finished discovery. Targets already imported or enriched are not affected."""
+    row = _own_discovery(db, discovery_id, user)
+    if row.status in ("queued", "running"):
+        raise HTTPException(409, "Cancel the discovery before deleting it")
+    audit.record(db, "target.discover.delete", actor=user, resource_type="dns_discovery", resource_id=row.id, detail={"domain": row.domain})
+    db.delete(row)
+    db.commit()
+
+
 @router.get("/targets/discover/{discovery_id}")
 def get_discovery(discovery_id: uuid.UUID, db: DbSession = Depends(get_db), user: User = Depends(operator)) -> dict:
     return _discovery_out(_own_discovery(db, discovery_id, user))

@@ -368,3 +368,31 @@ def test_M_a_discovery_never_changes_scan_definitions(operator, catalog, user):
     job = discover(operator, "client.test", methods=["axfr"])
     apply(operator, job, add(["srv01.client.test", "gitlab.client.test"]))
     assert user.get(f"/api/scan-definitions/{definition['id']}").json() == before
+
+
+def test_history_lists_opens_and_deletes_discoveries(operator, admin, user, auditor):
+    job = discover(operator, "client.test", methods=["dns", "axfr"])
+    rows = operator.get("/api/targets/discover").json()
+    mine = next(r for r in rows if r["id"] == job["id"])
+    assert mine["domain"] == "client.test" and mine["status"] == "done" and mine["names"] >= 6 and mine["in_scope"] >= 6
+    assert mine["methods"]["axfr"] == "done" and mine["transfer_possible"] is True and mine["resolver"] == LAB_DNS + ":53"
+    assert mine["requested_by"] == operator.user["email"] and "result" not in mine and "observations" not in str(mine)   # a summary, never the whole result
+    # the results can be read again later, and imported later
+    assert results(operator, job)["total"] == mine["names"]
+    # private to its requester; an administrator sees everything
+    from conftest import make_user
+
+    other = make_user(admin, "OPERATOR")
+    assert job["id"] not in {r["id"] for r in other.get("/api/targets/discover").json()}
+    assert job["id"] in {r["id"] for r in admin.get("/api/targets/discover").json()}
+    for api in (user, auditor):
+        assert api.get("/api/targets/discover").status_code == 403
+        assert api.delete(f"/api/targets/discover/{job['id']}").status_code == 403
+    assert other.delete(f"/api/targets/discover/{job['id']}").status_code == 404
+    # deleting a discovery never touches the targets that were imported from it
+    apply(operator, job, add(["intranet.client.test"]))
+    assert operator.delete(f"/api/targets/discover/{job['id']}").status_code == 204
+    assert operator.get(f"/api/targets/discover/{job['id']}").status_code == 404
+    assert targets_of(operator, "intranet.client.test")
+    events = admin.get("/api/admin/audit", params={"action": "target.discover.delete"}).json()
+    assert any(e["resource_id"] == job["id"] for e in events)

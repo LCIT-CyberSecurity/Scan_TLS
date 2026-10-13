@@ -162,6 +162,7 @@ class RunDetail(Run):
     profile_version: int | str | None = None
     policy_versions: list[PolicyVersionRef] = []
     trust_stores: list[dict[str, Any]] = Field([], description="Private trust stores used by the scan, with the exact version and content hash.")
+    exclusions: dict[str, Any] | None = Field(None, description="Exclusions applied (entries with their scope, targets removed entirely, networks narrowed). Null for scans from before exclusions existed.")
     progress: dict[str, Any] | None = None
     error: str | None = Field(None, description="Run-level execution error.")
     endpoint_errors: dict[str, list[str]] = Field({}, description="Errors per endpoint_id (endpoints without error are omitted).")

@@ -60,6 +60,7 @@ def run_out(r: ScanRun, detail: bool = False) -> dict:
         "progress": r.progress, "summary": r.summary, "policy_versions": r.policy_versions,
         "trust_stores": (r.config_snapshot or {}).get("trust_stores") or [],
         "plan": run_plan(r.config_snapshot) if r.status in ACTIVE_STATUSES else None,
+        "exclusions": (r.config_snapshot or {}).get("exclusions"),
         "reports": [{"format": f["format"], "size": f["size"], "sha256": f["sha256"]} for f in (r.report_files or [])],
     }
     if detail:

@@ -72,7 +72,7 @@ function Audit() {
 
 interface Smtp { host: string; port: number; starttls: boolean; username: string; from: string }
 interface Graph { tenant_id: string; client_id: string; sender: string }
-interface Settings { dns_discovery?: { allowed_servers: string[]; ct_enabled: boolean }; retention: { reports_days: number; runs_days: number; audit_days: number }; notifications: { connector: string; smtp: Smtp; graph?: Graph } }
+interface Settings { scan_exclusions?: { entries: string[] }; dns_discovery?: { allowed_servers: string[]; ct_enabled: boolean }; retention: { reports_days: number; runs_days: number; audit_days: number }; notifications: { connector: string; smtp: Smtp; graph?: Graph } }
 interface Step { step: string; status: string; detail: string }
 function SettingsTab() {
   const { t } = useI18n();
@@ -87,6 +87,8 @@ function SettingsTab() {
   const [saved, setSaved] = useState("");
   const [dnsCfg, setDnsCfg] = useState<{ servers: string; ct: boolean } | null>(null);
   const dns = dnsCfg ?? (data?.dns_discovery ? { servers: data.dns_discovery.allowed_servers.join("\n"), ct: data.dns_discovery.ct_enabled } : null);
+  const [exclText, setExclText] = useState<string | null>(null);
+  const exclusionsText = exclText ?? (data?.scan_exclusions?.entries ?? []).join("\n");
   const retention = ret ?? data?.retention;
   const smtpCfg = smtp ?? data?.notifications.smtp;
   const graphCfg = graph ?? data?.notifications.graph ?? { tenant_id: "", client_id: "", sender: "" };
@@ -104,6 +106,13 @@ function SettingsTab() {
             {(["reports_days", "runs_days", "audit_days"] as const).map((k) => <Field key={k} label={t(`admin.${k}` as never)}><Input type="number" min={1} value={retention[k]} onChange={(e) => setRet({ ...retention, [k]: Number(e.target.value) })} /></Field>)}
           </div>
           <Button onClick={() => void save("retention", retention)}>{t("action.save")}</Button>
+        </CardContent></Card>
+      )}
+      {data?.scan_exclusions && (
+        <Card><CardHeader><CardTitle>{t("excl.settingsTitle")}</CardTitle></CardHeader><CardContent className="space-y-4">
+          <p className="text-xs text-muted">{t("excl.settingsHint")}</p>
+          <Field label={t("excl.label")} hint={t("excl.hint")}><textarea className="input w-full font-mono text-xs" rows={3} aria-label={t("excl.label")} value={exclusionsText} onChange={(e) => setExclText(e.target.value)} /></Field>
+          <Button onClick={() => void save("scan_exclusions", { entries: exclusionsText.split(/[\s,;]+/).filter(Boolean) }).then(() => setExclText(null))}>{t("action.save")}</Button>
         </CardContent></Card>
       )}
       {dns && (

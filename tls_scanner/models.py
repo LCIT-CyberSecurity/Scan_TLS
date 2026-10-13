@@ -138,6 +138,7 @@ class ScanJob:
     filename_template: str = "{timestamp}_{report_name}"
     dry_run: bool = False
     workers: int = DEFAULT_WORKERS
+    exclude: tuple[str, ...] = ()  # hosts, networks and names never scanned (see exclusions.py)
     certificate_findings_enabled: bool = True
     certificate_expires_within_days: int = 30
     certificate_trust_enabled: bool = True

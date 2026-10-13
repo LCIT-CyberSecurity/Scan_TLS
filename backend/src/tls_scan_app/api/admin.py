@@ -26,6 +26,7 @@ admin_only = require_role(Role.ADMIN)
 DEFAULT_SETTINGS = {
     "retention": {"reports_days": 365, "runs_days": 730, "audit_days": 1095},
     "dns_discovery": {"allowed_servers": [], "ct_enabled": True},
+    "scan_exclusions": {"entries": []},  # never scanned, by any scan definition
     "notifications": {"connector": "none", "smtp": {"host": "", "port": 587, "starttls": True, "username": "", "from": ""},
                       "graph": {"tenant_id": "", "client_id": "", "sender": ""}},
 }
@@ -174,6 +175,14 @@ def put_setting(key: str, body: SettingBody, db: DbSession = Depends(get_db), ac
             if not isinstance(v, int) or isinstance(v, bool) or v < 1:
                 raise HTTPException(422, f"{field} must be a positive number of days")
     value = body.value
+    if key == "scan_exclusions":
+        from tls_scanner.exclusions import parse_entries
+        from tls_scanner.models import ConfigError
+
+        try:
+            value = {"entries": list(parse_entries(body.value.get("entries", [])))}
+        except ConfigError as error:
+            raise HTTPException(422, str(error)) from None
     if key == "dns_discovery":
         from tls_scan_app.services.dns_discovery.policy import DiscoveryError, validate_settings
 

@@ -70,3 +70,6 @@ Details: [external API](../integrations/external-api.md) · [MCP server](../inte
 ## Several targets at once
 
 In *New target*, the *Targets* field accepts several values (FQDN, IP address or network in CIDR notation, one per line or separated by commas). Each becomes a target; with several values they are gathered in a group named after the label you typed.
+
+
+See also: [Exclusions](exclusions.md) (what a scan must never touch), [Trust authorities](trust-authorities.md), [DNS discovery](dns-discovery.md).

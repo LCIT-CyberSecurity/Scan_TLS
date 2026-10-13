@@ -24,6 +24,7 @@ from .checks.identity import resolve_requested_names
 from .crypto_policy import apply_endpoint_grades
 from .exports.paths import build_export_paths, local_report_timestamp, local_scan_timestamp, write_exports
 from .exports.report_model import build_report_model, report_model_to_dict
+from .exclusions import Exclusions
 from .logging_config import configure_logging
 from .models import ConfigError, PQCPrerequisiteError, ScanJob
 from .network import normalize_targets, resolve_target_fqdns
@@ -83,6 +84,7 @@ class ScanOutcome:
     report_model: dict[str, Any] | None = None
     scanned_hosts: list[str] = field(default_factory=list)
     skipped_hosts: list[str] = field(default_factory=list)
+    excluded_targets: list[str] = field(default_factory=list)  # targets dropped because an exclusion covers them entirely
     duration_seconds: float = 0.0
 
 
@@ -94,6 +96,7 @@ def collect_job_results(job, targets, logger, nmap, tqdm, cancel_event=None, on_
     emit = on_event or (lambda name, data: None)
     results = []
     findings = {}
+    exclusions = Exclusions(job.exclude)
     fqdn_cache = resolve_target_fqdns(targets)
     logger.debug("fqdn_cache_entries=%s", len(fqdn_cache))
     if "hostname_san" in job.tls_checks:
@@ -104,7 +107,13 @@ def collect_job_results(job, targets, logger, nmap, tqdm, cancel_event=None, on_
     if job.ports in ["fast", "all"]:
         logger.info("port_discovery_start mode=%s targets=%s", job.ports, targets)
         emit("phase", {"phase": "discovery"})
-        open_ports = discover_open_tcp_ports(nmap, tqdm, targets, job.ports)
+        open_ports = discover_open_tcp_ports(nmap, tqdm, targets, job.ports, exclusions.nmap_argument())
+        if exclusions:  # nmap already skipped the addresses; names (wildcards, reverse names) are applied here
+            dropped = [h for h in open_ports if exclusions.ip_excluded(h) or exclusions.name_excluded(fqdn_cache.get(h, ""))]
+            for host in dropped:
+                open_ports.pop(host)
+            if dropped:
+                logger.info("excluded_hosts count=%s", len(dropped))
         discovered_count = sum(len(ports) for ports in open_ports.values())
         logger.info("port_discovery_done hosts=%s open_ports=%s", len(open_ports), discovered_count)
         emit("phase", {"phase": "tls_scan", "hosts": sorted(open_ports)})
@@ -114,9 +123,13 @@ def collect_job_results(job, targets, logger, nmap, tqdm, cancel_event=None, on_
         results, findings = scan_tls_hosts_parallel(nmap, tqdm, open_ports, job, fqdn_cache, TLS_ARGUMENTS, logger, **extra)
     else:
         scanner = nmap.PortScanner()
+        if exclusions:
+            tls_arguments = f"{TLS_ARGUMENTS} --exclude {exclusions.nmap_argument()}" if exclusions.nmap_argument() else TLS_ARGUMENTS
+        else:
+            tls_arguments = TLS_ARGUMENTS
         logger.info("tls_scan_start targets=%s ports=%s", targets, job.ports)
         emit("phase", {"phase": "tls_scan", "hosts": targets.split()})
-        run_scan_with_progress(scanner, tqdm, "TLS scan", hosts=targets, ports=job.ports, arguments=TLS_ARGUMENTS)
+        run_scan_with_progress(scanner, tqdm, "TLS scan", hosts=targets, ports=job.ports, arguments=tls_arguments)
         collect_scan_results(scanner, job, results, findings, fqdn_cache, cancel_event)
         logger.info("tls_scan_done targets=%s ports=%s", targets, job.ports)
 
@@ -139,7 +152,19 @@ def execute_scan(job: ScanJob, cancel_event=None, on_event: Hook | None = None, 
 
     emit = on_event or (lambda name, data: None)
     validate_scan_input(job)
+    exclusions = Exclusions(job.exclude)
     pass_list = passes or [(job.targets, job.ports)]
+    excluded_targets: list[str] = []
+    if exclusions:  # targets that are entirely excluded are never handed to nmap; partial networks are narrowed by `--exclude`
+        filtered = []
+        for pass_targets, pass_ports in pass_list:
+            kept, removed, _ = exclusions.filter_targets(normalize_targets(pass_targets).split())
+            excluded_targets.extend(removed)
+            if kept:
+                filtered.append((",".join(kept), pass_ports))
+        if not filtered:
+            raise ConfigError("every target is excluded: nothing to scan")
+        pass_list = filtered
     for pass_targets, pass_ports in pass_list:
         validate_scan_input(ScanJob(targets=pass_targets, ports=pass_ports, crypto=job.crypto, ip=job.ip))
     start = time.monotonic()
@@ -187,5 +212,6 @@ def execute_scan(job: ScanJob, cancel_event=None, on_event: Hook | None = None, 
         report_model=model,
         scanned_hosts=scanned,
         skipped_hosts=skipped,
+        excluded_targets=excluded_targets,
         duration_seconds=duration,
     )

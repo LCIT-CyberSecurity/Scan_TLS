@@ -2,7 +2,7 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DnsDiscoveryDialog } from "../components/DnsDiscovery";
+import { DiscoveriesTab, DnsDiscoveryDialog } from "../components/DnsDiscovery";
 import { I18nProvider } from "../i18n";
 
 const calls: { path: string; method: string; body?: any; params?: any }[] = []; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -114,5 +114,57 @@ describe("DNS discovery wizard", () => {
     fireEvent.click(screen.getByRole("button", { name: /Start discovery/ }));
     expect(await screen.findByText(/No DNS method succeeded/)).toBeInTheDocument();
     expect(screen.getByText(/results below are partial/)).toBeInTheDocument();
+  });
+});
+
+
+describe("DNS discoveries tab (history)", () => {
+  beforeEach(() => { vi.spyOn(window, "confirm").mockReturnValue(true); });
+  const row = (extra = {}) => ({ id: "d1", domain: "client.test", status: "done", error: "", created_at: "2026-10-13T08:00:00Z", finished_at: "2026-10-13T08:00:09Z", mode: "advanced", resolver: "10.10.0.10:53",
+    methods: { dns: "done", axfr: "done", dictionary: "failed" }, names: 12, in_scope: 10, transfer_possible: true, partial: false, requested_by: "operator@example.com", ...extra });
+  const mount = (onOpen = vi.fn(), onNew = vi.fn()) => { render(<I18nProvider><DiscoveriesTab onOpen={onOpen} onNew={onNew} reloadKey={0} /></I18nProvider>); return { onOpen, onNew }; };
+
+  it("lists the discoveries with their state, counts and methods, and reopens one", async () => {
+    handlers["GET /targets/discover"] = () => [row(), row({ id: "d2", domain: "other.test", status: "failed", error: "No DNS method succeeded (dns: timeout)", names: 0, in_scope: 0, methods: { dns: "failed" }, transfer_possible: false })];
+    const { onOpen } = mount();
+    const first = (await screen.findByText("client.test")).closest("tr")!;
+    expect(within(first).getByText("Done")).toBeInTheDocument();
+    expect(within(first).getByText("12")).toBeInTheDocument();
+    expect(within(first).getByText(/10 in the domain · zone transfer accepted/)).toBeInTheDocument();
+    expect(within(first).getByText("axfr")).toBeInTheDocument();
+    expect(within(first).getByText("operator@example.com")).toBeInTheDocument();
+    const failed = screen.getByText("other.test").closest("tr")!;
+    expect(within(failed).getByText("Failed")).toBeInTheDocument();
+    expect(within(failed).getByText(/No DNS method succeeded/)).toBeInTheDocument();
+    fireEvent.click(within(first).getByRole("button", { name: "Open" }));
+    expect(onOpen).toHaveBeenCalledWith("d1");
+  });
+
+  it("a running discovery can be opened but not deleted; a finished one is deleted after confirmation", async () => {
+    handlers["GET /targets/discover"] = () => [row({ id: "r1", domain: "running.test", status: "running", methods: { dns: "running" } }), row()];
+    handlers["DELETE /targets/discover/d1"] = () => undefined;
+    mount();
+    const running = (await screen.findByText("running.test")).closest("tr")!;
+    expect(within(running).queryByRole("button", { name: "Delete" })).toBeNull();
+    fireEvent.click(within(screen.getByText("client.test").closest("tr")!).getByRole("button", { name: "Delete" }));
+    expect(window.confirm).toHaveBeenCalledWith(expect.stringMatching(/targets already imported are not affected/));
+    await waitFor(() => expect(calls.some((c) => c.method === "DELETE" && c.path === "/targets/discover/d1")).toBe(true));
+  });
+
+  it("explains the empty state and offers a new discovery", async () => {
+    handlers["GET /targets/discover"] = () => [];
+    const { onNew } = mount();
+    expect(await screen.findByText(/No DNS discovery yet/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "New discovery" }));
+    expect(onNew).toHaveBeenCalled();
+  });
+
+  it("reopening a finished discovery goes straight to its results", async () => {
+    handlers["GET /targets/discover/d1"] = () => ({ id: "d1", domain: "client.test", status: "done", error: "", cancel_requested: false, options: {}, progress: null });
+    handlers["GET /targets/discover/d1/results"] = () => results(ROWS);
+    render(<I18nProvider><DnsDiscoveryDialog resumeId="d1" onClose={() => undefined} onDone={() => undefined} /></I18nProvider>);
+    expect(await screen.findByText("srv01.client.test")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Select all (current filter)" })).toBeInTheDocument();
+    expect(calls.some((c) => c.method === "POST" && c.path === "/targets/discover")).toBe(false);   // nothing is relaunched
   });
 });

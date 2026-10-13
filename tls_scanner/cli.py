@@ -16,6 +16,7 @@ import sys
 import time
 import uuid
 
+from .exclusions import parse_entries
 from .config import (
     build_cli_scan_job,
     build_config_scan_jobs,
@@ -147,6 +148,15 @@ def parse_args():
         type=parse_workers,
         metavar="COUNT",
         help=f"parallel TLS host scans, from 1 to {MAX_WORKERS} (default: {DEFAULT_WORKERS})",
+    )
+    parser.add_argument(
+        "--exclude",
+        default=None,
+        metavar="LIST",
+        help=(
+            "comma-separated hosts, networks and names that are never scanned: "
+            '"10.0.0.5,10.20.0.0/24,legacy.example.org,*.test.example.org"'
+        ),
     )
     parser.add_argument(
         "-e",
@@ -320,6 +330,8 @@ def apply_cli_overrides(job, args):
         job.crypto = args.crypto
     if getattr(args, "workers_was_explicit", False):
         job.workers = args.workers
+    if getattr(args, "exclude", None):
+        job.exclude = parse_entries([*job.exclude, *args.exclude.split(",")])
     if getattr(args, "ip_was_explicit", False):
         job.ip = args.ip
     if getattr(args, "export_was_explicit", False) or getattr(args, "csv_filename", None):

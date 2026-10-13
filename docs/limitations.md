@@ -84,3 +84,9 @@ section selection (needs engine support); CLI ↔ WebUI link; clustered rate lim
 - AXFR is attempted over TCP to port 53 (or the declared port) without TSIG; DNSSEC data is not validated.
 - No recurring discovery, DNS change monitoring or alerting; no `subfinder`/`dnsx` dependency (the asynchronous `dnspython` resolver covers the volumes handled: a 435-name dictionary takes about a second on a local resolver).
 - IPv6 queries depend on the worker's network configuration.
+
+## Exclusions
+
+- Names are applied to targets and discovered host names, not to nmap: excluding a name never excludes the other names sharing its address (exclude the address for that).
+- A wildcard exclusion does not cover the domain itself (`*.example.org` does not exclude `example.org`).
+- Exclusions are not applied retroactively: they are part of the snapshot of each run.

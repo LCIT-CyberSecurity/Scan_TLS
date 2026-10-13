@@ -26,6 +26,7 @@ class ScanDefinition(Base):
     profile_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("scan_profiles.id"))
     report_template_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("report_templates.id", ondelete="SET NULL"))
     policy_mode: Mapped[str] = mapped_column(String(20), default="strict_all")
+    exclusions: Mapped[list | None] = mapped_column(JsonType)  # hosts, networks and names this scan never touches (IP, CIDR, FQDN, *.domain)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     updated_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
