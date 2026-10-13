@@ -1,7 +1,7 @@
 import { Archive, Copy, FileDown, Plus, Send } from "lucide-react";
 import { useState } from "react";
 import { api } from "../api/client";
-import type { Template, Version, Versioned } from "../api/types";
+import type { Template, TrustStoreSummary, Version, Versioned } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { Empty, ErrorNote, Note, PageHeader, useLoad } from "../components/common";
 import { Badge } from "../components/ui/badge";
@@ -31,6 +31,34 @@ function PolicyForm({ value, onChange }: { value: Content; onChange: (c: Content
   );
 }
 
+/** Which authorities verify the chain: the built-in public ones and, explicitly, the private stores (never implicit). */
+export function TrustAuthorities({ cert, setCert }: { cert: Content; setCert: (patch: Content) => void }) {
+  const { t } = useI18n();
+  const { data } = useLoad(() => api<TrustStoreSummary[]>("/trust-stores"));
+  const trust = cert.trust ?? {};
+  const selected: string[] = Array.isArray(trust.private_stores) ? trust.private_stores : [];
+  const privateStores = data?.filter((s) => !s.builtin) ?? [];
+  const setTrust = (patch: Content) => setCert({ trust: { ...trust, ...patch } });
+  const toggle = (id: string, on: boolean) => {
+    const next = on ? [...selected, id] : selected.filter((x) => x !== id);
+    const { private_stores: _drop, ...rest } = trust; // eslint-disable-line @typescript-eslint/no-unused-vars
+    setCert({ trust: next.length ? { ...rest, private_stores: next } : rest });
+  };
+  return (
+    <fieldset className="ml-6 space-y-2" aria-label={t("prof.trustPrivate")}>
+      <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={trust.public_store?.enabled ?? true} onChange={(e) => setTrust({ public_store: { ...trust.public_store, enabled: e.target.checked } })} />{t("prof.trustPublic")}</label>
+      <div className="text-sm font-medium">{t("prof.trustPrivate")}</div>
+      {privateStores.length ? privateStores.map((s) => (
+        <label key={s.id} className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={selected.includes(s.id)} disabled={!s.active && !selected.includes(s.id)} onChange={(e) => toggle(s.id, e.target.checked)} />
+          {s.name} <span className="text-xs text-muted">{t("prof.trustStoreInfo", { version: s.version ?? 0, count: s.certificate_count })}</span>{!s.active && <Badge>{t("ts.inactive")}</Badge>}{s.has_expired && <Badge tone="danger">{t("ts.expired")}</Badge>}
+        </label>
+      )) : <p className="text-xs text-muted">{t("prof.trustNone")}</p>}
+      {selected.filter((id) => !privateStores.some((s) => s.id === id)).map((id) => <p key={id} role="alert" className="text-xs text-danger">{id}: ?</p>)}
+    </fieldset>
+  );
+}
+
 function ProfileForm({ value, onChange }: { value: Content; onChange: (c: Content) => void }) {
   const { t } = useI18n();
   const scan = value.scan ?? {};
@@ -49,6 +77,7 @@ function ProfileForm({ value, onChange }: { value: Content; onChange: (c: Conten
       </div>
       {check(t("prof.dns"), scan.resolve_dns ?? true, (b) => setScan("resolve_dns", b))}
       {check(t("prof.trust"), cert.trust?.enabled ?? true, (b) => setCert({ trust: { ...cert.trust, enabled: b } }))}
+      {(cert.trust?.enabled ?? true) && <TrustAuthorities cert={cert} setCert={setCert} />}
       {check(t("prof.revocation"), rev.enabled ?? false, (b) => setCert({ revocation: { ...rev, enabled: b } }))}
       {rev.enabled && <div className="ml-6 space-y-2">{check("OCSP", rev.ocsp ?? true, (b) => setCert({ revocation: { ...rev, ocsp: b } }))}{check("CRL", rev.crl ?? true, (b) => setCert({ revocation: { ...rev, crl: b } }))}</div>}
       <TlsChecksPicker value={value} onChange={onChange} />

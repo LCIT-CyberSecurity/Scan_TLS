@@ -14,9 +14,16 @@ export interface Definition { id: string; name: string; description: string; own
 export type RunStatus = "scheduled" | "queued" | "running" | "completed" | "partial" | "failed" | "cancelled" | "expired";
 export interface RunSummary { total_endpoints?: number; compliant_endpoints?: number; non_compliant_endpoints?: number; critical_findings?: number; high_findings?: number; overall_grade?: string; endpoints_with_errors?: number; checks_not_tested?: number }
 export interface Run { id: string; name: string; definition_id: string | null; schedule_id: string | null; initiated_by: string | null; status: RunStatus; phase: string; queued_at: string; started_at: string | null; finished_at: string | null; duration_seconds: number | null; cancel_requested: boolean; error: string; progress: { hosts_total: number; hosts_done: number } | null; summary: RunSummary | null; policy_versions: { name: string; version: number }[]; reports: { format: string; size: number }[]; skipped_hosts?: string[]; config_snapshot?: Record<string, unknown> }
-export interface Endpoint { endpoint_id: string; hostname: string; ip_address: string; port: string; grade: string; compliance_status: string; highest_severity: string; tls_versions: string[]; certificate: Record<string, string | number | null>; errors: string[]; untested_checks: string[]; tls_checks?: TlsCheckResult[]; tags?: string[] }
+export interface TrustStoreResult { store_id: string; store_name: string; store_type: string; status: string; validation_error?: string; trust_anchor_subject?: string }
+export type TrustClass = "PUBLIC_TRUSTED" | "PRIVATE_TRUSTED" | "UNTRUSTED" | "NOT_TESTED" | "ERROR";
+export interface CertificateInfo {
+  [key: string]: string | number | string[] | TrustStoreResult[] | null | undefined;
+  trust_classification?: TrustClass | null; trusted_by?: string[] | null; trust_anchor?: string | null; trust_store_results?: TrustStoreResult[] | null;
+}
+export interface RunTrustStore { id: string; name: string; version: number; content_sha256: string; anchors: string[]; intermediate_count: number }
+export interface Endpoint { endpoint_id: string; hostname: string; ip_address: string; port: string; grade: string; compliance_status: string; highest_severity: string; tls_versions: string[]; certificate: CertificateInfo; errors: string[]; untested_checks: string[]; tls_checks?: TlsCheckResult[]; tags?: string[] }
 export interface Finding { finding_id: string; title: string; severity: string; status: string; category: string; evidence: string; remediation: string; affected_endpoint_ids: string[] }
-export interface RunDetail extends Run { endpoints: Endpoint[]; findings: Finding[] }
+export interface RunDetail extends Run { endpoints: Endpoint[]; findings: Finding[]; trust_stores?: RunTrustStore[] }
 export interface Schedule { id: string; definition_id: string; owner_id: string | null; kind: string; params: Record<string, unknown>; timezone: string; active: boolean; next_run_at: string | null; last_run_at: string | null; last_run: { id: string; status: string; duration_seconds: number | null } | null; triggers?: { due_at: string; outcome: string; reason: string; run_id: string | null }[] }
 export interface Comparison { old_run_id: string; new_run_id: string; warnings: string[]; new: FindingBrief[]; fixed: FindingBrief[]; persistent: FindingBrief[]; not_retested: FindingBrief[]; endpoints_added: string[]; endpoints_removed: string[]; endpoint_changes: Record<string, unknown>[]; counts: Record<string, number> }
 export interface FindingBrief { finding_id: string; title: string; severity: string; affected: string[] }
@@ -31,3 +38,16 @@ export interface TrendPoint { run_id: string; name: string; finished_at: string;
 export interface Trend { definition_id: string | null; definitions: { id: string; name: string; runs: number }[]; points: TrendPoint[] }
 export interface Dashboard { counts: Record<string, number>; posture?: Posture; trend?: Trend; recent: Run[]; compliance_trend: { run_id: string; name: string; finished_at: string; compliant: number; non_compliant: number }[]; upcoming: Schedule[] }
 export interface Tag { id: string; name: string; color: string }
+
+export interface TrustCert {
+  fingerprint_sha256: string; role: "anchor" | "intermediate"; subject: string; issuer: string; serial: string; not_before: string; not_after: string;
+  key_type: string; key_size: number | null; signature_algorithm: string; basic_constraints: { ca: boolean; path_length: number | null } | null; key_usage: string[] | null;
+  expired: boolean; expires_in_days: number;
+}
+export interface TrustStoreSummary {
+  id: string; name: string; description: string; builtin: boolean; type: "public" | "private"; active: boolean; version: number | null;
+  certificate_count: number; anchor_count: number | null; has_expired: boolean; updated_at: string | null;
+}
+export interface TrustVersion { id: string; version: number; content_sha256: string; comment: string; created_at: string; anchor_count: number; intermediate_count: number; certificates?: TrustCert[] }
+export interface TrustStoreDetail extends TrustStoreSummary { versions: TrustVersion[]; certificates: TrustCert[]; profiles: { id: string; name: string; versions: number[] }[]; run_count: number; content_sha256: string | null }
+export interface TrustInspect { valid: boolean; files: { filename: string; error: string | null; certificates: (Omit<TrustCert, "expired" | "expires_in_days"> & { role: "anchor" | "intermediate" | null; error: string | null; duplicate: boolean })[] }[] }

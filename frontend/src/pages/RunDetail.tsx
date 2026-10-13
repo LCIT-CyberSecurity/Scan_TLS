@@ -10,6 +10,7 @@ import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
 import { DataTable, type Column } from "../components/DataTable";
 import { GroupedEndpoints } from "../components/GroupedEndpoints";
+import { PkiTrust } from "../components/PkiTrust";
 import { useI18n } from "../i18n";
 import type { TlsCheckResult } from "../lib/tlsChecks";
 import { formatDate, formatDuration } from "../lib/utils";
@@ -142,6 +143,7 @@ export default function RunDetail() {
         </CardHeader>
         {run.endpoints.length ? (byHost ? <GroupedEndpoints rows={run.endpoints} columns={endpointColumns(t as never)} /> : <DataTable rows={run.endpoints} rowKey={(e) => e.endpoint_id} columns={endpointColumns(t as never)} />) : <Empty>—</Empty>}
       </Card>
+      <PkiTrust endpoints={run.endpoints} stores={run.trust_stores ?? []} />
       {tlsCheckRows.length > 0 && (
         <Card className="mb-6"><CardHeader><CardTitle>{t("run.tlsChecks")}</CardTitle></CardHeader>
           <p className="px-5 pb-2 text-xs text-muted">{t("run.tlsChecksHint")}</p>

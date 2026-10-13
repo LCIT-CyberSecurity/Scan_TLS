@@ -3,6 +3,7 @@ import { api } from "../api/client";
 import type { AccessService, Role, User } from "../api/types";
 import { Empty, ErrorNote, Note, PageHeader, useLoad } from "../components/common";
 import { ExternalAccessSwitches, SERVICES } from "../components/ExternalAccess";
+import { TrustStoresTab } from "../components/TrustStores";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
@@ -238,10 +239,11 @@ export default function Admin() {
     <>
       <PageHeader title={t("nav.admin")} />
       <Tabs defaultValue="users">
-        <TabsList><TabsTrigger value="users">{t("admin.users")}</TabsTrigger><TabsTrigger value="audit">{t("admin.audit")}</TabsTrigger><TabsTrigger value="settings">{t("admin.settings")}</TabsTrigger><TabsTrigger value="directory">{t("admin.directory")}</TabsTrigger><TabsTrigger value="diag">{t("admin.diagnostics")}</TabsTrigger></TabsList>
+        <TabsList><TabsTrigger value="users">{t("admin.users")}</TabsTrigger><TabsTrigger value="audit">{t("admin.audit")}</TabsTrigger><TabsTrigger value="settings">{t("admin.settings")}</TabsTrigger><TabsTrigger value="trust">{t("admin.trustStores")}</TabsTrigger><TabsTrigger value="directory">{t("admin.directory")}</TabsTrigger><TabsTrigger value="diag">{t("admin.diagnostics")}</TabsTrigger></TabsList>
         <TabsContent value="users"><Users /></TabsContent>
         <TabsContent value="audit"><Audit /></TabsContent>
         <TabsContent value="settings"><SettingsTab /></TabsContent>
+        <TabsContent value="trust"><TrustStoresTab /></TabsContent>
         <TabsContent value="directory"><Directory /></TabsContent>
         <TabsContent value="diag"><Diagnostics /></TabsContent>
       </Tabs>
