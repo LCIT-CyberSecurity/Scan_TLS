@@ -37,7 +37,6 @@ NAME_RE = re.compile(r"^[^,\x00-\x1f]{1,120}$")  # no comma: store names are joi
 
 _BLOCK_RE = re.compile(rb"-----BEGIN ([A-Z0-9 ]+)-----(.*?)-----END \1-----", re.DOTALL)
 _ANY_BEGIN_RE = re.compile(rb"-----BEGIN ([A-Z0-9 ]+)-----")
-_FORBIDDEN_MARKERS = (b"PRIVATE KEY", b"ENCRYPTED", b"PKCS12", b"PFX")
 
 
 class TrustStoreError(ValueError):
@@ -138,11 +137,11 @@ def parse_upload(data: bytes, filename: str = "") -> list[x509.Certificate]:
         raise TrustStoreError(f"{label}: file too large (maximum {MAX_FILE_BYTES // 1024} KiB)")
     if not data.strip():
         raise TrustStoreError(f"{label}: empty file")
-    if any(m in data.upper() for m in _FORBIDDEN_MARKERS):
-        raise TrustStoreError(f"{label}: private keys and encrypted/PKCS#12 content are refused; import the public CA certificate only")
     if b"\x00" in data:
         raise TrustStoreError(f"{label}: binary content is not supported (PEM text expected; PKCS#12/PFX and DER are refused)")
     begins = _ANY_BEGIN_RE.findall(data)
+    if any(b"PRIVATE KEY" in kind or kind.startswith(b"ENCRYPTED") for kind in begins):
+        raise TrustStoreError(f"{label}: private keys are refused; import the public CA certificate only")
     if any(kind != b"CERTIFICATE" for kind in begins):
         raise TrustStoreError(f"{label}: only PEM CERTIFICATE blocks are accepted")
     blocks = _BLOCK_RE.findall(data)

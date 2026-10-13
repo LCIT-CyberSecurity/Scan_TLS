@@ -318,6 +318,19 @@ def write_certificates(path: Path, certificates: Iterable[x509.Certificate]) -> 
     path.write_bytes(b"".join(certificate_to_pem(certificate) for certificate in certificates))
 
 
+OPENSSL_REASON_RE = re.compile(r"error \d+ at \d+ depth lookup: (.+)")
+
+
+def openssl_failure_reason(output: str) -> str:
+    """The cause reported by `openssl verify` (e.g. "certificate has expired"), rather than its generic last line."""
+    lines = [line.strip() for line in output.splitlines() if line.strip()]
+    for line in lines:
+        match = OPENSSL_REASON_RE.search(line)
+        if match:
+            return match.group(1).strip()
+    return lines[-1] if lines else "certificate chain validation failed"
+
+
 def openssl_verify_chain(chain: tuple[x509.Certificate, ...], store: LoadedTrustStore) -> tuple[bool, str]:
     if shutil.which("openssl") is None:
         return False, "openssl is required to validate certificate chains"
@@ -343,6 +356,8 @@ def openssl_verify_chain(chain: tuple[x509.Certificate, ...], store: LoadedTrust
     if result.returncode == 0:
         return True, ""
     error = (result.stderr or result.stdout or "certificate chain validation failed").strip()
+    if store.store_type == "inline":  # administered stores explain the cause; the historical stores keep their exact historical message
+        return False, openssl_failure_reason(error)
     return False, error.splitlines()[-1] if error else "certificate chain validation failed"
 
 

@@ -36,10 +36,11 @@ def run_out(r: ScanRun, detail: bool = False) -> dict:
         "status": r.status, "phase": r.phase, "queued_at": r.queued_at, "started_at": r.started_at, "finished_at": r.finished_at,
         "duration_seconds": r.duration_seconds, "cancel_requested": r.cancel_requested, "error": r.error,
         "progress": r.progress, "summary": r.summary, "policy_versions": r.policy_versions,
+        "trust_stores": (r.config_snapshot or {}).get("trust_stores") or [],
         "reports": [{"format": f["format"], "size": f["size"], "sha256": f["sha256"]} for f in (r.report_files or [])],
     }
     if detail:
-        data |= {"config_snapshot": public_snapshot(r.config_snapshot), "trust_stores": (r.config_snapshot or {}).get("trust_stores") or [], "scanned_hosts": r.scanned_hosts, "skipped_hosts": r.skipped_hosts, "worker_id": r.worker_id}
+        data |= {"config_snapshot": public_snapshot(r.config_snapshot), "scanned_hosts": r.scanned_hosts, "skipped_hosts": r.skipped_hosts, "worker_id": r.worker_id}
     return data
 
 

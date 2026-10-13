@@ -110,6 +110,7 @@ cp ACME-Root-CA.crt ACME-Issuing-CA.crt Globex-Root-CA.crt Globex-Issuing-CA.crt
 # a private key and a PKCS#12 bundle, to check that the import refuses them
 cp ACME-Root-CA.key /pki/private-key-sample.pem
 openssl pkcs12 -export -inkey ACME-Root-CA.key -in ACME-Root-CA.crt -passout pass:x -out /pki/bundle.p12 2>/dev/null
+chmod 644 /pki/*
 cd /certs
 # --- lot 2: STARTTLS services (real TLS behind scripted application dialogues)
 python3 -u /starttls_server.py &
