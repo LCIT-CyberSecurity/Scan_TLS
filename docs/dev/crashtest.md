@@ -14,7 +14,7 @@ Seed: SI Production (Web, Messaging) / Internal (Infrastructure) / Hosting, tags
 two profiles, two definitions, a daily schedule, SMTP → mailbox sink.
 
 Lab scenarios (`tests/lab`): 443 TLS 1.2/1.3 self-signed · 8443 TLS 1.2 CBC/SHA-1 suites · 8444 expired certificate ·
-8445 certificate expiring in 10 days · 8470-8475 private PKI (ACME root/issuing CA: full chain, incomplete chain, wrong SAN, expired, revoked via CRL; Globex: another customer) reachable as `intranet.acme.local`, CA files published on `http://<host>:5130/pki/` · 8446 legacy protocol config · 80 plain HTTP.
+8445 certificate expiring in 10 days · 8500-8505 private PKI (ACME root/issuing CA: full chain, incomplete chain, wrong SAN, expired, revoked via CRL; Globex: another customer) reachable as `intranet.acme.local`, CA files published on `http://<host>:5130/pki/` · 8446 legacy protocol config · 80 plain HTTP.
 
 E2E:
 ```bash
