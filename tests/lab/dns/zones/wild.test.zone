@@ -1,0 +1,7 @@
+$TTL 300
+@   IN SOA ns1.wild.test. hostmaster.wild.test. 1 7200 3600 1209600 300
+@   IN NS  ns1.wild.test.
+ns1 IN A   @LAB_IP@
+www IN A   192.0.2.20
+api IN A   192.0.2.21
+*   IN A   192.0.2.99

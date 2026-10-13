@@ -1,0 +1,17 @@
+$TTL 300
+@   IN SOA ns1.client.test. hostmaster.client.test. 1 7200 3600 1209600 300
+@   IN NS  ns1.client.test.
+@   IN A   10.10.0.5
+@   IN MX  10 mail.client.test.
+@   IN MX  20 mx.partner.example.
+@   IN TXT "v=spf1 -all"
+ns1 IN A   @LAB_IP@
+srv01    IN A     10.10.0.10
+gitlab   IN A     10.10.0.20
+vpn      IN A     10.10.0.30
+vpn      IN AAAA  fd00:10::30
+intranet IN A     10.10.0.40
+mail     IN CNAME srv01
+cdn      IN CNAME assets.cdn.example.net.
+_ldap._tcp IN SRV 0 0 389 srv01
+*.dev    IN A     10.10.0.99

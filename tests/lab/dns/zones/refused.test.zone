@@ -1,0 +1,9 @@
+$TTL 300
+@   IN SOA ns1.refused.test. hostmaster.refused.test. 1 7200 3600 1209600 300
+@   IN NS  ns1.refused.test.
+ns1 IN A   @LAB_IP@
+www    IN A 192.0.2.10
+mail   IN A 192.0.2.11
+vpn    IN A 192.0.2.12
+api    IN A 192.0.2.13
+gitlab IN A 192.0.2.14

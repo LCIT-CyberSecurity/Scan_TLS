@@ -1,9 +1,10 @@
 import { Download, Pencil, Plus, Radar, Trash2, Upload } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { api } from "../api/client";
 import type { Group, SI, Tag, Target } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
-import { CheckList, ConfirmButton, Empty, ErrorNote, Note, PageHeader, TagList, TagsInput, useLoad } from "../components/common";
+import { DnsDiscoveryDialog } from "../components/DnsDiscovery";
+import { CheckList, ConfirmButton, Empty, ErrorNote, PageHeader, TagList, TagsInput, useLoad } from "../components/common";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
@@ -66,78 +67,6 @@ export function TargetDialog({ initial, systems, onClose, onSaved }: { initial?:
         <Field label={t("col.si")}><CheckList items={systems.map((s) => ({ id: s.id, label: (s.parent_id ? "↳ " : "") + s.name }))} selected={form.si_ids} onChange={(si_ids) => setForm({ ...form, si_ids })} /></Field>
         <ErrorNote error={error} />
         <div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>{t("action.cancel")}</Button><Button onClick={() => void save()}>{t("action.save")}</Button></div>
-      </div>
-    </Dialog>
-  );
-}
-
-interface Discovery { id: string; domain: string; status: "queued" | "running" | "done" | "failed"; error: string; result: { transfer_possible: boolean; truncated: boolean; nameservers: { name: string; address: string; status: string; records: number }[]; hosts: { fqdn: string; types: string[]; values: string[] }[] } | null }
-
-/** DNS discovery: name servers of a domain and a zone-transfer attempt; the user picks which names become targets. */
-function DiscoverDialog({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
-  const { t } = useI18n();
-  const [domain, setDomain] = useState("");
-  const [authorized, setAuthorized] = useState(false);
-  const [job, setJob] = useState<Discovery>();
-  const [picked, setPicked] = useState<string[]>([]);
-  const [error, setError] = useState<unknown>();
-  const [busy, setBusy] = useState(false);
-  useEffect(() => {
-    if (!job || job.status === "done" || job.status === "failed") return;
-    const timer = setTimeout(() => { api<Discovery>(`/targets/discover/${job.id}`).then(setJob).catch(setError); }, 1500);
-    return () => clearTimeout(timer);
-  }, [job]);
-  async function start() {
-    setError(undefined); setPicked([]);
-    try { setJob(await api<Discovery>("/targets/discover", { method: "POST", body: { domain, authorized } })); } catch (e) { setError(e); }
-  }
-  async function add() {
-    setBusy(true);
-    try {
-      const ids: string[] = [];
-      let known: Target[] | undefined;
-      for (const value of picked) {
-        try { ids.push((await api<Target>("/targets", { method: "POST", body: { name: "", value, ports: "", description: t("discover.source", { domain: job?.domain ?? "" }), tags: [], si_ids: [] } })).id); }
-        catch (e) {
-          if ((e as { status?: number }).status !== 409) throw e;
-          known ??= await api<Target[]>("/targets");
-          const found = known.find((x) => x.value === value); if (found) ids.push(found.id);
-        }
-      }
-      if (ids.length > 1 && job) await api("/target-groups", { method: "POST", body: { name: job.domain, description: t("discover.source", { domain: job.domain }), target_ids: ids, tags: [], si_ids: [] } }).catch(() => undefined);
-      onDone(); onClose();
-    } catch (e) { setError(e); } finally { setBusy(false); }
-  }
-  const result = job?.result;
-  const running = job && (job.status === "queued" || job.status === "running");
-  return (
-    <Dialog open onOpenChange={(o) => !o && onClose()} title={t("discover.title")}>
-      <div className="space-y-4">
-        <p className="text-sm text-muted">{t("discover.intro")}</p>
-        <Field label={t("discover.domain")}><Input value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="example.org" disabled={!!running} /></Field>
-        <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={authorized} onChange={(e) => setAuthorized(e.target.checked)} /><span>{t("discover.authorize")}</span></label>
-        {running && <p className="text-sm">{t("discover.running")}</p>}
-        {job?.status === "failed" && <Note tone="warning">{job.error || t("discover.failed")}</Note>}
-        {result && (
-          <>
-            <Note tone={result.transfer_possible ? "danger" : "info"}>{result.transfer_possible ? t("discover.transferOpen") : t("discover.transferRefused")}</Note>
-            <div className="table-scroll"><table className="simple-table"><thead><tr><th>{t("discover.ns")}</th><th>{t("col.status")}</th></tr></thead>
-              <tbody>{result.nameservers.map((n) => <tr key={n.name}><td>{n.name}<div className="text-xs text-muted">{n.address}</div></td><td>{t(`discover.status.${n.status}` as never)}{n.records ? ` (${n.records})` : ""}</td></tr>)}</tbody></table></div>
-            {result.hosts.length > 0 && (
-              <Field label={t("discover.hosts", { n: result.hosts.length })}>
-                <div className="mb-2 flex gap-2"><Button size="sm" variant="outline" onClick={() => setPicked(result.hosts.map((h) => h.fqdn))}>{t("discover.all")}</Button><Button size="sm" variant="outline" onClick={() => setPicked([])}>{t("discover.none")}</Button></div>
-                <CheckList items={result.hosts.map((h) => ({ id: h.fqdn, label: h.fqdn, sub: `${h.types.join("/")} ${h.values.join(", ")}` }))} selected={picked} onChange={setPicked} />
-                {result.truncated && <p className="mt-1 text-xs text-muted">{t("discover.truncated")}</p>}
-              </Field>
-            )}
-          </>
-        )}
-        <ErrorNote error={error} />
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" onClick={onClose}>{t("action.close")}</Button>
-          {result && picked.length > 0 ? <Button disabled={busy} onClick={() => void add()}>{t("discover.add", { n: picked.length })}</Button>
-            : <Button disabled={!domain.trim() || !authorized || !!running} onClick={() => void start()}><Radar />{t("discover.start")}</Button>}
-        </div>
       </div>
     </Dialog>
   );
@@ -248,7 +177,7 @@ export default function Targets() {
         </TabsContent>
       </Tabs>
       {dialog === "target" && systems.data && <TargetDialog initial={editT} systems={systems.data} onClose={() => setDialog(null)} onSaved={() => { void targets.reload(); void tags.reload(); }} />}
-      {dialog === "discover" && <DiscoverDialog onClose={() => setDialog(null)} onDone={() => { void targets.reload(); void groups.reload(); }} />}
+      {dialog === "discover" && <DnsDiscoveryDialog onClose={() => setDialog(null)} onDone={() => { void targets.reload(); void groups.reload(); }} />}
       {dialog === "import" && <ImportDialog onClose={() => setDialog(null)} onDone={() => { void targets.reload(); }} />}
       {dialog === "group" && systems.data && <GroupDialog initial={editG} targets={targets.data ?? []} systems={systems.data} onClose={() => setDialog(null)} onSaved={() => void groups.reload()} />}
     </>

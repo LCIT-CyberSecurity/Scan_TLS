@@ -1,0 +1,8 @@
+$TTL 300
+@ IN SOA ns1.client.test. hostmaster.client.test. 1 7200 3600 1209600 300
+@ IN NS  ns1.client.test.
+10 IN PTR www.refused.test.
+11 IN PTR mail.refused.test.
+20 IN PTR srv01.client.test.
+21 IN PTR vpn.client.test.
+22 IN PTR stranger.outside.example.

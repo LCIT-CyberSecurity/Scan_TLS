@@ -112,3 +112,22 @@ class DnsDiscovery(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # V2: what was asked (methods, resolver, dictionary...), live progress, liveness and cancellation. All nullable: historical rows are untouched.
+    options: Mapped[dict | None] = mapped_column(JsonType)
+    progress: Mapped[dict | None] = mapped_column(JsonType)
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    cancel_requested: Mapped[bool] = mapped_column(default=False, server_default="false")
+
+
+class TargetDnsObservation(Base):
+    """What DNS discoveries observed about a target's FQDN. Technical, additive and bounded; never edits the target's own (manual) fields."""
+
+    __tablename__ = "target_dns_observations"
+
+    target_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("targets.id", ondelete="CASCADE"), primary_key=True)
+    ips: Mapped[list] = mapped_column(JsonType, default=list)        # [{ip, first_seen, last_seen}]
+    cnames: Mapped[list] = mapped_column(JsonType, default=list)     # [{name, first_seen, last_seen}]
+    sources: Mapped[list] = mapped_column(JsonType, default=list)    # [{method, zone, discovery_id, at, detail}]
+    last_discovery_id: Mapped[uuid.UUID | None] = mapped_column()
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

@@ -51,3 +51,16 @@ export interface TrustStoreSummary {
 export interface TrustVersion { id: string; version: number; content_sha256: string; comment: string; created_at: string; anchor_count: number; intermediate_count: number; certificates?: TrustCert[] }
 export interface TrustStoreDetail extends TrustStoreSummary { versions: TrustVersion[]; certificates: TrustCert[]; profiles: { id: string; name: string; versions: number[] }[]; run_count: number; content_sha256: string | null }
 export interface TrustInspect { valid: boolean; files: { filename: string; error: string | null; certificates: (Omit<TrustCert, "expired" | "expires_in_days"> & { role: "anchor" | "intermediate" | null; error: string | null; duplicate: boolean })[] }[] }
+
+export type DdInventory = "NEW" | "EXISTING" | "ENRICHABLE" | "CHANGED" | "OUT_OF_SCOPE";
+export interface DdMethod { status: string; detail: string; found: number }
+export interface DdJob { id: string; domain: string; status: "queued" | "running" | "done" | "failed"; error: string; cancel_requested: boolean; options: Record<string, unknown> | null;
+  progress: { phase?: string; done?: number; total?: number; names?: number; queries?: number; methods?: Record<string, DdMethod> } | null }
+export interface DdItem { fqdn: string; in_scope: boolean; types: string[]; ips: string[]; cnames: string[]; sources: string[]; roles: string[]; resolved: boolean | null; wildcard: boolean; notes: string[];
+  inventory: DdInventory; matches: { id: string; ports: string; name: string; status: string }[]; ambiguous: boolean; diff: { new_ips: string[]; missing_ips: string[]; new_cnames: string[]; new_sources: string[]; cname_changed: boolean } | null }
+export interface DdResults { total: number; counts: Record<string, number>; sources: Record<string, number>; items: DdItem[]; methods: Record<string, DdMethod>; nameservers: { name: string; address: string; status: string; records: number; source: string }[];
+  security: { kind: string; server: string; address: string; message: string }[]; transfer_possible: boolean; truncated: boolean; partial: boolean; resolver: string }
+export interface DdConfig { allowed_servers: string[]; ct_enabled: boolean; limits: { max_apply_items: number } }
+export interface DdApplyItem { fqdn: string; outcome: "create" | "reuse" | "enrich" | "skip"; reason: string; target_id: string | null; candidates?: { id: string; ports: string }[]; classification?: string;
+  dns?: { new_ips: string[]; missing_ips: string[] }; business_changes?: { tags_added: string[]; si_added: string[]; group_added: boolean } }
+export interface DdReport { dry_run: boolean; applied: boolean; summary: { create: number; reuse: number; enrich: number; skipped: number; business_changes_pending_confirmation: number; classification_applied?: number }; group: { id: string | null; name: string; will_create?: boolean; created?: boolean } | null; items: DdApplyItem[] }

@@ -72,7 +72,7 @@ function Audit() {
 
 interface Smtp { host: string; port: number; starttls: boolean; username: string; from: string }
 interface Graph { tenant_id: string; client_id: string; sender: string }
-interface Settings { retention: { reports_days: number; runs_days: number; audit_days: number }; notifications: { connector: string; smtp: Smtp; graph?: Graph } }
+interface Settings { dns_discovery?: { allowed_servers: string[]; ct_enabled: boolean }; retention: { reports_days: number; runs_days: number; audit_days: number }; notifications: { connector: string; smtp: Smtp; graph?: Graph } }
 interface Step { step: string; status: string; detail: string }
 function SettingsTab() {
   const { t } = useI18n();
@@ -85,6 +85,8 @@ function SettingsTab() {
   const [to, setTo] = useState("");
   const [err, setErr] = useState<unknown>();
   const [saved, setSaved] = useState("");
+  const [dnsCfg, setDnsCfg] = useState<{ servers: string; ct: boolean } | null>(null);
+  const dns = dnsCfg ?? (data?.dns_discovery ? { servers: data.dns_discovery.allowed_servers.join("\n"), ct: data.dns_discovery.ct_enabled } : null);
   const retention = ret ?? data?.retention;
   const smtpCfg = smtp ?? data?.notifications.smtp;
   const graphCfg = graph ?? data?.notifications.graph ?? { tenant_id: "", client_id: "", sender: "" };
@@ -102,6 +104,13 @@ function SettingsTab() {
             {(["reports_days", "runs_days", "audit_days"] as const).map((k) => <Field key={k} label={t(`admin.${k}` as never)}><Input type="number" min={1} value={retention[k]} onChange={(e) => setRet({ ...retention, [k]: Number(e.target.value) })} /></Field>)}
           </div>
           <Button onClick={() => void save("retention", retention)}>{t("action.save")}</Button>
+        </CardContent></Card>
+      )}
+      {dns && (
+        <Card><CardHeader><CardTitle>{t("dd.settingsTitle")}</CardTitle></CardHeader><CardContent className="space-y-4">
+          <Field label={t("dd.settingsServers")}><textarea className="input w-full font-mono text-xs" rows={3} aria-label={t("dd.settingsServers")} value={dns.servers} onChange={(e) => setDnsCfg({ ...dns, servers: e.target.value })} placeholder={"10.10.0.10\n10.10.0.11:5353"} /></Field>
+          <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={dns.ct} onChange={(e) => setDnsCfg({ ...dns, ct: e.target.checked })} /><span>{t("dd.settingsCt")}</span></label>
+          <Button onClick={() => void save("dns_discovery", { allowed_servers: dns.servers.split(/[\s,;]+/).filter(Boolean), ct_enabled: dns.ct }).then(() => setDnsCfg(null))}>{t("action.save")}</Button>
         </CardContent></Card>
       )}
       {smtpCfg && (

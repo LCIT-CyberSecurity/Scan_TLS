@@ -76,3 +76,11 @@ section selection (needs engine support); CLI ↔ WebUI link; clustered rate lim
 - A profile always uses the latest version of a selected store at launch time; pinning a profile to an older version is not offered.
 - Name constraints, CRL/OCSP of the CA certificates themselves and revocation of imported CAs are not evaluated at import time.
 - There is no multi-tenant isolation: separation between customers is by explicit store selection per profile.
+
+## DNS discovery
+
+- Scope is one domain per discovery; names found outside it (MX, NS, CNAME, PTR, CT) are shown but are never imported through the discovery.
+- Certificate Transparency relies on public search services (crt.sh, certspotter) that may rate-limit or be unavailable; the other methods are unaffected.
+- AXFR is attempted over TCP to port 53 (or the declared port) without TSIG; DNSSEC data is not validated.
+- No recurring discovery, DNS change monitoring or alerting; no `subfinder`/`dnsx` dependency (the asynchronous `dnspython` resolver covers the volumes handled: a 435-name dictionary takes about a second on a local resolver).
+- IPv6 queries depend on the worker's network configuration.

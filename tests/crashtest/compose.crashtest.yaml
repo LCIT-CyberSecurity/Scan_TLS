@@ -28,6 +28,7 @@ services:
     build: {context: ../.., dockerfile: tests/lab/lab-tls.Dockerfile}
     networks: {default: {aliases: [intranet.acme.local]}}  # private-PKI scenarios (8470-8475), scanned under their real name
     ports: ["${CRASHTEST_LAB_PORT:-5130}:80"]              # serves the public lab CA certificates under /pki/ (the e2e tests import them)
+  lab-dns: {build: {context: ../.., dockerfile: tests/lab/dns/Dockerfile}}   # authoritative zones client.test (AXFR open), refused.test, wild.test, bulk.test
   mock-oidc:
     build: {context: ../.., dockerfile: tests/lab/mock_oidc/Dockerfile}
     environment:

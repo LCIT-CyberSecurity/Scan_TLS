@@ -9,6 +9,8 @@ services:
   lab-tls:
     build: {context: ../.., dockerfile: tests/lab/lab-tls.Dockerfile}
     networks: {default: {aliases: [intranet.acme.local]}}  # the private-PKI scenarios are scanned under their real name
+  lab-dns:
+    build: {context: ../.., dockerfile: tests/lab/dns/Dockerfile}
   smtp-sink:
     build: {context: ../.., dockerfile: tests/lab/smtp_sink/Dockerfile}
   openldap:
@@ -64,7 +66,7 @@ services:
       TEST_API_URL: http://api:8000
       TEST_LAB_HOST: lab-tls
     volumes: [data:/var/lib/tls-scan, "../../tests:/app/tests:ro"]
-    depends_on: {api: {condition: service_healthy}, worker: {condition: service_started}, lab-tls: {condition: service_started}}
+    depends_on: {api: {condition: service_healthy}, worker: {condition: service_started}, lab-tls: {condition: service_started}, lab-dns: {condition: service_started}}
     profiles: [tests]
     command: pytest -x -q tests/backend
 volumes:

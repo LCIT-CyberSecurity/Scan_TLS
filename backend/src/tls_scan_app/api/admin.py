@@ -25,6 +25,7 @@ admin_only = require_role(Role.ADMIN)
 
 DEFAULT_SETTINGS = {
     "retention": {"reports_days": 365, "runs_days": 730, "audit_days": 1095},
+    "dns_discovery": {"allowed_servers": [], "ct_enabled": True},
     "notifications": {"connector": "none", "smtp": {"host": "", "port": 587, "starttls": True, "username": "", "from": ""},
                       "graph": {"tenant_id": "", "client_id": "", "sender": ""}},
 }
@@ -172,8 +173,16 @@ def put_setting(key: str, body: SettingBody, db: DbSession = Depends(get_db), ac
             v = body.value.get(field)
             if not isinstance(v, int) or isinstance(v, bool) or v < 1:
                 raise HTTPException(422, f"{field} must be a positive number of days")
+    value = body.value
+    if key == "dns_discovery":
+        from tls_scan_app.services.dns_discovery.policy import DiscoveryError, validate_settings
+
+        try:
+            value = validate_settings(body.value)
+        except DiscoveryError as error:
+            raise HTTPException(422, str(error)) from None
     row = db.get(SystemSetting, key) or SystemSetting(key=key, value={})
-    row.value = body.value
+    row.value = value
     db.add(row)
     audit.record(db, "settings.update", actor=actor, resource_type="settings", resource_id=key)
     db.commit()
