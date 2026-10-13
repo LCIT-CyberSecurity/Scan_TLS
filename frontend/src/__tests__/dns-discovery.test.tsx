@@ -26,11 +26,11 @@ beforeEach(() => {
     "GET /policies": () => [{ id: "po1", name: "ANSSI", archived: false, versions: [{ status: "published" }] }], "GET /target-groups": () => [{ id: "g1", name: "Existing group", target_ids: [], tags: [], si_ids: [], description: "", owner_id: null }],
   };
 });
-const wrap = () => render(<I18nProvider><DnsDiscoveryDialog onClose={() => undefined} onDone={() => undefined} /></I18nProvider>);
+const wrap = (onViewTargets?: (id: string) => void) => render(<I18nProvider><DnsDiscoveryDialog onClose={() => undefined} onDone={() => undefined} onViewTargets={onViewTargets} /></I18nProvider>);
 
 const NOT_COVERED = { covered: false, definitions: [], definitions_total: 0, shared_address: [], recently_scanned: false, last_scan: null };
 const item = (fqdn: string, extra: Record<string, unknown> = {}) => ({ fqdn, in_scope: true, types: ["A"], ips: ["10.0.0.1"], cnames: [], sources: ["axfr"], roles: [], resolved: true, wildcard: false, notes: [], inventory: "NEW", matches: [], ambiguous: false, diff: null, coverage: NOT_COVERED, ...extra });
-const results = (items: unknown[]) => ({ total: items.length, counts: { NEW: 2, ENRICHABLE: 1, OUT_OF_SCOPE: 1 }, sources: { axfr: 4, dictionary: 1 }, items, offset: 0, limit: 100,
+const results = (items: unknown[], group: { id: string | null; exists: boolean } = { id: null, exists: false }) => ({ discovery_tag: "Découverte DNS", default_group: { name: "DNS — client.test", ...group }, total: items.length, counts: { NEW: 2, ENRICHABLE: 1, OUT_OF_SCOPE: 1 }, sources: { axfr: 4, dictionary: 1 }, items, offset: 0, limit: 100,
   methods: { dns: { status: "done", detail: "", found: 2 }, axfr: { status: "done", detail: "1/1 transferred", found: 3 } },
   nameservers: [{ name: "ns1.client.test", address: "10.10.0.10", status: "transferred", records: 3, source: "ns" }],
   security: [], transfer_possible: true, truncated: false, partial: false, resolver: "10.10.0.10:53",
@@ -91,7 +91,7 @@ describe("DNS discovery wizard", () => {
     await waitFor(() => expect(screen.getByText("2 selected")).toBeInTheDocument());
     fireEvent.click(screen.getByLabelText("vpn.client.test"));
     expect(screen.getByText("3 selected")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /Review the selection/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Add \/ Enrich the selection/ }));
     expect(await screen.findByText("2 new target(s) will be created")).toBeInTheDocument();
     expect(screen.getByText("1 target(s) enriched with DNS observations")).toBeInTheDocument();
     expect(screen.getByText("No scan is started and no scan definition is modified.")).toBeInTheDocument();
@@ -102,7 +102,9 @@ describe("DNS discovery wizard", () => {
     fireEvent.click(await screen.findByLabelText(/Also apply the tags, SI and group/));
     await waitFor(() => expect(calls.filter((c) => c.path.endsWith("/apply")).at(-1)!.body.confirm_business_changes).toBe(true));
     fireEvent.click(screen.getByRole("button", { name: "Add / Enrich the targets" }));
-    await screen.findByText(/Done: 2 created, 0 kept, 1 enriched, 0 not processed\./);
+    await screen.findByText("Import finished");
+    expect(screen.getByText("2 target(s) created")).toBeInTheDocument();
+    expect(screen.getByText("1 target(s) enriched")).toBeInTheDocument();
     const applied = calls.filter((c) => c.path.endsWith("/apply") && c.body.dry_run === false);
     expect(applied).toHaveLength(1);                                  // one grouped request for the whole selection
   });
@@ -135,10 +137,10 @@ describe("DNS discovery wizard", () => {
     fireEvent.click(screen.getByRole("button", { name: "Clear the selection" }));
     fireEvent.click(screen.getByLabelText("gitlab.client.test"));                                 // a covered name can still be ticked by hand
     expect(screen.getByText("1 selected")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: /Review the selection/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Add \/ Enrich the selection/ }));
     // choosing a scan creates the group it needs, and the new scan is described in the plan
     fireEvent.change(await screen.findByLabelText("Scan"), { target: { value: "new" } });
-    expect((screen.getByLabelText("New group name") as HTMLInputElement).value).toContain("Discovery client.test");
+    expect((screen.getByLabelText("Group") as HTMLSelectElement).value).toBe("default");           // the group of the domain, no date in its name
     const apply = screen.getByRole("button", { name: "Add / Enrich the targets" });
     await waitFor(() => expect(apply).toBeDisabled());                                           // the new scan still lacks a profile and a policy
     fireEvent.change(screen.getByLabelText("Profile"), { target: { value: "pr1" } });
@@ -146,9 +148,58 @@ describe("DNS discovery wizard", () => {
     await waitFor(() => expect(apply).toBeEnabled());
     const body = calls.filter((c) => c.path.endsWith("/apply")).at(-1)!.body;
     await waitFor(() => expect(calls.filter((c) => c.path.endsWith("/apply")).at(-1)!.body.new_definition).toEqual({ name: "Scan client.test", profile_id: "pr1", policy_ids: ["po1"] }));
-    expect(body.group_name).toContain("Discovery client.test");
+    expect(body).toMatchObject({ group_name: "DNS — client.test", reuse_group: true, discovery_tag: true });
     expect(await screen.findByText(/The scan “Scan client.test” will be created \(not launched\)/)).toBeInTheDocument();
     expect(screen.getByText("No scan is started: you launch it yourself from Scans.")).toBeInTheDocument();
+  });
+
+  const startDiscovery = async (rows: unknown[], group?: { id: string | null; exists: boolean }, apply?: (body: any) => unknown) => { // eslint-disable-line @typescript-eslint/no-explicit-any
+    handlers["POST /targets/discover"] = () => ({ id: "d1", domain: "client.test", status: "done", error: "", cancel_requested: false, options: {}, progress: null });
+    handlers["GET /targets/discover/d1"] = () => ({ id: "d1", domain: "client.test", status: "done", error: "", cancel_requested: false, options: {}, progress: null });
+    handlers["GET /targets/discover/d1/results"] = (_b, params) => results((rows as any[]).filter((r) => !params?.inventory || r.inventory === params.inventory), group); // eslint-disable-line @typescript-eslint/no-explicit-any
+    handlers["POST /targets/discover/d1/apply"] = apply ?? ((body: any) => ({ dry_run: body.dry_run, applied: !body.dry_run, discovery_id: "d1", tag: body.discovery_tag ? "Découverte DNS" : null, // eslint-disable-line @typescript-eslint/no-explicit-any
+      group: body.group_id ? { id: body.group_id, name: "DNS — client.test" } : body.group_name ? { id: null, name: body.group_name, will_create: true } : null,
+      summary: { create: body.items.length, reuse: 0, enrich: 0, skipped: 0, business_changes_pending_confirmation: 0 },
+      items: body.items.map((i: any) => ({ fqdn: i.fqdn, outcome: "create", reason: "", target_id: null })) })); // eslint-disable-line @typescript-eslint/no-explicit-any
+    fireEvent.change(await screen.findByLabelText("Domain"), { target: { value: "client.test" } });
+    fireEvent.click(screen.getByLabelText(/I confirm that I am authorised/));
+    fireEvent.click(screen.getByRole("button", { name: /Start discovery/ }));
+    await screen.findByText("srv01.client.test");
+  };
+
+  it("summarises the discovery and 'Add the new targets' goes straight to the import with the domain group and the tag", async () => {
+    const onView = vi.fn();
+    wrap(onView);
+    await startDiscovery(ROWS);
+    expect(screen.getByText("4 host(s) discovered")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Add the new targets/ }));
+    expect(await screen.findByText("2 new target(s) will be created")).toBeInTheDocument();
+    expect(screen.getByText("Group: DNS — client.test")).toBeInTheDocument();
+    expect(screen.getByText("Automatic tag: Découverte DNS")).toBeInTheDocument();
+    expect(screen.getByText("No scan is started and no scan definition is modified.")).toBeInTheDocument();
+    // the scan settings stay available, folded away
+    expect(screen.getByText("Advanced options — Scans")).toBeInTheDocument();
+    expect(screen.getByLabelText("Scan")).toBeInTheDocument();
+    await waitFor(() => expect(calls.filter((c) => c.path.endsWith("/apply")).at(-1)!.body).toMatchObject({ group_name: "DNS — client.test", reuse_group: true, discovery_tag: true }));
+    fireEvent.click(screen.getByRole("button", { name: "Add / Enrich the targets" }));
+    await screen.findByText("Import finished");
+    fireEvent.click(screen.getByRole("button", { name: "See the imported targets" }));
+    expect(onView).toHaveBeenCalledWith("d1");
+  });
+
+  it("reuses the existing group of the domain, and the automatic tag can be turned off", async () => {
+    wrap();
+    await startDiscovery(ROWS, { id: "g-dns", exists: true });
+    fireEvent.click(screen.getByRole("button", { name: /Add the new targets/ }));
+    await screen.findByText("2 new target(s) will be created");
+    expect((screen.getByLabelText("Group") as HTMLSelectElement).selectedOptions[0].textContent).toContain("existing group");
+    await waitFor(() => expect(calls.filter((c) => c.path.endsWith("/apply")).at(-1)!.body).toMatchObject({ group_id: "g-dns", discovery_tag: true }));
+    fireEvent.click(screen.getByLabelText(/Tag the targets/));
+    await waitFor(() => expect(calls.filter((c) => c.path.endsWith("/apply")).at(-1)!.body.discovery_tag).toBe(false));
+    expect(await screen.findByText("No automatic tag")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Group"), { target: { value: "none" } });
+    await waitFor(() => { const b = calls.filter((c) => c.path.endsWith("/apply")).at(-1)!.body; expect(b.group_id).toBeUndefined(); expect(b.group_name).toBeUndefined(); });
+    await waitFor(() => expect(within(screen.getByLabelText("Review")).getByText("No group")).toBeInTheDocument());
   });
 
   it("explains a failed discovery and keeps the partial banner", async () => {

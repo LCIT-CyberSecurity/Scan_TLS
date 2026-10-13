@@ -107,7 +107,7 @@ def test_A_grouped_import_creates_the_targets_and_is_idempotent(operator, admin)
     assert report["applied"] and report["summary"]["create"] == 2 and report["group"]["created"] is True
     created = {i["fqdn"]: i for i in report["items"]}
     target = targets_of(operator, "gitlab.client.test")[0]
-    assert target["ports"] == "" and target["tags"] == ["dns-e2e"] and created["gitlab.client.test"]["target_id"] == target["id"]
+    assert target["ports"] == "" and sorted(target["tags"]) == sorted(["dns-e2e", "Découverte DNS"]) and created["gitlab.client.test"]["target_id"] == target["id"]
     group = next(g for g in operator.get("/api/target-groups").json() if g["name"] == report["group"]["name"])
     assert len(group["target_ids"]) == 2
     # relaunching the very same import creates nothing new
@@ -182,7 +182,7 @@ def test_E_enrichment_keeps_every_manual_field(operator, admin):
     # with the explicit confirmation, the classification is added (never replaced)
     confirmed = apply(operator, job, [{"fqdn": "vpn.client.test", "action": "enrich"}], tags=["autre-tag"], confirm_business_changes=True).json()
     assert confirmed["summary"]["classification_applied"] == 1
-    assert sorted(targets_of(operator, "vpn.client.test")[0]["tags"]) == sorted([*target["tags"], "autre-tag"])
+    assert set(targets_of(operator, "vpn.client.test")[0]["tags"]) == {*target["tags"], "autre-tag", "Découverte DNS"}      # additions only: the automatic tag comes with the confirmation
 
 
 def test_E_changed_addresses_are_flagged_and_nothing_is_deleted(operator):

@@ -39,24 +39,33 @@ test("admin declares the lab DNS server, then an operator discovers, selects and
   await expect(dialog.getByLabel("mx.partner.example")).toBeDisabled();            // outside the domain: never selectable
   await dialog.getByLabel(/^Inventory/).selectOption("NEW");
   await expect(dialog.getByText("gitlab.client.test")).toBeVisible();
-  await dialog.getByRole("button", { name: "Select the new ones" }).click();
-  await expect(dialog.getByText(/\d+ selected/)).not.toHaveText("0 selected");
+  await expect(dialog.getByText(/\d+ host\(s\) discovered/)).toBeVisible();
 
-  // step 4: exact plan before anything changes, then one grouped operation
-  await dialog.getByRole("button", { name: /Review the selection/ }).click();
+  // step 4: one click on the main action, then the exact plan: the domain's group and the automatic tag are proposed
+  await dialog.getByLabel(/^Inventory/).selectOption("");
+  await dialog.getByRole("button", { name: /Add the new targets/ }).click();
   await expect(dialog.getByText(/\d+ new target\(s\) will be created/)).toBeVisible();
   await expect(dialog.getByText("No scan is started and no scan definition is modified.")).toBeVisible();
-  const name = `client-dns-${Date.now()}`;
-  await dialog.getByLabel(/^Group/).selectOption("new");
-  await dialog.getByLabel("New group name").fill(name);
+  await expect(dialog.getByText("Group: DNS — client.test")).toBeVisible();
+  await expect(dialog.getByText("Automatic tag: Découverte DNS")).toBeVisible();
+  await expect(dialog.getByLabel(/^Scan$/)).not.toBeVisible();                       // the scan settings are folded away
   await dialog.getByRole("button", { name: "Add / Enrich the targets" }).click();
-  await expect(dialog.getByText(/Done: \d+ created/)).toBeVisible();
-  await dialog.getByRole("button", { name: "Close" }).last().click();
+  await expect(dialog.getByText("Import finished")).toBeVisible();
 
-  await page.getByRole("tab", { name: "Targets" }).click();
-  await expect(page.getByRole("cell", { name: "gitlab.client.test" })).toBeVisible();
+  // straight to the targets of this import, flagged by their origin
+  await dialog.getByRole("button", { name: "See the imported targets" }).click();
+  await expect(page.getByText("Showing the targets processed by one DNS discovery import.")).toBeVisible();
+  await expect(page.getByRole("cell", { name: /^gitlab\.client\.test/ })).toBeVisible();
+  await expect(page.locator("td").getByText("Découverte DNS").first()).toBeVisible();
+  await page.getByRole("button", { name: "DNS provenance gitlab.client.test" }).click();
+  await expect(page.getByRole("dialog").getByText("client.test", { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("dialog").getByText(/not proof that the host is reachable/)).toBeVisible();
+  await page.getByRole("dialog").getByRole("button", { name: "Close" }).last().click();
+  await page.screenshot({ path: "results/dns-imported-targets.png", fullPage: true });
+  await page.getByRole("button", { name: "Back to the full list" }).click();
+  await expect(page.getByText("Showing the targets processed by one DNS discovery import.")).toHaveCount(0);
   const groups = await (await page.request.get("/api/target-groups")).json();
-  expect(groups.find((g: { name: string }) => g.name === name).target_ids.length).toBeGreaterThanOrEqual(4);
+  expect(groups.find((g: { name: string }) => g.name === "DNS — client.test").target_ids.length).toBeGreaterThanOrEqual(4);
 
   // a second discovery sees them as existing, and nothing was scanned
   await page.getByRole("button", { name: "DNS discovery" }).click();
@@ -114,12 +123,13 @@ test("from the discovery to a scan: the names go into a group and a new scan, an
   const dialog = page.getByRole("dialog");
   await expect(dialog.getByText("srv01.client.test")).toBeVisible({ timeout: 30_000 });
   await dialog.getByRole("button", { name: "Select all (current filter)" }).click();
-  await dialog.getByRole("button", { name: /Review the selection/ }).click();
+  await dialog.getByRole("button", { name: /Add \/ Enrich the selection/ }).click();
 
-  // a scan scans a group: choosing "new scan" proposes the group, and the scan is created without being launched
+  // a scan scans a group: the scan settings are in a folded section, and the domain's group is the one used
   const scanName = `discovered-${Date.now()}`;
+  await dialog.getByText("Advanced options — Scans").click();
   await dialog.getByLabel("Scan", { exact: true }).selectOption("new");
-  await expect(dialog.getByLabel("New group name")).toHaveValue(/Discovery client\.test/);
+  await expect(dialog.getByLabel(/^Group/)).toHaveValue("default");
   await dialog.getByLabel("Scan name").fill(scanName);
   await dialog.getByLabel(/^Profile/).selectOption({ label: "Lab - HTTPS only" });
   await dialog.locator(".check-list-box").last().locator("label").first().locator("input").check();
@@ -128,7 +138,7 @@ test("from the discovery to a scan: the names go into a group and a new scan, an
   const confirm = dialog.getByLabel(/Also apply the tags, SI and group/);
   if (await confirm.count()) await confirm.check();              // targets imported by the first test already exist: joining the group is a confirmed addition
   await dialog.getByRole("button", { name: "Add / Enrich the targets" }).click();
-  await expect(dialog.getByText(/Done: \d+ created/)).toBeVisible();
+  await expect(dialog.getByText("Import finished")).toBeVisible();
   await dialog.getByRole("button", { name: "Close" }).last().click();
 
   const definitions = await (await page.request.get("/api/scan-definitions")).json();

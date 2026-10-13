@@ -25,6 +25,12 @@ NEW, EXISTING, ENRICHABLE, CHANGED, OUT_OF_SCOPE = "NEW", "EXISTING", "ENRICHABL
 MAX_APPLY_ITEMS = 500
 MAX_IPS, MAX_CNAMES, MAX_SOURCES = 50, 20, 30
 CHUNK = 800
+DISCOVERY_TAG = "Découverte DNS"   # practical filter only: the provenance itself is TargetDnsObservation
+
+
+def default_group_name(domain: str) -> str:
+    """One group per domain (no date): later discoveries of the same domain feed the same group."""
+    return f"DNS — {domain}"
 
 
 def _now() -> str:
@@ -112,11 +118,24 @@ def merge_observation(row: TargetDnsObservation, obs: dict[str, Any], discovery:
     row.last_discovery_id = discovery.id
 
 
+def provenance_of(row: TargetDnsObservation | None) -> dict[str, Any] | None:
+    """What a Targets list or detail needs to show where a target comes from. None for a target no discovery has seen."""
+    if row is None:
+        return None
+    seen = [e.get(k) for e in [*(row.ips or []), *(row.cnames or [])] for k in ("first_seen", "last_seen") if e.get(k)]
+    return {"domains": sorted({s.get("zone", "") for s in row.sources or [] if s.get("zone")}),
+            "methods": sorted({s["method"] for s in row.sources or []}),
+            "created": row.created_discovery_id is not None,
+            "first_seen": min(seen) if seen else None, "last_seen": max(seen) if seen else None,
+            "discovery_id": str(row.last_discovery_id) if row.last_discovery_id else None}
+
+
 def target_observation_out(row: TargetDnsObservation | None) -> dict[str, Any]:
     if row is None:
-        return {"ips": [], "cnames": [], "sources": [], "last_discovery_id": None, "updated_at": None}
+        return {"ips": [], "cnames": [], "sources": [], "last_discovery_id": None, "updated_at": None, "provenance": None}
     return {"ips": row.ips, "cnames": row.cnames, "sources": row.sources,
-            "last_discovery_id": str(row.last_discovery_id) if row.last_discovery_id else None, "updated_at": row.updated_at}
+            "last_discovery_id": str(row.last_discovery_id) if row.last_discovery_id else None, "updated_at": row.updated_at,
+            "provenance": provenance_of(row)}
 
 
 # ---------- grouped import / enrichment ----------
@@ -141,9 +160,15 @@ def apply_items(db: DbSession, discovery: DnsDiscovery, user: User, body: Any) -
         require_modify(user, group.owner_id)
     elif body.group_name and body.group_name.strip():
         name = body.group_name.strip()
-        if db.execute(select(TargetGroup).where(TargetGroup.name == name)).scalar_one_or_none():
+        same_name = db.execute(select(TargetGroup).where(TargetGroup.name == name)).scalar_one_or_none()
+        if same_name is not None and getattr(body, "reuse_group", False):
+            require_modify(user, same_name.owner_id)
+            group = same_name   # the proposed group of the domain already exists: it is fed again, never duplicated
+        elif same_name is not None:
             raise HTTPException(409, f"A group named {name!r} already exists: select it instead of creating it")
-        create_group = True
+        else:
+            create_group = True
+    tags = list(dict.fromkeys([t.strip() for t in body.tags if t.strip()] + ([DISCOVERY_TAG] if getattr(body, "discovery_tag", True) else [])))
 
     # scan definitions that will scan the group: validated before anything changes too
     definitions: list[ScanDefinition] = []
@@ -231,7 +256,7 @@ def apply_items(db: DbSession, discovery: DnsDiscovery, user: User, body: Any) -
             entry["dns"] = diff_for(stored.get(target.id), obs)
             entry["_target"] = target
     # business changes on EXISTING targets need an explicit confirmation (new targets are created with them)
-    wants_class = bool(body.tags or body.si_ids or group is not None or create_group)
+    wants_class = bool(tags or body.si_ids or group is not None or create_group)
     existing_ids = [e["_target"].id for e in items if e["outcome"] in ("reuse", "enrich")]
     classes = classification_of(db, "target", existing_ids) if existing_ids else {}
     members = {m for m in db.execute(select(TargetGroupMember.target_id).where(TargetGroupMember.group_id == group.id)).scalars()} if group else set()
@@ -239,7 +264,7 @@ def apply_items(db: DbSession, discovery: DnsDiscovery, user: User, body: Any) -
     for entry in items:
         if entry["outcome"] in ("reuse", "enrich") and wants_class:
             current = classes[entry["_target"].id]
-            added_tags = sorted({t.strip() for t in body.tags if t.strip()} - set(current["tags"]))
+            added_tags = sorted(set(tags) - set(current["tags"]))
             added_si = sorted({str(s) for s in body.si_ids} - set(current["si"]))
             added_group = bool(group is not None and entry["_target"].id not in members) or create_group
             entry["business_changes"] = {"tags_added": added_tags, "si_added": added_si, "group_added": added_group,
@@ -252,7 +277,8 @@ def apply_items(db: DbSession, discovery: DnsDiscovery, user: User, body: Any) -
         "enrich": sum(e["outcome"] == "enrich" for e in items), "skipped": len(conflicts),
         "business_changes_pending_confirmation": 0 if body.confirm_business_changes else pending_business,
     }
-    report = {"dry_run": body.dry_run, "applied": False, "summary": summary, "ports": ports, "group": {"id": str(group.id), "name": group.name} if group else
+    report = {"dry_run": body.dry_run, "applied": False, "discovery_id": str(discovery.id), "tag": DISCOVERY_TAG if DISCOVERY_TAG in tags else None,
+              "summary": summary, "ports": ports, "group": {"id": str(group.id), "name": group.name} if group else
               ({"id": None, "name": body.group_name.strip(), "will_create": True} if create_group else None),
               "definitions": definition_plan,
               "items": [{k: v for k, v in e.items() if not k.startswith("_")} for e in items]}
@@ -308,13 +334,14 @@ def apply_items(db: DbSession, discovery: DnsDiscovery, user: User, body: Any) -
             obs = observations[entry["fqdn"]]
             row = db.get(TargetDnsObservation, target.id)
             if row is None:
-                row = TargetDnsObservation(target_id=target.id, ips=[], cnames=[], sources=[])
+                row = TargetDnsObservation(target_id=target.id, ips=[], cnames=[], sources=[],
+                                           created_discovery_id=discovery.id if entry.get("_new") else None)
                 db.add(row)
             merge_observation(row, obs, discovery)
             if entry.get("_new") or body.confirm_business_changes:
-                if body.tags or body.si_ids:
+                if tags or body.si_ids:
                     current = classification_of(db, "target", [target.id])[target.id]
-                    set_classification(db, "target", target.id, sorted({*current["tags"], *[t for t in body.tags if t.strip()]}),
+                    set_classification(db, "target", target.id, sorted({*current["tags"], *tags}),
                                        [*map(uuid.UUID, current["si"]), *body.si_ids])
                     classification_applied += 1
                 if group is not None and not db.get(TargetGroupMember, (group.id, target.id)):
@@ -324,7 +351,7 @@ def apply_items(db: DbSession, discovery: DnsDiscovery, user: User, body: Any) -
         summary["classification_applied"] = classification_applied
         audit.record(db, "target.discover.apply", actor=user, resource_type="dns_discovery", resource_id=discovery.id, detail={
             "domain": discovery.domain, "created": summary["create"], "reused": summary["reuse"], "enriched": summary["enrich"], "skipped": summary["skipped"],
-            "group": report["group"]["name"] if report["group"] else None, "tags": list(body.tags)[:10],
+            "group": report["group"]["name"] if report["group"] else None, "tags": tags[:10],
             "targets": [e["fqdn"] for e in items if e["outcome"] in ("create", "enrich")][:50],
             "definitions": [d["name"] for d in applied_definitions]})
         db.commit()

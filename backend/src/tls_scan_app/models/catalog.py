@@ -129,5 +129,6 @@ class TargetDnsObservation(Base):
     cnames: Mapped[list] = mapped_column(JsonType, default=list)     # [{name, first_seen, last_seen}]
     sources: Mapped[list] = mapped_column(JsonType, default=list)    # [{method, zone, discovery_id, at, detail}]
     last_discovery_id: Mapped[uuid.UUID | None] = mapped_column()
+    created_discovery_id: Mapped[uuid.UUID | None] = mapped_column()  # set only when a discovery created the target (not when it enriched it)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

@@ -50,7 +50,7 @@ function Methods({ methods }: { methods: Record<string, DdMethod> }) {
   );
 }
 
-function Wizard({ onClose, onDone, resumeId }: { onClose: () => void; onDone: () => void; resumeId?: string }) {
+function Wizard({ onClose, onDone, resumeId, onViewTargets }: { onClose: () => void; onDone: () => void; resumeId?: string; onViewTargets?: (discoveryId: string) => void }) {
   const { t } = useI18n();
   const tr = t as unknown as (k: string, v?: Record<string, string | number>) => string;
   const config = useLoad(() => api<DdConfig>("/targets/discover-config"));
@@ -83,7 +83,9 @@ function Wizard({ onClose, onDone, resumeId }: { onClose: () => void; onDone: ()
   // ---- review
   const [tags, setTags] = useState<string[]>([]);
   const [siIds, setSiIds] = useState<string[]>([]);
-  const [groupMode, setGroupMode] = useState<"none" | "existing" | "new">("none");
+  const [groupMode, setGroupMode] = useState<"default" | "none" | "existing" | "new">("default");   // the group of the domain, proposed by default
+  const [tagOn, setTagOn] = useState(true);
+  const [advOpen, setAdvOpen] = useState(false);
   const [groupId, setGroupId] = useState("");
   const [groupName, setGroupName] = useState("");
   const [ports, setPorts] = useState("");
@@ -149,28 +151,34 @@ function Wizard({ onClose, onDone, resumeId }: { onClose: () => void; onDone: ()
   };
   const toggle = (item: DdItem, on: boolean) => setSelection((s) => { const n = { ...s }; const c = choiceFor(item); if (on && c) n[item.fqdn] = c; else delete n[item.fqdn]; return n; });
   const pickTarget = (item: DdItem, targetId: string) => setSelection((s) => { const n = { ...s }; if (targetId) n[item.fqdn] = { action: "enrich", targetId }; else delete n[item.fqdn]; return n; });
-  async function selectWhere(inventory?: DdInventory) {
-    if (!job) return;
-    const picked: Record<string, Choice> = { ...selection };
+  async function selectWhere(inventory?: DdInventory, replace = false): Promise<Record<string, Choice>> {
+    if (!job) return {};
+    const picked: Record<string, Choice> = replace ? {} : { ...selection };
     for (let start = 0; ; start += 500) {
       const page = await api<DdResults>(`/targets/discover/${job.id}/results`, { params: { inventory: inventory ?? filters.inventory, source: inventory ? "" : filters.source, q: inventory ? "" : filters.q, offset: String(start), limit: "500" } });
       for (const item of page.items) { const c = choiceFor(item); if (c && !item.wildcard && !item.notes.includes("ct_historical") && (includeCovered || !alreadyScanned(item.coverage))) picked[item.fqdn] = c; }
       if (start + 500 >= page.total) break;
     }
     setSelection(picked);
+    return picked;
+  }
+  async function addNew() {   // the main action: every new, in-scope, not-already-scanned name, then straight to the import step
+    const picked = await selectWhere("NEW", true);
+    if (Object.keys(picked).length) { setPlan(undefined); setReport(undefined); setStep("review"); }
   }
 
   const applyBody = (dry: boolean) => ({
     items: Object.entries(selection).map(([fqdn, c]) => ({ fqdn, action: c.action, target_id: c.targetId })),
-    ports, tags, si_ids: siIds, dry_run: dry, confirm_business_changes: confirmBusiness,
+    ports, tags, si_ids: siIds, dry_run: dry, confirm_business_changes: confirmBusiness, discovery_tag: tagOn,
     ...(groupMode === "existing" && groupId ? { group_id: groupId } : {}), ...(groupMode === "new" && groupName.trim() ? { group_name: groupName.trim() } : {}),
+    ...(groupMode === "default" && data ? (data.default_group.exists && data.default_group.id ? { group_id: data.default_group.id } : { group_name: data.default_group.name, reuse_group: true }) : {}),
     ...(scanMode === "existing" && scanDefIds.length ? { scan_definition_ids: scanDefIds } : {}),
     ...(scanMode === "new" && newScan.name.trim() && newScan.profile && newScan.policies.length ? { new_definition: { name: newScan.name.trim(), profile_id: newScan.profile, policy_ids: newScan.policies } } : {}),
   });
   // A scan definition scans a group: choosing a scan creates the group when none was chosen.
   function chooseScanMode(mode: "none" | "existing" | "new") {
     setScanMode(mode);
-    if (mode !== "none" && groupMode === "none") { setGroupMode("new"); setGroupName(`${t("dd.defaultGroup")} ${job?.domain ?? ""} ${new Date().toISOString().slice(0, 10)}`.trim()); }
+    if (mode !== "none" && groupMode === "none") setGroupMode("default");   // a scan scans a group: use the domain's group
     if (mode === "new" && !newScan.name) setNewScan((n) => ({ ...n, name: `${t("dd.defaultScan")} ${job?.domain ?? ""}`.trim() }));
   }
   const scanReady = scanMode === "none" || (scanMode === "existing" ? scanDefIds.length > 0 : !!(newScan.name.trim() && newScan.profile && newScan.policies.length));
@@ -182,7 +190,7 @@ function Wizard({ onClose, onDone, resumeId }: { onClose: () => void; onDone: ()
     }, 300);
     return () => { cancelled = true; window.clearTimeout(timer); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, selection, tags, siIds, groupMode, groupId, groupName, ports, confirmBusiness, scanMode, scanDefIds, newScan, report]);
+  }, [step, selection, tags, siIds, groupMode, groupId, groupName, ports, confirmBusiness, tagOn, scanMode, scanDefIds, newScan, report]);
 
   async function applyNow() {
     if (!job) return;
@@ -260,6 +268,11 @@ function Wizard({ onClose, onDone, resumeId }: { onClose: () => void; onDone: ()
             )}
             {data && (
               <>
+                <div className="rounded border border-border p-3" role="group" aria-labelledby="dd-summary">
+                  <p id="dd-summary" className="text-sm font-medium">{t("dd.sum.found", { n: Object.values(data.counts).reduce((a, b) => a + b, 0) })}</p>
+                  <ul className="mt-1 flex flex-wrap gap-2 text-xs">{(["NEW", "EXISTING", "ENRICHABLE", "CHANGED", "OUT_OF_SCOPE"] as DdInventory[]).filter((k) => data.counts[k]).map((k) => <li key={k}><Badge tone={INV_TONE[k]}>{tr(`dd.inv.${k}`)}: {data.counts[k]}</Badge></li>)}</ul>
+                  <div className="mt-2 flex flex-wrap gap-2"><Button size="sm" disabled={!data.counts.NEW} onClick={() => void addNew()}>{t("dd.addNew")}{data.counts.NEW ? ` (${data.counts.NEW})` : ""}</Button></div>
+                </div>
                 <div className="flex flex-wrap items-end gap-3">
                   <Field label={t("dd.search")}><Input value={filters.q} onChange={(e) => setFilter({ q: e.target.value })} /></Field>
                   <Field label={t("dd.inventory")}><Select value={filters.inventory} onChange={(e) => setFilter({ inventory: e.target.value })}><option value="">{t("dd.all")}</option>{Object.entries(data.counts).map(([k, n]) => <option key={k} value={k}>{tr(`dd.inv.${k}`)} ({n})</option>)}</Select></Field>
@@ -299,7 +312,7 @@ function Wizard({ onClose, onDone, resumeId }: { onClose: () => void; onDone: ()
                   {data.truncated && <span className="text-xs text-muted">{t("dd.truncated")}</span>}</div>
               </>
             )}
-            <div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>{t("action.close")}</Button><Button disabled={selected === 0} onClick={() => { setPlan(undefined); setReport(undefined); setStep("review"); }}>{t("dd.continue")} ({selected})</Button></div>
+            <div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>{t("action.close")}</Button><Button disabled={selected === 0} onClick={() => { setPlan(undefined); setReport(undefined); setStep("review"); }}>{t("dd.addSelection")} ({selected})</Button></div>
           </div>
         )}
 
@@ -310,13 +323,16 @@ function Wizard({ onClose, onDone, resumeId }: { onClose: () => void; onDone: ()
                 <div className="grid gap-4 sm:grid-cols-2">
                   <Field label={t("col.tags")} hint={t("hint.commaSeparated")}><TagsInput value={tags} onChange={setTags} /></Field>
                   <Field label={t("dd.ports")}><Input value={ports} onChange={(e) => setPorts(e.target.value)} placeholder="443,8443" /></Field>
-                  <Field label={t("dd.group")}>
-                    <Select value={groupMode === "existing" ? groupId : groupMode} onChange={(e) => { const v = e.target.value; if (v === "none" || v === "new") { setGroupMode(v); setGroupId(""); } else { setGroupMode("existing"); setGroupId(v); } }}>
-                      <option value="none">{t("dd.groupNone")}</option><option value="new">{t("dd.groupNew")}</option>{groups.data?.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}</Select></Field>
+                  <Field label={t("dd.group")} hint={groupMode === "default" ? t("dd.group.hint") : undefined}>
+                    <Select value={groupMode === "existing" ? groupId : groupMode} onChange={(e) => { const v = e.target.value; if (v === "default" || v === "none" || v === "new") { setGroupMode(v); setGroupId(""); } else { setGroupMode("existing"); setGroupId(v); } }}>
+                      {data && <option value="default">{tr(data.default_group.exists ? "dd.group.proposedExisting" : "dd.group.proposedNew", { name: data.default_group.name })}</option>}
+                      <option value="none">{t("dd.groupNone")}</option><option value="new">{t("dd.groupNew")}</option>{groups.data?.filter((g) => g.id !== data?.default_group.id).map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}</Select></Field>
                   {groupMode === "new" && <Field label={t("dd.groupName")}><Input value={groupName} onChange={(e) => setGroupName(e.target.value)} /></Field>}
                 </div>
+                <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={tagOn} onChange={(e) => setTagOn(e.target.checked)} /><span>{tr("dd.tag.option", { tag: data?.discovery_tag ?? "Découverte DNS" })}<span className="block text-xs text-muted">{t("dd.tag.hint")}</span></span></label>
                 <Field label={t("col.si")}><CheckList items={(systems.data ?? []).map((s) => ({ id: s.id, label: (s.parent_id ? "↳ " : "") + s.name }))} selected={siIds} onChange={setSiIds} /></Field>
-                <fieldset className="space-y-3 rounded border border-border p-3"><legend className="px-1 text-sm font-medium">{t("dd.scan")}</legend>
+                <details className="rounded border border-border p-3" open={advOpen || scanMode !== "none"} onToggle={(e) => setAdvOpen(e.currentTarget.open)}><summary className="cursor-pointer text-sm font-medium">{t("dd.adv.scans")}</summary>
+                <fieldset className="mt-3 space-y-3"><legend className="sr-only">{t("dd.scan")}</legend>
                   <Select aria-label={t("dd.scan")} value={scanMode} onChange={(e) => chooseScanMode(e.target.value as "none" | "existing" | "new")}>
                     <option value="none">{t("dd.scan.none")}</option><option value="existing">{t("dd.scan.existing")}</option><option value="new">{t("dd.scan.new")}</option></Select>
                   {scanMode === "existing" && <CheckList items={(definitions.data ?? []).map((d) => ({ id: d.id, label: d.name }))} selected={scanDefIds} onChange={setScanDefIds} empty={t("dd.scan.noDefinitions")} />}
@@ -326,7 +342,7 @@ function Wizard({ onClose, onDone, resumeId }: { onClose: () => void; onDone: ()
                       <Field label={t("dd.scan.profile")}><Select value={newScan.profile} onChange={(e) => setNewScan({ ...newScan, profile: e.target.value })}><option value="">{t("dd.scan.chooseProfile")}</option>{(profiles.data ?? []).filter(published).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></Field>
                       <div className="sm:col-span-2"><Field label={t("dd.scan.policies")}><CheckList items={(policies.data ?? []).filter(published).map((p) => ({ id: p.id, label: p.name }))} selected={newScan.policies} onChange={(ids) => setNewScan({ ...newScan, policies: ids })} /></Field></div>
                     </div>)}
-                </fieldset>
+                </fieldset></details>
               </>
             )}
             {(report ?? plan) && (() => {
@@ -334,8 +350,13 @@ function Wizard({ onClose, onDone, resumeId }: { onClose: () => void; onDone: ()
               const pending = r.summary.business_changes_pending_confirmation;
               return (
                 <div className="space-y-3" aria-label={t("dd.review")}>
-                  {report ? <Note tone="success">{t("dd.done", { create: report.summary.create, reuse: report.summary.reuse, enrich: report.summary.enrich, skipped: report.summary.skipped })}</Note> : (
-                    <ul className="list-disc pl-5 text-sm"><li>{t("dd.willCreate", { n: r.summary.create })}</li><li>{t("dd.willReuse", { n: r.summary.reuse })}</li><li>{t("dd.willEnrich", { n: r.summary.enrich })}</li>{r.summary.skipped > 0 && <li className="text-danger">{t("dd.willSkip", { n: r.summary.skipped })}</li>}</ul>)}
+                  {report ? (
+                    <Note tone="success"><strong>{t("dd.imported")}</strong>
+                      <ul className="mt-1 list-disc pl-5"><li>{t("dd.imp.created", { n: report.summary.create })}</li><li>{t("dd.imp.enriched", { n: report.summary.enrich })}</li><li>{t("dd.imp.known", { n: Math.max(report.summary.reuse, data?.counts.EXISTING ?? 0) })}</li><li>{t("dd.imp.errors", { n: report.summary.skipped })}</li></ul></Note>
+                  ) : (
+                    <ul className="list-disc pl-5 text-sm"><li>{t("dd.willCreate", { n: r.summary.create })}</li><li>{t("dd.willReuse", { n: r.summary.reuse })}</li><li>{t("dd.willEnrich", { n: r.summary.enrich })}</li>{r.summary.skipped > 0 && <li className="text-danger">{t("dd.willSkip", { n: r.summary.skipped })}</li>}
+                      <li>{t("dd.sum.known", { n: Math.max(0, (data?.counts.EXISTING ?? 0) - r.summary.reuse) })}</li>
+                      <li>{r.group ? t("dd.sum.group", { name: r.group.name }) : t("dd.sum.noGroup")}</li><li>{r.tag ? t("dd.sum.tag", { tag: r.tag }) : t("dd.sum.noTag")}</li></ul>)}
                   {r.definitions && r.definitions.length > 0 && (
                     <ul className="list-disc pl-5 text-sm" aria-label={t("dd.scan")}>{r.definitions.map((d) => <li key={d.id ?? d.name}>{tr(`dd.scan.plan.${d.action}`, { name: d.name })}{d.scheduled ? ` — ${t("dd.scan.scheduled")}` : ""}</li>)}</ul>)}
                   {!report && (pending > 0 || confirmBusiness) && <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={confirmBusiness} onChange={(e) => setConfirmBusiness(e.target.checked)} /><span>{t("dd.confirmBusiness", { n: r.items.filter((i) => i.business_changes && (i.business_changes.tags_added.length || i.business_changes.si_added.length || i.business_changes.group_added)).length })}</span></label>}
@@ -350,6 +371,7 @@ function Wizard({ onClose, onDone, resumeId }: { onClose: () => void; onDone: ()
               {!report ? <Button variant="outline" onClick={() => setStep("results")}>{t("dd.back")}</Button> : <span />}
               <div className="flex gap-2">
                 <Button variant="outline" onClick={onClose}>{t("action.close")}</Button>
+                {report && onViewTargets && <Button onClick={() => { onViewTargets(report.discovery_id); onClose(); }}>{t("dd.viewTargets")}</Button>}
                 {!report && <Button disabled={busy || !plan || !scanReady || plan.summary.create + plan.summary.reuse + plan.summary.enrich === 0} onClick={() => void applyNow()}>{t("dd.apply")}</Button>}
               </div>
             </div>
@@ -360,7 +382,7 @@ function Wizard({ onClose, onDone, resumeId }: { onClose: () => void; onDone: ()
   );
 }
 
-export function DnsDiscoveryDialog(props: { onClose: () => void; onDone: () => void; resumeId?: string }) { return <Wizard {...props} />; }
+export function DnsDiscoveryDialog(props: { onClose: () => void; onDone: () => void; resumeId?: string; onViewTargets?: (discoveryId: string) => void }) { return <Wizard {...props} />; }
 
 const STATUS_BADGE: Record<string, "success" | "danger" | "warning" | "info" | "neutral"> = { done: "success", failed: "danger", running: "info", queued: "neutral" };
 

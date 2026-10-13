@@ -2,6 +2,7 @@ import { Download, Pencil, Plus, Radar, Trash2, Upload } from "lucide-react";
 import { useState } from "react";
 import { api } from "../api/client";
 import type { Group, SI, Tag, Target } from "../api/types";
+import { formatDate } from "../lib/utils";
 import { useAuth } from "../auth/AuthContext";
 import { DiscoveriesTab, DnsDiscoveryDialog } from "../components/DnsDiscovery";
 import { CheckList, ConfirmButton, Empty, ErrorNote, PageHeader, TagList, TagsInput, useLoad } from "../components/common";
@@ -109,6 +110,31 @@ function GroupDialog({ initial, targets, systems, onClose, onSaved }: { initial?
   );
 }
 
+/** Where a target comes from, read from the DNS observations a discovery recorded (not from the tag). */
+function ProvenanceDialog({ target, onClose }: { target: Target; onClose: () => void }) {
+  const { t, locale } = useI18n();
+  const data = useLoad(() => api<{ ips: { ip: string }[]; cnames: { name: string }[]; provenance: NonNullable<Target["dns"]> | null }>(`/targets/${target.id}/dns`));
+  const p = data.data?.provenance ?? target.dns;
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()} title={`${t("target.prov.title")} — ${target.value}`}>
+      <div className="space-y-3 text-sm">
+        <ErrorNote error={data.error} />
+        {p && <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1">
+          <dt className="text-muted">{t("target.prov.filter")}</dt><dd>{p.created ? t("target.prov.created") : t("target.prov.enriched")}</dd>
+          <dt className="text-muted">{t("target.prov.domain")}</dt><dd>{p.domains.join(", ") || "—"}</dd>
+          <dt className="text-muted">{t("target.prov.methods")}</dt><dd>{p.methods.join(", ") || "—"}</dd>
+          <dt className="text-muted">{t("target.prov.first")}</dt><dd>{p.first_seen ? formatDate(p.first_seen, locale) : "—"}</dd>
+          <dt className="text-muted">{t("target.prov.last")}</dt><dd>{p.last_seen ? formatDate(p.last_seen, locale) : "—"}</dd>
+          <dt className="text-muted">{t("target.prov.ips")}</dt><dd className="break-all">{data.data?.ips.map((i) => i.ip).join(", ") || "—"}</dd>
+          <dt className="text-muted">{t("target.prov.cnames")}</dt><dd className="break-all">{data.data?.cnames.map((c) => c.name).join(", ") || "—"}</dd>
+        </dl>}
+        <p className="text-xs text-muted">{t("target.prov.note")}</p>
+        <div className="flex justify-end"><Button variant="outline" onClick={onClose}>{t("action.close")}</Button></div>
+      </div>
+    </Dialog>
+  );
+}
+
 export default function Targets() {
   const { t } = useI18n();
   const { user, atLeast } = useAuth();
@@ -116,6 +142,9 @@ export default function Targets() {
   const [tag, setTag] = useState("");
   const [si, setSi] = useState("");
   const [mine, setMine] = useState(false);
+  const [origin, setOrigin] = useState("");                       // "" | "dns": targets a discovery has seen
+  const [imported, setImported] = useState("");                   // a discovery id: only the targets that import processed
+  const [prov, setProv] = useState<Target | undefined>();
   const [discoverId, setDiscoverId] = useState<string | undefined>();
   const [discoveries, setDiscoveries] = useState(0);
   const [dialog, setDialog] = useState<"target" | "import" | "group" | "discover" | null>(null);
@@ -123,7 +152,7 @@ export default function Targets() {
   const [editG, setEditG] = useState<Group | undefined>();
   const [err, setErr] = useState<unknown>();
   const [siForm, setSiForm] = useState({ name: "", parent_id: "" });
-  const targets = useLoad(() => api<Target[]>("/targets", { params: { q, tag, si, mine } }), [q, tag, si, mine]);
+  const targets = useLoad(() => api<Target[]>("/targets", { params: { q, tag, si, mine, provenance: origin, discovery: imported } }), [q, tag, si, mine, origin, imported]);
   const groups = useLoad(() => api<Group[]>("/target-groups"));
   const systems = useLoad(() => api<SI[]>("/information-systems"));
   const tags = useLoad(() => api<Tag[]>("/tags"));
@@ -142,6 +171,7 @@ export default function Targets() {
             <Input aria-label={t("action.search")} placeholder={t("action.search")} className="w-56" value={q} onChange={(e) => setQ(e.target.value)} />
             <Select aria-label="SI" className="w-60" value={si} onChange={(e) => setSi(e.target.value)}><option value="">{t("filter.allSi")}</option>{systems.data?.map((s) => <option key={s.id} value={s.id}>{s.parent_id ? "↳ " : ""}{s.name}</option>)}</Select>
             <Select aria-label="Tag" className="w-40" value={tag} onChange={(e) => setTag(e.target.value)}><option value="">{t("filter.allTags")}</option>{tags.data?.map((x) => <option key={x.id} value={x.name}>{x.name}</option>)}</Select>
+            <Select aria-label={t("target.prov.filter")} className="w-44" value={origin} onChange={(e) => setOrigin(e.target.value)}><option value="">{t("target.prov.all")}</option><option value="dns">{t("target.prov.dns")}</option></Select>
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} />{t("scans.onlyMine")}</label>
             <div className="ml-auto flex flex-wrap gap-2">
               <Button variant="outline" asChild><a href="/api/targets-export" download="targets.txt"><Download />{t("target.export")}</a></Button>
@@ -150,10 +180,11 @@ export default function Targets() {
               <Button onClick={() => { setEditT(undefined); setDialog("target"); }}><Plus />{t("target.new")}</Button>
             </div>
           </div>
+          {imported && <div className="mb-3 flex flex-wrap items-center gap-3 rounded border border-border p-2 text-sm" role="status"><span>{t("target.imported.filter")}</span><Button size="sm" variant="outline" onClick={() => setImported("")}>{t("target.imported.back")}</Button></div>}
           <Card>{targets.data?.length ? (
             <Table><thead><tr><Th>{t("target.name")}</Th><Th>{t("col.type")}</Th><Th>{t("target.ports")}</Th><Th>{t("col.tags")}</Th><Th>{t("col.si")}</Th><Th /></tr></thead>
               <tbody>{targets.data.map((x) => (
-                <tr key={x.id}><Td className="font-medium">{x.name || x.value}<div className="text-xs font-normal text-muted">{x.name ? x.value : ""}{x.name && x.description ? " · " : ""}{x.description}</div></Td><Td><Badge>{t(`target.kind.${x.kind}` as never)}</Badge></Td><Td>{x.ports || "—"}</Td><Td><TagList tags={x.tags} /></Td><Td className="text-xs">{x.si_ids.map(siName).join(", ")}</Td>
+                <tr key={x.id}><Td className="font-medium">{x.name || x.value}<div className="text-xs font-normal text-muted">{x.name ? x.value : ""}{x.name && x.description ? " · " : ""}{x.description}</div></Td><Td><Badge>{t(`target.kind.${x.kind}` as never)}</Badge></Td><Td>{x.ports || "—"}</Td><Td><TagList tags={x.tags} />{x.dns && <button type="button" className="mt-1 block" title={`${x.dns.created ? t("target.prov.created") : t("target.prov.enriched")} · ${x.dns.domains.join(", ")}`} aria-label={`${t("target.prov.title")} ${x.value}`} onClick={() => setProv(x)}><Badge tone={x.dns.created ? "success" : "neutral"}>DNS</Badge></button>}</Td><Td className="text-xs">{x.si_ids.map(siName).join(", ")}</Td>
                   <Td>{own(x.owner_id) && <div className="flex justify-end gap-2"><Button size="sm" variant="outline" aria-label={t("action.edit")} onClick={() => { setEditT(x); setDialog("target"); }}><Pencil /></Button><ConfirmButton variant="outline" label={<Trash2 className="size-4" />} confirm={t("confirm.delete")} onConfirm={remove(`/targets/${x.id}`, targets.reload)} /></div>}</Td></tr>
               ))}</tbody></Table>
           ) : <Empty>{t("target.none")}</Empty>}</Card>
@@ -180,7 +211,8 @@ export default function Targets() {
         </TabsContent>
       </Tabs>
       {dialog === "target" && systems.data && <TargetDialog initial={editT} systems={systems.data} onClose={() => setDialog(null)} onSaved={() => { void targets.reload(); void tags.reload(); }} />}
-      {dialog === "discover" && <DnsDiscoveryDialog resumeId={discoverId} onClose={() => { setDialog(null); setDiscoverId(undefined); setDiscoveries((n) => n + 1); }} onDone={() => { void targets.reload(); void groups.reload(); }} />}
+      {dialog === "discover" && <DnsDiscoveryDialog resumeId={discoverId} onClose={() => { setDialog(null); setDiscoverId(undefined); setDiscoveries((n) => n + 1); }} onDone={() => { void targets.reload(); void groups.reload(); void tags.reload(); }} onViewTargets={(id) => { setOrigin(""); setQ(""); setTag(""); setSi(""); setMine(false); setImported(id); }} />}
+      {prov && <ProvenanceDialog target={prov} onClose={() => setProv(undefined)} />}
       {dialog === "import" && <ImportDialog onClose={() => setDialog(null)} onDone={() => { void targets.reload(); }} />}
       {dialog === "group" && systems.data && <GroupDialog initial={editG} targets={targets.data ?? []} systems={systems.data} onClose={() => setDialog(null)} onSaved={() => void groups.reload()} />}
     </>

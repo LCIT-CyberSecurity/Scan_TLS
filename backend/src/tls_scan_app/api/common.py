@@ -5,6 +5,7 @@ from typing import Any
 
 from fastapi import HTTPException, Request
 from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DbSession
 
 from tls_scan_app.models import InformationSystem, ResourceSI, ResourceTag, Role, Tag, User
@@ -28,16 +29,27 @@ def require_modify(user: User, owner_id: uuid.UUID | None) -> None:
         raise HTTPException(403, "Only the owner or an operator can modify this object")
 
 
+def ensure_tag(db: DbSession, name: str) -> Tag:
+    """The tag with this name: reused when it exists, created once otherwise (safe when another request creates it at the same time)."""
+    name = name.strip()[:60]
+    tag = db.execute(select(Tag).where(Tag.name == name)).scalar_one_or_none()
+    if tag is None:
+        try:
+            with db.begin_nested():
+                tag = Tag(name=name)
+                db.add(tag)
+                db.flush()
+        except IntegrityError:
+            tag = db.execute(select(Tag).where(Tag.name == name)).scalar_one()
+    return tag
+
+
 def set_classification(db: DbSession, resource_type: str, resource_id: uuid.UUID, tags: list[str] | None, si: list[uuid.UUID] | None) -> None:
     """Replace tags (by name, created on demand) and SI links of a resource."""
     if tags is not None:
         db.execute(delete(ResourceTag).where(ResourceTag.resource_type == resource_type, ResourceTag.resource_id == resource_id))
         for name in sorted({t.strip() for t in tags if t.strip()}):
-            tag = db.execute(select(Tag).where(Tag.name == name)).scalar_one_or_none()
-            if tag is None:
-                tag = Tag(name=name[:60])
-                db.add(tag)
-                db.flush()
+            tag = ensure_tag(db, name)
             db.add(ResourceTag(resource_type=resource_type, resource_id=resource_id, tag_id=tag.id))
     if si is not None:
         db.execute(delete(ResourceSI).where(ResourceSI.resource_type == resource_type, ResourceSI.resource_id == resource_id))

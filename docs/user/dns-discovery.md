@@ -14,6 +14,32 @@ The **DNS discoveries** tab (next to Groups) lists your discoveries (all of them
 3. **Results** – one line per name with addresses, record types, **sources** and the **inventory status**; search, filter by source or status, selection, paging (100 per page). Names outside the domain are listed for information and cannot be selected.
 4. **Add / enrich** – tags, SI, group and ports, then the **exact plan** (a dry run) before *Add / Enrich the targets*.
 
+## From the discovery to Targets, in a few clicks
+
+**Targets → DNS discovery → Results → Add → See the imported targets.**
+
+1. The results open with a summary: hosts discovered, new, existing, to enrich, outside the domain.
+2. **Add the new targets** selects every new name of the domain (never the names outside it, the wildcard answers, the
+   historical names that no longer resolve, nor the names already scanned unless you tick *Also include…*) and goes to the
+   import step. **Add / Enrich the selection** does the same for a hand-made selection.
+3. The import step proposes, and shows the exact plan (dry run) before anything is written:
+   - the tag **Découverte DNS** (on by default, can be turned off);
+   - the group **DNS — your-domain** (no date in the name: it is created the first time, then fed again by each later
+     discovery of the same domain; you can pick another group, create another one, or use none);
+   - optional SI / sub-SI, extra tags and ports (existing ports are kept);
+   - **Advanced options — Scans** (folded): add the group to existing scans or create a scan. Nothing is ever launched.
+4. The summary lists what will be created, enriched, already known (left unchanged), the group and the tag. When the
+   import changes the tags, group or SI of targets that **already exist**, one confirmation box covers all of them.
+5. After the import, **See the imported targets** opens Targets filtered on exactly the targets this import processed
+   (created, enriched or reused), with **Back to the full list** to leave the filter.
+
+**Tag and provenance.** The tag is a practical filter, not the proof of origin: that is the DNS record kept for each target
+(method, domain, dates, addresses, aliases, discovery). New targets get the tag; a target that already exists only gets it
+after your confirmation, and tags are never removed. In the Targets list the **Origin** filter shows every target a
+discovery has seen, and the **DNS** badge (green = created by a discovery, grey = enriched by one) opens the source domain,
+methods, first and last observation, addresses and aliases. A DNS name does not prove that the host is reachable or serves
+TLS: only a scan tells. Manually created targets are unchanged and show nothing extra.
+
 ## Methods (independent, each can fail without affecting the others)
 
 | Method | What it does |
@@ -95,4 +121,4 @@ what was imported).
 `POST /api/targets/discover` (unchanged: `domain`, `authorized`; new optional `mode`, `methods`, `dns_server`, `axfr_servers`,
 `dictionary`, `custom_words`, `reverse`, `timeout_seconds`, `concurrency`, `max_duration_seconds`; without them the call behaves as before), `GET /api/targets/discover/{id}`,
 `POST …/{id}/cancel`, `GET …/{id}/results` (compared with the inventory and with the scans: `coverage` per name, filtered and paged), `POST …/{id}/apply` (`dry_run`,
-`on_conflict`, `confirm_business_changes`, `scan_definition_ids`, `new_definition`: `name`, `profile_id`, `policy_ids`, `report_template_id`, `exclusions`), `GET /api/targets/discover` (history), `DELETE /api/targets/discover/{id}`, `GET /api/targets/discover-config`, `GET /api/targets/{id}/dns`.
+`on_conflict`, `confirm_business_changes`, `discovery_tag`, `reuse_group`, `scan_definition_ids`, `new_definition`: `name`, `profile_id`, `policy_ids`, `report_template_id`, `exclusions`), `GET /api/targets/discover` (history), `DELETE /api/targets/discover/{id}`, `GET /api/targets/discover-config`, `GET /api/targets/{id}/dns`.

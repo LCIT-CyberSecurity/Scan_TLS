@@ -122,6 +122,7 @@ def _validated(body: TargetBody) -> tuple[str, str, str]:
 @router.get("/targets")
 def list_targets(
     q: str = "", tag: str | None = None, si: uuid.UUID | None = None, mine: bool = False,
+    provenance: Literal["dns"] | None = None, discovery: uuid.UUID | None = None,
     db: DbSession = Depends(get_db), user: User = Depends(reader),
 ) -> list[dict]:
     stmt = select(Target).order_by(Target.value)
@@ -132,9 +133,16 @@ def list_targets(
     allowed = ids_matching_filter(db, "target", tag, si)
     if allowed is not None:
         stmt = stmt.where(Target.id.in_(allowed))
+    if provenance == "dns":   # seen by a discovery (independent of the tag, which a person can remove or add)
+        stmt = stmt.where(Target.id.in_(select(TargetDnsObservation.target_id)))
+    if discovery:             # the targets a given discovery created, enriched or reused
+        stmt = stmt.where(Target.id.in_(select(TargetDnsObservation.target_id).where(
+            or_(TargetDnsObservation.last_discovery_id == discovery, TargetDnsObservation.created_discovery_id == discovery))))
     targets = db.execute(stmt.limit(2000)).scalars().all()
-    cls = classification_of(db, "target", [t.id for t in targets])
-    return [target_out(t, cls[t.id]) for t in targets]
+    ids = [t.id for t in targets]
+    cls = classification_of(db, "target", ids)
+    seen = {o.target_id: o for o in db.execute(select(TargetDnsObservation).where(TargetDnsObservation.target_id.in_(ids))).scalars()} if ids else {}
+    return [{**target_out(t, cls[t.id]), "dns": reconcile.provenance_of(seen.get(t.id))} for t in targets]
 
 
 @router.post("/targets", status_code=201)
@@ -433,6 +441,12 @@ def cancel_discovery(discovery_id: uuid.UUID, db: DbSession = Depends(get_db), u
     return _discovery_out(row, with_result=False)
 
 
+def _default_group(db: DbSession, domain: str) -> dict:
+    name = reconcile.default_group_name(domain)
+    existing = db.execute(select(TargetGroup).where(TargetGroup.name == name)).scalar_one_or_none()
+    return {"name": name, "id": str(existing.id) if existing else None, "exists": existing is not None}
+
+
 @router.get("/targets/discover/{discovery_id}/results")
 def discovery_results(discovery_id: uuid.UUID, inventory: str | None = None, source: str | None = None, q: str = "", offset: int = 0,
                       limit: int = Query(100, ge=1, le=500), db: DbSession = Depends(get_db), user: User = Depends(operator)) -> dict:
@@ -455,7 +469,7 @@ def discovery_results(discovery_id: uuid.UUID, inventory: str | None = None, sou
             "methods": row.result.get("methods", {}), "nameservers": row.result.get("nameservers", []), "security": row.result.get("security", []),
             "transfer_possible": row.result.get("transfer_possible", False), "truncated": row.result.get("truncated", False),
             "partial": row.result.get("partial", False), "resolver": row.result.get("resolver", "system"),
-            "recent_scan_days": settings["recent_scan_days"],
+            "recent_scan_days": settings["recent_scan_days"], "discovery_tag": reconcile.DISCOVERY_TAG, "default_group": _default_group(db, row.domain),
             "covered": sum(1 for i in items if i["coverage"]["covered"]), "recently_scanned": sum(1 for i in items if i["coverage"]["recently_scanned"])}
 
 
@@ -481,6 +495,8 @@ class ApplyBody(BaseModel):
     si_ids: list[uuid.UUID] = Field(default_factory=list, max_length=20)
     group_id: uuid.UUID | None = None
     group_name: str | None = Field(default=None, max_length=120)
+    reuse_group: bool = False   # group_name already exists (the proposed group of the domain): feed it instead of answering 409
+    discovery_tag: bool = True   # tag the targets with "Découverte DNS" (new ones; existing ones only after confirmation)
     dry_run: bool = False
     scan_definition_ids: list[uuid.UUID] = Field(default_factory=list, max_length=10)  # existing definitions that will scan the group
     new_definition: NewDefinition | None = None
