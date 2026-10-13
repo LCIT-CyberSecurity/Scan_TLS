@@ -45,6 +45,33 @@ Matching uses the Targets normalisation. The inventory identity stays `(value, p
 **other ports**, no `ports=""` duplicate is created – the item is reported (*exists with other ports*), and when
 several targets carry the name you **choose which one** to enrich. Several FQDNs sharing an IP stay separate targets.
 
+## Already scanned? (avoiding double scanning)
+
+Each name carries a **coverage** column in the results, computed read-only:
+
+- **Covered**: a scan definition scans it, either as a direct target, through a group, or through an IP / network target
+  that contains an address the name resolves to ("via 10.10.0.0/28"). A scheduled definition is flagged *scheduled*.
+- **Recently scanned**: a completed run of the last *N* days scanned that name or address (Administration → Settings →
+  DNS discovery → *Recent scan (days)*, 7 by default, 1 to 365).
+- *Same address as …*: the name resolves into a scanned address or network (several names, one access point).
+
+Names that are covered or recently scanned are **unchecked by default** in "Select all", "Select the new ones" and
+"Select the enrichable ones"; tick *Also include the names already covered* to include them, or tick a row by hand at any time.
+
+## From the discovery to a scan
+
+In the last step, the **Scan** section turns the import into something scannable, in the same transaction:
+
+- *Add the group to existing scans*: the group (existing, or created with the default name `Discovery <domain> <date>`) is
+  added to the chosen definitions. Nothing already in the definition is removed. A scheduled definition will scan the new
+  names at its next run (the plan says so).
+- *Create a new scan on this group*: a definition (profile, policies, optional exclusions through the API) is created on
+  the group. Using a group rather than listing targets means later discoveries that feed the group are picked up
+  without touching the definition.
+
+A scan scans a group, so choosing a scan always creates or uses a group. Targets that already exist only join the group
+once the business change is confirmed. **No scan is launched**: you start it from Scans.
+
 ## Import and enrichment
 
 One request handles the whole selection (up to 500 names), in one transaction, **idempotent** (re-running creates nothing),
@@ -52,8 +79,8 @@ with an explicit failure policy: unprocessable items are skipped and listed (`on
 (`abort`). **Never overwritten:** name, description, ports, tags, SI, groups, owner. DNS data goes to a separate record
 per target (`GET /api/targets/{id}/dns`: addresses, aliases, sources with method, zone, date and discovery id; bounded
 history). Adding tags/SI/a group to targets that **already exist** is a business change: it is previewed and only applied
-with an explicit confirmation. An existing group name is never silently recreated. **No scan is started and no scan
-definition is changed.**
+with an explicit confirmation. An existing group name is never silently recreated. **No scan is started**, and a scan
+definition is only touched when you ask for it (see above): its group list gains the group, nothing is removed.
 
 ## Security and traceability
 
@@ -67,5 +94,5 @@ what was imported).
 
 `POST /api/targets/discover` (unchanged: `domain`, `authorized`; new optional `mode`, `methods`, `dns_server`, `axfr_servers`,
 `dictionary`, `custom_words`, `reverse`, `timeout_seconds`, `concurrency`, `max_duration_seconds`; without them the call behaves as before), `GET /api/targets/discover/{id}`,
-`POST …/{id}/cancel`, `GET …/{id}/results` (compared with the inventory, filtered and paged), `POST …/{id}/apply` (`dry_run`,
-`on_conflict`, `confirm_business_changes`), `GET /api/targets/discover` (history), `DELETE /api/targets/discover/{id}`, `GET /api/targets/discover-config`, `GET /api/targets/{id}/dns`.
+`POST …/{id}/cancel`, `GET …/{id}/results` (compared with the inventory and with the scans: `coverage` per name, filtered and paged), `POST …/{id}/apply` (`dry_run`,
+`on_conflict`, `confirm_business_changes`, `scan_definition_ids`, `new_definition`: `name`, `profile_id`, `policy_ids`, `report_template_id`, `exclusions`), `GET /api/targets/discover` (history), `DELETE /api/targets/discover/{id}`, `GET /api/targets/discover-config`, `GET /api/targets/{id}/dns`.

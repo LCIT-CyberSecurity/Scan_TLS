@@ -25,7 +25,7 @@ admin_only = require_role(Role.ADMIN)
 
 DEFAULT_SETTINGS = {
     "retention": {"reports_days": 365, "runs_days": 730, "audit_days": 1095},
-    "dns_discovery": {"allowed_servers": [], "ct_enabled": True},
+    "dns_discovery": {"allowed_servers": [], "ct_enabled": True, "recent_scan_days": 7},
     "scan_exclusions": {"entries": []},  # never scanned, by any scan definition
     "notifications": {"connector": "none", "smtp": {"host": "", "port": 587, "starttls": True, "username": "", "from": ""},
                       "graph": {"tenant_id": "", "client_id": "", "sender": ""}},

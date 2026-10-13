@@ -1,7 +1,7 @@
 import { Loader2, Radar } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api } from "../api/client";
-import type { DdApplyItem, DdConfig, DdInventory, DdItem, DdJob, DdMethod, DdReport, DdResults, DdSummary, Group, SI } from "../api/types";
+import type { Definition, DdApplyItem, DdConfig, DdCoverage, DdInventory, DdItem, DdJob, DdMethod, DdReport, DdResults, DdSummary, Group, SI, Versioned } from "../api/types";
 import { useI18n } from "../i18n";
 import { CheckList, Empty, ErrorNote, Note, TagsInput, useLoad } from "./common";
 import { Badge } from "./ui/badge";
@@ -17,8 +17,25 @@ type Choice = { action: "add" | "enrich"; targetId?: string };
 const PAGE = 100;
 const ORDER = ["dns", "axfr", "dictionary", "ct", "reverse"];
 const METHODS = ["dns", "axfr", "dictionary", "ct"] as const;
+const published = (p: Versioned) => !p.archived && p.versions.some((v) => v.status === "published");
+const alreadyScanned = (c: DdCoverage) => c.covered || c.recently_scanned;
 const INV_TONE: Record<DdInventory, "success" | "neutral" | "info" | "warning"> = { NEW: "success", EXISTING: "neutral", ENRICHABLE: "info", CHANGED: "warning", OUT_OF_SCOPE: "neutral" };
 const STATUS_TONE: Record<string, "success" | "danger" | "warning" | "neutral" | "info"> = { done: "success", failed: "danger", partial: "warning", skipped: "neutral", running: "info", pending: "neutral" };
+
+function Coverage({ c }: { c: DdCoverage }) {
+  const { t } = useI18n();
+  const tr = t as unknown as (k: string, v?: Record<string, string | number>) => string;
+  if (!alreadyScanned(c) && !c.shared_address.length) return <span className="text-muted">—</span>;
+  const first = c.definitions[0];
+  return (
+    <div className="space-y-1">
+      {first && <div><Badge tone="info">{t("dd.cov.covered")}</Badge> <span className="break-all">{first.name}</span>{" "}
+        <span className="text-muted">({tr(`dd.cov.via.${first.via}`, { group: first.group })}){c.definitions_total > 1 ? ` +${c.definitions_total - 1}` : ""}{first.scheduled ? ` · ${t("dd.cov.scheduled")}` : ""}</span></div>}
+      {c.recently_scanned && c.last_scan && <div><Badge tone="warning">{t("dd.cov.recent")}</Badge> <span className="text-muted">{c.last_scan.finished_at ? new Date(c.last_scan.finished_at).toLocaleDateString() : ""}</span></div>}
+      {!first && c.shared_address.length > 0 && <div className="text-muted">{t("dd.cov.shared", { value: c.shared_address[0] })}</div>}
+    </div>
+  );
+}
 
 function Methods({ methods }: { methods: Record<string, DdMethod> }) {
   const { t } = useI18n();
@@ -39,6 +56,9 @@ function Wizard({ onClose, onDone, resumeId }: { onClose: () => void; onDone: ()
   const config = useLoad(() => api<DdConfig>("/targets/discover-config"));
   const systems = useLoad(() => api<SI[]>("/information-systems"));
   const groups = useLoad(() => api<Group[]>("/target-groups"));
+  const definitions = useLoad(() => api<Definition[]>("/scan-definitions"));
+  const profiles = useLoad(() => api<Versioned[]>("/profiles"));
+  const policies = useLoad(() => api<Versioned[]>("/policies"));
   const [step, setStep] = useState<Step>("config");
   const [error, setError] = useState<unknown>();
   // ---- configuration
@@ -68,6 +88,10 @@ function Wizard({ onClose, onDone, resumeId }: { onClose: () => void; onDone: ()
   const [groupName, setGroupName] = useState("");
   const [ports, setPorts] = useState("");
   const [confirmBusiness, setConfirmBusiness] = useState(false);
+  const [includeCovered, setIncludeCovered] = useState(false);
+  const [scanMode, setScanMode] = useState<"none" | "existing" | "new">("none");
+  const [scanDefIds, setScanDefIds] = useState<string[]>([]);
+  const [newScan, setNewScan] = useState({ name: "", profile: "", policies: [] as string[] });
   const [plan, setPlan] = useState<DdReport>();
   const [report, setReport] = useState<DdReport>();
   const [busy, setBusy] = useState(false);
@@ -130,7 +154,7 @@ function Wizard({ onClose, onDone, resumeId }: { onClose: () => void; onDone: ()
     const picked: Record<string, Choice> = { ...selection };
     for (let start = 0; ; start += 500) {
       const page = await api<DdResults>(`/targets/discover/${job.id}/results`, { params: { inventory: inventory ?? filters.inventory, source: inventory ? "" : filters.source, q: inventory ? "" : filters.q, offset: String(start), limit: "500" } });
-      for (const item of page.items) { const c = choiceFor(item); if (c && !item.wildcard && !item.notes.includes("ct_historical")) picked[item.fqdn] = c; }
+      for (const item of page.items) { const c = choiceFor(item); if (c && !item.wildcard && !item.notes.includes("ct_historical") && (includeCovered || !alreadyScanned(item.coverage))) picked[item.fqdn] = c; }
       if (start + 500 >= page.total) break;
     }
     setSelection(picked);
@@ -140,7 +164,16 @@ function Wizard({ onClose, onDone, resumeId }: { onClose: () => void; onDone: ()
     items: Object.entries(selection).map(([fqdn, c]) => ({ fqdn, action: c.action, target_id: c.targetId })),
     ports, tags, si_ids: siIds, dry_run: dry, confirm_business_changes: confirmBusiness,
     ...(groupMode === "existing" && groupId ? { group_id: groupId } : {}), ...(groupMode === "new" && groupName.trim() ? { group_name: groupName.trim() } : {}),
+    ...(scanMode === "existing" && scanDefIds.length ? { scan_definition_ids: scanDefIds } : {}),
+    ...(scanMode === "new" && newScan.name.trim() && newScan.profile && newScan.policies.length ? { new_definition: { name: newScan.name.trim(), profile_id: newScan.profile, policy_ids: newScan.policies } } : {}),
   });
+  // A scan definition scans a group: choosing a scan creates the group when none was chosen.
+  function chooseScanMode(mode: "none" | "existing" | "new") {
+    setScanMode(mode);
+    if (mode !== "none" && groupMode === "none") { setGroupMode("new"); setGroupName(`${t("dd.defaultGroup")} ${job?.domain ?? ""} ${new Date().toISOString().slice(0, 10)}`.trim()); }
+    if (mode === "new" && !newScan.name) setNewScan((n) => ({ ...n, name: `${t("dd.defaultScan")} ${job?.domain ?? ""}`.trim() }));
+  }
+  const scanReady = scanMode === "none" || (scanMode === "existing" ? scanDefIds.length > 0 : !!(newScan.name.trim() && newScan.profile && newScan.policies.length));
   useEffect(() => {
     if (step !== "review" || !job || report) return;
     let cancelled = false;
@@ -149,7 +182,7 @@ function Wizard({ onClose, onDone, resumeId }: { onClose: () => void; onDone: ()
     }, 300);
     return () => { cancelled = true; window.clearTimeout(timer); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, selection, tags, siIds, groupMode, groupId, groupName, ports, confirmBusiness, report]);
+  }, [step, selection, tags, siIds, groupMode, groupId, groupName, ports, confirmBusiness, scanMode, scanDefIds, newScan, report]);
 
   async function applyNow() {
     if (!job) return;
@@ -232,6 +265,11 @@ function Wizard({ onClose, onDone, resumeId }: { onClose: () => void; onDone: ()
                   <Field label={t("dd.inventory")}><Select value={filters.inventory} onChange={(e) => setFilter({ inventory: e.target.value })}><option value="">{t("dd.all")}</option>{Object.entries(data.counts).map(([k, n]) => <option key={k} value={k}>{tr(`dd.inv.${k}`)} ({n})</option>)}</Select></Field>
                   <Field label={t("dd.source")}><Select value={filters.source} onChange={(e) => setFilter({ source: e.target.value })}><option value="">{t("dd.all")}</option>{Object.entries(data.sources).map(([k, n]) => <option key={k} value={k}>{k} ({n})</option>)}</Select></Field>
                 </div>
+                {(data.covered > 0 || data.recently_scanned > 0) && (
+                  <div className="rounded border border-border p-2 text-sm" aria-label={t("dd.cov.title")}>
+                    <p>{t("dd.cov.summary", { covered: data.covered, recent: data.recently_scanned, days: data.recent_scan_days })}</p>
+                    <label className="mt-1 flex items-center gap-2 text-xs"><input type="checkbox" checked={includeCovered} onChange={(e) => setIncludeCovered(e.target.checked)} />{t("dd.cov.include")}</label>
+                  </div>)}
                 <div className="flex flex-wrap items-center gap-2">
                   <Button size="sm" variant="outline" onClick={() => void selectWhere()}>{t("dd.selectAll")}</Button>
                   <Button size="sm" variant="outline" onClick={() => void selectWhere("NEW")}>{t("dd.selectNew")}</Button>
@@ -241,7 +279,7 @@ function Wizard({ onClose, onDone, resumeId }: { onClose: () => void; onDone: ()
                   <span className="ml-auto text-xs text-muted">{t("dd.of", { shown: Math.min(offset + PAGE, data.total), total: data.total })}</span>
                 </div>
                 <div className="table-scroll max-h-[22rem] overflow-y-auto"><table className="simple-table">
-                  <thead><tr><th><span className="sr-only">{t("dd.select")}</span></th><th>{t("dd.fqdn")}</th><th>{t("dd.ip")}</th><th>{t("dd.type")}</th><th>{t("dd.source")}</th><th>{t("dd.inventory")}</th></tr></thead>
+                  <thead><tr><th><span className="sr-only">{t("dd.select")}</span></th><th>{t("dd.fqdn")}</th><th>{t("dd.ip")}</th><th>{t("dd.type")}</th><th>{t("dd.source")}</th><th>{t("dd.inventory")}</th><th>{t("dd.cov.col")}</th></tr></thead>
                   <tbody>{data.items.map((item) => (
                     <tr key={item.fqdn}>
                       <td>{item.ambiguous && item.in_scope ? (
@@ -255,6 +293,7 @@ function Wizard({ onClose, onDone, resumeId }: { onClose: () => void; onDone: ()
                       <td className="text-xs">{item.types.join(", ")}</td>
                       <td className="text-xs">{item.sources.join(", ")}</td>
                       <td><Badge tone={INV_TONE[item.inventory]}>{tr(`dd.inv.${item.inventory}`)}</Badge></td>
+                      <td className="text-xs"><Coverage c={item.coverage} /></td>
                     </tr>))}</tbody></table></div>
                 <div className="flex justify-between"><div className="flex gap-2"><Button size="sm" variant="outline" disabled={offset === 0} onClick={() => void loadResults(Math.max(0, offset - PAGE))}>{t("dd.prev")}</Button><Button size="sm" variant="outline" disabled={offset + PAGE >= data.total} onClick={() => void loadResults(offset + PAGE)}>{t("dd.next")}</Button></div>
                   {data.truncated && <span className="text-xs text-muted">{t("dd.truncated")}</span>}</div>
@@ -277,6 +316,17 @@ function Wizard({ onClose, onDone, resumeId }: { onClose: () => void; onDone: ()
                   {groupMode === "new" && <Field label={t("dd.groupName")}><Input value={groupName} onChange={(e) => setGroupName(e.target.value)} /></Field>}
                 </div>
                 <Field label={t("col.si")}><CheckList items={(systems.data ?? []).map((s) => ({ id: s.id, label: (s.parent_id ? "↳ " : "") + s.name }))} selected={siIds} onChange={setSiIds} /></Field>
+                <fieldset className="space-y-3 rounded border border-border p-3"><legend className="px-1 text-sm font-medium">{t("dd.scan")}</legend>
+                  <Select aria-label={t("dd.scan")} value={scanMode} onChange={(e) => chooseScanMode(e.target.value as "none" | "existing" | "new")}>
+                    <option value="none">{t("dd.scan.none")}</option><option value="existing">{t("dd.scan.existing")}</option><option value="new">{t("dd.scan.new")}</option></Select>
+                  {scanMode === "existing" && <CheckList items={(definitions.data ?? []).map((d) => ({ id: d.id, label: d.name }))} selected={scanDefIds} onChange={setScanDefIds} empty={t("dd.scan.noDefinitions")} />}
+                  {scanMode === "new" && (
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <Field label={t("dd.scan.name")}><Input value={newScan.name} onChange={(e) => setNewScan({ ...newScan, name: e.target.value })} /></Field>
+                      <Field label={t("dd.scan.profile")}><Select value={newScan.profile} onChange={(e) => setNewScan({ ...newScan, profile: e.target.value })}><option value="">{t("dd.scan.chooseProfile")}</option>{(profiles.data ?? []).filter(published).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></Field>
+                      <div className="sm:col-span-2"><Field label={t("dd.scan.policies")}><CheckList items={(policies.data ?? []).filter(published).map((p) => ({ id: p.id, label: p.name }))} selected={newScan.policies} onChange={(ids) => setNewScan({ ...newScan, policies: ids })} /></Field></div>
+                    </div>)}
+                </fieldset>
               </>
             )}
             {(report ?? plan) && (() => {
@@ -286,11 +336,13 @@ function Wizard({ onClose, onDone, resumeId }: { onClose: () => void; onDone: ()
                 <div className="space-y-3" aria-label={t("dd.review")}>
                   {report ? <Note tone="success">{t("dd.done", { create: report.summary.create, reuse: report.summary.reuse, enrich: report.summary.enrich, skipped: report.summary.skipped })}</Note> : (
                     <ul className="list-disc pl-5 text-sm"><li>{t("dd.willCreate", { n: r.summary.create })}</li><li>{t("dd.willReuse", { n: r.summary.reuse })}</li><li>{t("dd.willEnrich", { n: r.summary.enrich })}</li>{r.summary.skipped > 0 && <li className="text-danger">{t("dd.willSkip", { n: r.summary.skipped })}</li>}</ul>)}
+                  {r.definitions && r.definitions.length > 0 && (
+                    <ul className="list-disc pl-5 text-sm" aria-label={t("dd.scan")}>{r.definitions.map((d) => <li key={d.id ?? d.name}>{tr(`dd.scan.plan.${d.action}`, { name: d.name })}{d.scheduled ? ` — ${t("dd.scan.scheduled")}` : ""}</li>)}</ul>)}
                   {!report && (pending > 0 || confirmBusiness) && <label className="flex items-start gap-2 text-sm"><input type="checkbox" className="mt-1" checked={confirmBusiness} onChange={(e) => setConfirmBusiness(e.target.checked)} /><span>{t("dd.confirmBusiness", { n: r.items.filter((i) => i.business_changes && (i.business_changes.tags_added.length || i.business_changes.si_added.length || i.business_changes.group_added)).length })}</span></label>}
                   <div className="table-scroll max-h-60 overflow-y-auto"><table className="simple-table"><tbody>{r.items.map((i: DdApplyItem) => (
                     <tr key={i.fqdn}><td className="break-all">{i.fqdn}</td><td><Badge tone={i.outcome === "skip" ? "danger" : i.outcome === "create" ? "success" : "info"}>{i.outcome}</Badge></td>
                       <td className="text-xs text-muted">{i.outcome === "skip" ? tr(`dd.reason.${i.reason}`) : [i.dns?.new_ips.length ? t("dd.newIps", { ips: i.dns.new_ips.join(", ") }) : "", i.classification ? t("dd.classNotApplied") : ""].filter(Boolean).join(" · ")}</td></tr>))}</tbody></table></div>
-                  <p className="text-xs text-muted">{t("dd.noScan")}</p>
+                  <p className="text-xs text-muted">{scanMode === "none" ? t("dd.noScan") : t("dd.noLaunch")}</p>
                 </div>
               );
             })()}
@@ -298,7 +350,7 @@ function Wizard({ onClose, onDone, resumeId }: { onClose: () => void; onDone: ()
               {!report ? <Button variant="outline" onClick={() => setStep("results")}>{t("dd.back")}</Button> : <span />}
               <div className="flex gap-2">
                 <Button variant="outline" onClick={onClose}>{t("action.close")}</Button>
-                {!report && <Button disabled={busy || !plan || plan.summary.create + plan.summary.reuse + plan.summary.enrich === 0} onClick={() => void applyNow()}>{t("dd.apply")}</Button>}
+                {!report && <Button disabled={busy || !plan || !scanReady || plan.summary.create + plan.summary.reuse + plan.summary.enrich === 0} onClick={() => void applyNow()}>{t("dd.apply")}</Button>}
               </div>
             </div>
           </div>

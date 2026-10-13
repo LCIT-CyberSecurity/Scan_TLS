@@ -90,8 +90,8 @@ def test_a_server_must_be_declared_by_an_administrator():
 
 
 def test_admin_settings_validation():
-    assert policy.validate_settings({"allowed_servers": [" 10.0.0.53 ", "10.0.0.53:53", ""], "ct_enabled": False}) == {"allowed_servers": ["10.0.0.53:53"], "ct_enabled": False}
-    for bad in ({"allowed_servers": "10.0.0.1"}, {"allowed_servers": ["127.0.0.1"]}, {"ct_enabled": "yes"}, {"other": 1}, {"allowed_servers": ["1.1.1.1"] * 51}):
+    assert policy.validate_settings({"allowed_servers": [" 10.0.0.53 ", "10.0.0.53:53", ""], "ct_enabled": False}) == {"allowed_servers": ["10.0.0.53:53"], "ct_enabled": False, "recent_scan_days": 7}
+    for bad in ({"allowed_servers": "10.0.0.1"}, {"allowed_servers": ["127.0.0.1"]}, {"ct_enabled": "yes"}, {"recent_scan_days": 0}, {"recent_scan_days": True}, {"other": 1}, {"allowed_servers": ["1.1.1.1"] * 51}):
         with pytest.raises(policy.DiscoveryError):
             policy.validate_settings(bad)
 

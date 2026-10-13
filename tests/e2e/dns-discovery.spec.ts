@@ -104,3 +104,46 @@ test("the DNS discoveries tab keeps the history: reopen the results, nothing is 
   await expect(dialog.getByText(/\d+ selected/)).not.toHaveText("0 selected");
   await page.screenshot({ path: "results/dns-discoveries-tab.png", fullPage: true });
 });
+
+test("from the discovery to a scan: the names go into a group and a new scan, and read as covered afterwards", async ({ browser }) => {
+  const page = await (await browser.newContext({ ignoreHTTPSErrors: true, locale: "en-US" })).newPage();
+  await login(page, "operator@crashtest.example.com", DEMO);
+  await page.getByRole("link", { name: /Targets/ }).click();
+  await page.getByRole("tab", { name: "DNS discoveries" }).click();
+  await page.getByRole("row", { name: /client\.test/ }).first().getByRole("button", { name: "Open" }).click();
+  const dialog = page.getByRole("dialog");
+  await expect(dialog.getByText("srv01.client.test")).toBeVisible({ timeout: 30_000 });
+  await dialog.getByRole("button", { name: "Select all (current filter)" }).click();
+  await dialog.getByRole("button", { name: /Review the selection/ }).click();
+
+  // a scan scans a group: choosing "new scan" proposes the group, and the scan is created without being launched
+  const scanName = `discovered-${Date.now()}`;
+  await dialog.getByLabel("Scan", { exact: true }).selectOption("new");
+  await expect(dialog.getByLabel("New group name")).toHaveValue(/Discovery client\.test/);
+  await dialog.getByLabel("Scan name").fill(scanName);
+  await dialog.getByLabel(/^Profile/).selectOption({ label: "Lab - HTTPS only" });
+  await dialog.locator(".check-list-box").last().locator("label").first().locator("input").check();
+  await expect(dialog.getByText(new RegExp(`The scan “${scanName}” will be created \\(not launched\\)`))).toBeVisible();
+  await expect(dialog.getByText("No scan is started: you launch it yourself from Scans.")).toBeVisible();
+  const confirm = dialog.getByLabel(/Also apply the tags, SI and group/);
+  if (await confirm.count()) await confirm.check();              // targets imported by the first test already exist: joining the group is a confirmed addition
+  await dialog.getByRole("button", { name: "Add / Enrich the targets" }).click();
+  await expect(dialog.getByText(/Done: \d+ created/)).toBeVisible();
+  await dialog.getByRole("button", { name: "Close" }).last().click();
+
+  const definitions = await (await page.request.get("/api/scan-definitions")).json();
+  const created = definitions.find((d: { name: string }) => d.name === scanName);
+  expect(created.group_ids).toHaveLength(1);
+  expect(created.target_ids).toHaveLength(0);
+  const runs = await (await page.request.get("/api/scan-runs", { params: { definition_id: created.id } })).json();
+  expect(runs).toHaveLength(0);                                   // nothing was launched
+
+  // reopening the discovery: the names are now reported as covered by that scan, and left out of the bulk selection
+  await page.getByRole("row", { name: /client\.test/ }).first().getByRole("button", { name: "Open" }).click();
+  await expect(dialog.getByText("srv01.client.test")).toBeVisible({ timeout: 30_000 });
+  await expect(dialog.getByText(/name\(s\) already covered by a scan/)).toBeVisible();
+  await expect(dialog.getByText(scanName).first()).toBeVisible();
+  await dialog.getByRole("button", { name: "Select all (current filter)" }).click();
+  await expect(dialog.getByText(/\d+ selected/)).toHaveText(/^(0|[1-3]) selected$/);   // the covered names are not in it (mx.partner.example is out of scope)
+  await page.screenshot({ path: "results/dns-discovery-coverage.png", fullPage: true });
+});

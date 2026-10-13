@@ -20,7 +20,7 @@ from tls_scan_app.models import (
     TargetDnsObservation, TargetGroupMember, User,
 )
 from tls_scan_app.services import audit
-from tls_scan_app.services.dns_discovery import DiscoveryError, normalize_domain, policy as dns_policy, reconcile
+from tls_scan_app.services.dns_discovery import DiscoveryError, coverage, normalize_domain, policy as dns_policy, reconcile
 from tls_scan_app.services.targets import TargetError, normalize_ports, normalize_target
 
 router = APIRouter(prefix="/api", tags=["catalog"])
@@ -441,6 +441,8 @@ def discovery_results(discovery_id: uuid.UUID, inventory: str | None = None, sou
     if row.status not in ("done", "failed") or not row.result:
         raise HTTPException(409, "The discovery has no result yet")
     items = reconcile.reconcile(db, row.result.get("observations", []))
+    settings = dns_policy.load_settings(db)
+    coverage.annotate(db, items, settings["recent_scan_days"])
     counts, sources = {}, {}
     for item in items:
         counts[item["inventory"]] = counts.get(item["inventory"], 0) + 1
@@ -452,13 +454,24 @@ def discovery_results(discovery_id: uuid.UUID, inventory: str | None = None, sou
     return {"total": len(filtered), "counts": counts, "sources": sources, "offset": offset, "limit": limit, "items": filtered[offset:offset + limit],
             "methods": row.result.get("methods", {}), "nameservers": row.result.get("nameservers", []), "security": row.result.get("security", []),
             "transfer_possible": row.result.get("transfer_possible", False), "truncated": row.result.get("truncated", False),
-            "partial": row.result.get("partial", False), "resolver": row.result.get("resolver", "system")}
+            "partial": row.result.get("partial", False), "resolver": row.result.get("resolver", "system"),
+            "recent_scan_days": settings["recent_scan_days"],
+            "covered": sum(1 for i in items if i["coverage"]["covered"]), "recently_scanned": sum(1 for i in items if i["coverage"]["recently_scanned"])}
 
 
 class ApplyItem(BaseModel):
     fqdn: str = Field(min_length=1, max_length=255)
     action: Literal["add", "enrich"] = "add"
     target_id: uuid.UUID | None = None   # which target to enrich when the same FQDN exists with several port settings
+
+
+class NewDefinition(BaseModel):
+    """A scan definition created together with the import: it scans the group the names were put in. Nothing is launched."""
+    name: str = Field(min_length=1, max_length=160)
+    profile_id: uuid.UUID
+    policy_ids: list[uuid.UUID] = Field(min_length=1, max_length=20)
+    report_template_id: uuid.UUID | None = None
+    exclusions: list[str] = Field(default_factory=list, max_length=500)
 
 
 class ApplyBody(BaseModel):
@@ -469,6 +482,8 @@ class ApplyBody(BaseModel):
     group_id: uuid.UUID | None = None
     group_name: str | None = Field(default=None, max_length=120)
     dry_run: bool = False
+    scan_definition_ids: list[uuid.UUID] = Field(default_factory=list, max_length=10)  # existing definitions that will scan the group
+    new_definition: NewDefinition | None = None
     confirm_business_changes: bool = False   # tags / SI / group changes on targets that already exist
     on_conflict: Literal["skip", "abort"] = "skip"
 

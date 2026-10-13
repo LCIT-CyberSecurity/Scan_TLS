@@ -14,7 +14,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DbSession
 
 from tls_scan_app.api.common import classification_of, require_modify, set_classification
-from tls_scan_app.models import DnsDiscovery, Target, TargetDnsObservation, TargetGroup, TargetGroupMember, User
+from tls_scan_app.models import (
+    DefinitionGroup, DefinitionPolicy, DnsDiscovery, Policy, ReportTemplate, ScanDefinition, ScanProfile, ScanSchedule, Target,
+    TargetDnsObservation, TargetGroup, TargetGroupMember, User,
+)
 from tls_scan_app.services import audit
 from tls_scan_app.services.targets import TargetError, normalize_ports, normalize_target
 
@@ -142,6 +145,40 @@ def apply_items(db: DbSession, discovery: DnsDiscovery, user: User, body: Any) -
             raise HTTPException(409, f"A group named {name!r} already exists: select it instead of creating it")
         create_group = True
 
+    # scan definitions that will scan the group: validated before anything changes too
+    definitions: list[ScanDefinition] = []
+    new_def = getattr(body, "new_definition", None)
+    wanted_ids = list(dict.fromkeys(getattr(body, "scan_definition_ids", [])))
+    if wanted_ids or new_def:
+        if group is None and not create_group:
+            raise HTTPException(422, "A scan definition scans a group: choose or name a group first")
+        for definition_id in wanted_ids:
+            definition = db.get(ScanDefinition, definition_id)
+            if definition is None:
+                raise HTTPException(404, "Scan definition not found")
+            require_modify(user, definition.owner_id)
+            definitions.append(definition)
+    if new_def:
+        if db.get(ScanProfile, new_def.profile_id) is None:
+            raise HTTPException(404, "Profile not found")
+        for policy_id in new_def.policy_ids:
+            if db.get(Policy, policy_id) is None:
+                raise HTTPException(404, "Policy not found")
+        if new_def.report_template_id and db.get(ReportTemplate, new_def.report_template_id) is None:
+            raise HTTPException(404, "Report template not found")
+        try:
+            from tls_scanner.exclusions import parse_entries
+            from tls_scanner.models import ConfigError
+            new_exclusions = list(parse_entries(new_def.exclusions))
+        except ConfigError as error:
+            raise HTTPException(422, str(error)) from error
+    scheduled = {row for row in db.execute(select(ScanSchedule.definition_id).where(ScanSchedule.active.is_(True))).scalars()}
+    linked = {d.id for d in definitions if group is not None and db.get(DefinitionGroup, (d.id, group.id))}
+    definition_plan = [{"id": str(d.id), "name": d.name, "action": "already" if d.id in linked else "add_group", "scheduled": d.id in scheduled}
+                       for d in definitions]
+    if new_def:
+        definition_plan.append({"id": None, "name": new_def.name.strip(), "action": "create", "scheduled": False})
+
     items, seen = [], set()
     matches = matches_by_fqdn(db, [i.fqdn.strip().lower().rstrip(".") for i in body.items])
     stored = stored_for(db, [t.id for ts in matches.values() for t in ts])
@@ -217,6 +254,7 @@ def apply_items(db: DbSession, discovery: DnsDiscovery, user: User, body: Any) -
     }
     report = {"dry_run": body.dry_run, "applied": False, "summary": summary, "ports": ports, "group": {"id": str(group.id), "name": group.name} if group else
               ({"id": None, "name": body.group_name.strip(), "will_create": True} if create_group else None),
+              "definitions": definition_plan,
               "items": [{k: v for k, v in e.items() if not k.startswith("_")} for e in items]}
     if body.dry_run:
         return report
@@ -231,6 +269,23 @@ def apply_items(db: DbSession, discovery: DnsDiscovery, user: User, body: Any) -
             db.flush()
             report["group"] = {"id": str(group.id), "name": group.name, "created": True}
         description = f"DNS discovery of {discovery.domain}"
+        applied_definitions = []
+        for definition in definitions:
+            if group is not None and not db.get(DefinitionGroup, (definition.id, group.id)):
+                db.add(DefinitionGroup(definition_id=definition.id, group_id=group.id))
+                definition.updated_by = user.id
+                applied_definitions.append({"id": str(definition.id), "name": definition.name, "action": "add_group"})
+        if new_def and group is not None:
+            created_def = ScanDefinition(name=new_def.name.strip(), description=f"DNS discovery of {discovery.domain}", profile_id=new_def.profile_id,
+                                         report_template_id=new_def.report_template_id, exclusions=new_exclusions, owner_id=user.id, updated_by=user.id)
+            db.add(created_def)
+            db.flush()
+            db.add(DefinitionGroup(definition_id=created_def.id, group_id=group.id))
+            db.add_all([DefinitionPolicy(definition_id=created_def.id, policy_id=p) for p in set(new_def.policy_ids)])
+            applied_definitions.append({"id": str(created_def.id), "name": created_def.name, "action": "create"})
+            audit.record(db, "definition.create", actor=user, resource_type="definition", resource_id=created_def.id,
+                         detail={"name": created_def.name, "from": "dns_discovery", "group": group.name})
+        report["definitions"] = definition_plan
         for entry in items:
             if entry["outcome"] == "create":
                 created = None
@@ -270,7 +325,8 @@ def apply_items(db: DbSession, discovery: DnsDiscovery, user: User, body: Any) -
         audit.record(db, "target.discover.apply", actor=user, resource_type="dns_discovery", resource_id=discovery.id, detail={
             "domain": discovery.domain, "created": summary["create"], "reused": summary["reuse"], "enriched": summary["enrich"], "skipped": summary["skipped"],
             "group": report["group"]["name"] if report["group"] else None, "tags": list(body.tags)[:10],
-            "targets": [e["fqdn"] for e in items if e["outcome"] in ("create", "enrich")][:50]})
+            "targets": [e["fqdn"] for e in items if e["outcome"] in ("create", "enrich")][:50],
+            "definitions": [d["name"] for d in applied_definitions]})
         db.commit()
     except HTTPException:
         db.rollback()

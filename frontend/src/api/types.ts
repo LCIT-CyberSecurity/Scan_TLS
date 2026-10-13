@@ -56,14 +56,18 @@ export type DdInventory = "NEW" | "EXISTING" | "ENRICHABLE" | "CHANGED" | "OUT_O
 export interface DdMethod { status: string; detail: string; found: number }
 export interface DdJob { id: string; domain: string; status: "queued" | "running" | "done" | "failed"; error: string; cancel_requested: boolean; options: Record<string, unknown> | null;
   progress: { phase?: string; done?: number; total?: number; names?: number; queries?: number; methods?: Record<string, DdMethod> } | null }
+export interface DdCoverage { covered: boolean; definitions: { id: string; name: string; via: "target" | "group" | "address"; group: string; scheduled: boolean }[]; definitions_total: number;
+  shared_address: string[]; recently_scanned: boolean; last_scan: { run_id: string; name: string; finished_at: string | null } | null }
 export interface DdItem { fqdn: string; in_scope: boolean; types: string[]; ips: string[]; cnames: string[]; sources: string[]; roles: string[]; resolved: boolean | null; wildcard: boolean; notes: string[];
-  inventory: DdInventory; matches: { id: string; ports: string; name: string; status: string }[]; ambiguous: boolean; diff: { new_ips: string[]; missing_ips: string[]; new_cnames: string[]; new_sources: string[]; cname_changed: boolean } | null }
+  inventory: DdInventory; coverage: DdCoverage; matches: { id: string; ports: string; name: string; status: string }[]; ambiguous: boolean; diff: { new_ips: string[]; missing_ips: string[]; new_cnames: string[]; new_sources: string[]; cname_changed: boolean } | null }
 export interface DdResults { total: number; counts: Record<string, number>; sources: Record<string, number>; items: DdItem[]; methods: Record<string, DdMethod>; nameservers: { name: string; address: string; status: string; records: number; source: string }[];
-  security: { kind: string; server: string; address: string; message: string }[]; transfer_possible: boolean; truncated: boolean; partial: boolean; resolver: string }
+  security: { kind: string; server: string; address: string; message: string }[]; transfer_possible: boolean; truncated: boolean; partial: boolean; resolver: string;
+  recent_scan_days: number; covered: number; recently_scanned: number }
 export interface DdConfig { allowed_servers: string[]; ct_enabled: boolean; limits: { max_apply_items: number } }
 export interface DdApplyItem { fqdn: string; outcome: "create" | "reuse" | "enrich" | "skip"; reason: string; target_id: string | null; candidates?: { id: string; ports: string }[]; classification?: string;
   dns?: { new_ips: string[]; missing_ips: string[] }; business_changes?: { tags_added: string[]; si_added: string[]; group_added: boolean } }
-export interface DdReport { dry_run: boolean; applied: boolean; summary: { create: number; reuse: number; enrich: number; skipped: number; business_changes_pending_confirmation: number; classification_applied?: number }; group: { id: string | null; name: string; will_create?: boolean; created?: boolean } | null; items: DdApplyItem[] }
+export interface DdReport { dry_run: boolean; applied: boolean; summary: { create: number; reuse: number; enrich: number; skipped: number; business_changes_pending_confirmation: number; classification_applied?: number }; group: { id: string | null; name: string; will_create?: boolean; created?: boolean } | null;
+  definitions?: { id: string | null; name: string; action: "add_group" | "already" | "create"; scheduled: boolean }[]; items: DdApplyItem[] }
 
 export interface RunPlan { targets: number; ports: string[]; crypto: string; certificate: boolean; trust: boolean; public_store: boolean; private_stores: string[]; revocation: boolean; tls_checks: number; policies: string[]; formats: string[] }
 export interface DdSummary { id: string; domain: string; status: "queued" | "running" | "done" | "failed"; error: string; created_at: string; finished_at: string | null; mode: string; resolver: string;

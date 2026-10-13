@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session as DbSession
 from tls_scan_app.models import SystemSetting
 
 SETTING_KEY = "dns_discovery"
-DEFAULT_SETTINGS: dict[str, Any] = {"allowed_servers": [], "ct_enabled": True}
+DEFAULT_SETTINGS: dict[str, Any] = {"allowed_servers": [], "ct_enabled": True, "recent_scan_days": 7}
 
 MAX_NAMESERVERS = 6
 MAX_NAMES = 5000                  # distinct names kept per discovery
@@ -116,7 +116,10 @@ def validate_settings(value: dict[str, Any]) -> dict[str, Any]:
     ct = value.get("ct_enabled", True)
     if not isinstance(ct, bool):
         raise DiscoveryError("ct_enabled must be a boolean")
-    return {"allowed_servers": normalized, "ct_enabled": ct}
+    days = value.get("recent_scan_days", DEFAULT_SETTINGS["recent_scan_days"])
+    if not isinstance(days, int) or isinstance(days, bool) or not 1 <= days <= 365:
+        raise DiscoveryError("recent_scan_days must be a number of days between 1 and 365")
+    return {"allowed_servers": normalized, "ct_enabled": ct, "recent_scan_days": days}
 
 
 def authorized_server(value: str, settings: dict[str, Any]) -> tuple[str, int]:
