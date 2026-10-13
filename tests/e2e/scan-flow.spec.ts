@@ -22,7 +22,15 @@ test("user: create a target, launch a scan, follow it, read results, download a 
 
   // run page: status progresses to a final state
   await expect(page).toHaveURL(/\/scans\/[0-9a-f-]+/);
+  // while it runs, a compact panel at the top lists the steps and what each one checks
+  const progress = page.getByRole("region", { name: "Scan progress" });
+  await expect(progress).toBeVisible({ timeout: 15_000 });
+  await expect(progress.getByText("Port discovery")).toBeVisible();
+  await expect(progress.getByText("Compliance evaluation")).toBeVisible();
+  await expect(progress.locator('[aria-current="step"]')).toHaveCount(1);
+  await page.screenshot({ path: "results/scan-progress.png" });
   await expect(page.getByText(/^(Completed|Partially completed)$/).first()).toBeVisible({ timeout: 180_000 });
+  await expect(progress).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Findings" })).toBeVisible();
   await expect(page.getByText(/lab-tls|:443/).first()).toBeVisible();
 

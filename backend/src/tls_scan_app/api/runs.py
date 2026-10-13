@@ -29,6 +29,28 @@ user_only = require_role(Role.USER)
 MEDIA = {"html": "text/html", "md": "text/markdown", "csv": "text/csv", "findings_csv": "text/csv", "cbom": "application/json", "metadata": "application/json"}
 
 
+def run_plan(snapshot: dict | None) -> dict | None:
+    """What the scan checks, in a few synthetic facts for the progress panel (derived from the immutable snapshot; no secret, no certificate)."""
+    if not snapshot:
+        return None
+    scan, checks = snapshot.get("scan") or {}, snapshot.get("checks") or {}
+    certificate = checks.get("certificate") or {}
+    trust = certificate.get("trust") or {}
+    revocation = certificate.get("revocation") or {}
+    tls = checks.get("tls") or {}
+    enabled_tls = [k for k, v in tls.items() if (v is True) or (isinstance(v, dict) and v.get("enabled"))] if isinstance(tls, dict) else []
+    return {
+        "targets": sum(len(p.get("targets", [])) for p in snapshot.get("passes", [])), "ports": sorted({str(p.get("ports")) for p in snapshot.get("passes", [])}),
+        "crypto": scan.get("crypto", "standard"),
+        "certificate": certificate.get("enabled", True) is not False,
+        "trust": trust.get("enabled", True) is not False,
+        "public_store": (trust.get("public_store") or {}).get("enabled", True) is not False,
+        "private_stores": [s.get("name") for s in (snapshot.get("trust_stores") or [])],
+        "revocation": bool(revocation.get("enabled")), "tls_checks": len(enabled_tls),
+        "policies": [p.get("name") for p in snapshot.get("policies", [])], "formats": snapshot.get("export_formats", []),
+    }
+
+
 def run_out(r: ScanRun, detail: bool = False) -> dict:
     data = {
         "id": str(r.id), "name": r.name, "definition_id": str(r.definition_id) if r.definition_id else None,
@@ -37,6 +59,7 @@ def run_out(r: ScanRun, detail: bool = False) -> dict:
         "duration_seconds": r.duration_seconds, "cancel_requested": r.cancel_requested, "error": r.error,
         "progress": r.progress, "summary": r.summary, "policy_versions": r.policy_versions,
         "trust_stores": (r.config_snapshot or {}).get("trust_stores") or [],
+        "plan": run_plan(r.config_snapshot) if r.status in ACTIVE_STATUSES else None,
         "reports": [{"format": f["format"], "size": f["size"], "sha256": f["sha256"]} for f in (r.report_files or [])],
     }
     if detail:

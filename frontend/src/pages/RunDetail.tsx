@@ -11,6 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card"
 import { DataTable, type Column } from "../components/DataTable";
 import { GroupedEndpoints } from "../components/GroupedEndpoints";
 import { PkiTrust } from "../components/PkiTrust";
+import { ScanProgress } from "../components/ScanProgress";
 import { useI18n } from "../i18n";
 import type { TlsCheckResult } from "../lib/tlsChecks";
 import { formatDate, formatDuration } from "../lib/utils";
@@ -116,7 +117,7 @@ export default function RunDetail() {
         </>
       } />
       <ErrorNote error={error} />
-      {active && <Card className="mb-4"><CardContent className="text-sm">{t(`phase.${run.phase}` as never)}{run.progress ? ` — ${run.progress.hosts_done}/${run.progress.hosts_total} ${t("run.hosts")}` : ""}{run.cancel_requested ? ` — ${t("run.cancelling")}` : ""}</CardContent></Card>}
+      {active && <ScanProgress run={run} />}
       {run.error && <ErrorNote error={new Error(run.error)} />}
       {run.status === "completed" && run.endpoints.length === 0 && <Note tone="info" className="mb-4">{t("run.noTls")}</Note>}
       {run.status === "partial" || run.skipped_hosts?.length ? <Note tone="warning" className="mb-4">{t("run.partial")} {run.skipped_hosts?.length ? `(${t("run.skipped")}: ${run.skipped_hosts.join(", ")})` : ""}</Note> : null}
