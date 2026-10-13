@@ -15,9 +15,10 @@ from sqlalchemy.orm import Session as DbSession
 
 from tls_scan_app.api.common import get_or_404
 from tls_scan_app.deps import get_db, require_role
-from tls_scan_app.models import Policy, PolicyVersion, ReportTemplate, Role, ScanProfile, ScanProfileVersion, User
+from tls_scan_app.models import Policy, PolicyVersion, ReportTemplate, Role, ScanProfile, ScanProfileVersion, TrustStore, User
 from tls_scan_app.models.policy import ARCHIVED, DRAFT, PUBLISHED
 from tls_scan_app.services import audit
+from tls_scan_app.services import trust_stores as trust_svc
 from tls_scan_app.services.planner import PlanError, validate_policy_content, validate_profile_content
 from tls_scanner.constants import ALLOWED_EXPORT_FORMATS
 
@@ -37,11 +38,22 @@ def _kinds(kind: str):
         ScanProfile, ScanProfileVersion, ScanProfileVersion.profile_id, validate_profile_content)
 
 
-def _validate(validator, content):
+def _validate(validator, content, db: DbSession | None = None):
     try:
         validator(content)
-    except PlanError as error:
+        if validator is validate_profile_content and db is not None:
+            trust_svc.validate_profile_selection(db, content)
+    except (PlanError, trust_svc.TrustStoreError) as error:
         raise HTTPException(422, str(error)) from error
+
+
+def _audit_trust_selection(db: DbSession, user: User, profile: ScanProfile, before: list[str], after: list[str]) -> None:
+    """Who attached or detached which trust store to a profile."""
+    if set(before) != set(after):
+        names = {str(s.id): s.name for s in db.execute(select(TrustStore)).scalars()}
+        audit.record(db, "profiles.trust_stores_change", actor=user, resource_type="profiles", resource_id=profile.id,
+                     detail={"profile": profile.name, "added": [names.get(i, i) for i in after if i not in before],
+                             "removed": [names.get(i, i) for i in before if i not in after]})
 
 
 def _fk(kind: str) -> str:
@@ -73,7 +85,7 @@ def _register(kind: str) -> None:
 
     @router.post(f"/{kind}", status_code=201, name=f"create_{kind}")
     def create_item(body: VersionedBody, db: DbSession = Depends(get_db), user: User = Depends(operator)) -> dict:
-        _validate(validator, body.content)
+        _validate(validator, body.content, db)
         item = model(name=body.name.strip(), description=body.description, created_by=user.id)
         db.add(item)
         try:
@@ -83,6 +95,8 @@ def _register(kind: str) -> None:
             raise HTTPException(409, "This name is already used") from error
         db.add(version_model(**{fk: item.id}, version=1, status=DRAFT, content=body.content, created_by=user.id))
         audit.record(db, f"{kind}.create", actor=user, resource_type=kind, resource_id=item.id, detail={"name": item.name})
+        if kind == "profiles":
+            _audit_trust_selection(db, user, item, [], trust_svc.selected_store_ids(body.content))
         db.commit()
         return item_out(db, kind, item)
 
@@ -92,7 +106,11 @@ def _register(kind: str) -> None:
     def new_version(item_id: uuid.UUID, body: VersionedBody, db: DbSession = Depends(get_db), user: User = Depends(operator)) -> dict:
         """Edit = a new draft version; published versions are never modified."""
         item = get_or_404(db, model, item_id)
-        _validate(validator, body.content)
+        _validate(validator, body.content, db)
+        if kind == "profiles":
+            previous = db.execute(select(version_model).where(fk_col == item.id).order_by(version_model.version.desc()).limit(1)).scalar_one_or_none()
+            _audit_trust_selection(db, user, item, trust_svc.selected_store_ids(previous.content) if previous else [],
+                                   trust_svc.selected_store_ids(body.content))
         draft = db.execute(select(version_model).where(fk_col == item.id, version_model.status == DRAFT)).scalar_one_or_none()
         if draft:
             draft.content = body.content

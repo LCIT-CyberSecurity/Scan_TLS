@@ -72,6 +72,8 @@ class LoadedTrustStore:
     source: str
     certificates: tuple[Any, ...] = ()
     metadata: dict[str, Any] = field(default_factory=dict)
+    # Certificates used only to complete a chain (never trust anchors); `certificates` are the anchors.
+    intermediates: tuple[Any, ...] = ()
 
 
 @dataclass(frozen=True)

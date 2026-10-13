@@ -10,3 +10,4 @@ from tls_scan_app.models.scan import (  # noqa: F401
 )
 from tls_scan_app.models.system import AuditEvent, Notification, SystemSetting  # noqa: F401
 from tls_scan_app.models.user import AccessToken, Role, Session, User  # noqa: F401
+from tls_scan_app.models.trust import TrustStore, TrustStoreCertificate, TrustStoreVersion  # noqa: F401

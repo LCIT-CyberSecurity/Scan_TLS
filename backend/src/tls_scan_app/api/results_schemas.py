@@ -76,6 +76,15 @@ class Certificate(BaseModel):
     revocation_status: str | None = None
     self_signed: bool | None = None
     status: str | None = Field(None, description="Engine verdict on the certificate (e.g. Valid, Expired).")
+    trust_classification: Literal["PUBLIC_TRUSTED", "PRIVATE_TRUSTED", "UNTRUSTED", "NOT_TESTED", "ERROR"] | None = Field(
+        None, description="Outcome of the chain verification only. It says nothing about the name (hostname/SAN), expiry or revocation, which are reported separately.")
+    trusted_by: list[str] | None = Field(None, description="Trust stores (name and version) that validated the chain.")
+    trust_anchor: str | None = Field(None, description="Subject of the Root CA that anchored the validated chain.")
+    trust_store_results: list[dict[str, Any]] | None = Field(None, description="Outcome per trust store consulted.")
+    hostname_validation_status: str | None = None
+    san_validation_status: str | None = None
+    ocsp_status: str | None = None
+    crl_status: str | None = None
 
 
 class TlsCheck(BaseModel):
@@ -152,6 +161,7 @@ class RunDetail(Run):
     profile: NamedRef | None = Field(None, description="Scan profile used (version in `profile_version`).")
     profile_version: int | str | None = None
     policy_versions: list[PolicyVersionRef] = []
+    trust_stores: list[dict[str, Any]] = Field([], description="Private trust stores used by the scan, with the exact version and content hash.")
     progress: dict[str, Any] | None = None
     error: str | None = Field(None, description="Run-level execution error.")
     endpoint_errors: dict[str, list[str]] = Field({}, description="Errors per endpoint_id (endpoints without error are omitted).")

@@ -150,7 +150,9 @@ def persist_results(db: DbSession, run: ScanRun, outcome: dict[str, Any], status
             cipher_suites=[c.get("name") for c in endpoint.get("cipher_suites", [])],
             certificate={k: cert.get(k) for k in ("subject", "issuer", "valid_until", "remaining_days", "key_type", "key_size",
                                                    "signature_algorithm", "fingerprint", "trust_status", "chain_validation_status",
-                                                   "revocation_status", "self_signed", "status")},
+                                                   "revocation_status", "self_signed", "status", "trust_classification", "trusted_by",
+                                                   "trust_anchor", "trust_store_results", "hostname_validation_status",
+                                                   "san_validation_status", "ocsp_status", "crl_status")},
             errors=list(endpoint.get("errors", [])), untested_checks=list(endpoint.get("untested_checks", [])),
             tls_checks=list(endpoint.get("complementary_checks", [])),
         ))

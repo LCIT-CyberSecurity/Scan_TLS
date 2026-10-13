@@ -208,12 +208,41 @@ def load_custom_store(config: TrustStoreConfig) -> LoadedTrustStore:
     )
 
 
-def load_trust_stores(public_enabled: bool, custom_stores: Iterable[TrustStoreConfig]) -> tuple[LoadedTrustStore, ...]:
+def load_inline_store(name: str, store_id: str, anchors_pem: Iterable[str], intermediates_pem: Iterable[str] = (), metadata: dict | None = None) -> LoadedTrustStore:
+    """Store built from PEM held in memory (WebUI-administered stores): same parsing as the file stores.
+
+    Anchors are the only trust roots; intermediates only help to build the chain.
+    """
+    anchors = load_pem_certificates("\n".join(anchors_pem).encode(), f"inline trust store {name}")
+    intermediates = ()
+    extra = "\n".join(intermediates_pem)
+    if extra.strip():
+        anchor_prints = {certificate_fingerprint(c) for c in anchors}
+        intermediates = tuple(c for c in load_pem_certificates(extra.encode(), f"inline trust store {name}")
+                              if certificate_fingerprint(c) not in anchor_prints)
+    return LoadedTrustStore(
+        store_id=store_id,
+        store_name=name,
+        store_type="inline",
+        source="managed",
+        certificates=anchors,
+        intermediates=intermediates,
+        metadata={**(metadata or {}), "name": name, "type": "inline", "certificate_count": len(anchors) + len(intermediates)},
+    )
+
+
+def load_trust_stores(public_enabled: bool, custom_stores: Iterable[TrustStoreConfig], inline_stores: Iterable[LoadedTrustStore] = ()) -> tuple[LoadedTrustStore, ...]:
     stores = []
     seen_names = set()
     if public_enabled:
         stores.append(load_public_store())
         seen_names.add(PUBLIC_TRUST_STORE_NAME.casefold())
+    for store in inline_stores:
+        key = store.store_name.casefold()
+        if key in seen_names:
+            raise ConfigError(f"duplicate trust store name: {store.store_name}")
+        seen_names.add(key)
+        stores.append(store)
     for config in custom_stores:
         key = config.name.casefold()
         if key in seen_names:
@@ -300,10 +329,11 @@ def openssl_verify_chain(chain: tuple[x509.Certificate, ...], store: LoadedTrust
         untrusted_path = root / "untrusted.pem"
         ca_path = root / "ca.pem"
         write_certificates(leaf_path, [chain[0]])
-        write_certificates(untrusted_path, chain[1:])
         write_certificates(ca_path, store.certificates)
+        helpers = (*chain[1:], *store.intermediates)
+        write_certificates(untrusted_path, helpers)
         command = ["openssl", "verify", "-CAfile", str(ca_path)]
-        if len(chain) > 1:
+        if helpers:
             command.extend(["-untrusted", str(untrusted_path)])
         command.append(str(leaf_path))
         try:
@@ -347,6 +377,16 @@ def find_trust_anchor(chain: tuple[x509.Certificate, ...], store: LoadedTrustSto
     for candidate in store.certificates:
         if certificate_fingerprint(candidate) == certificate_fingerprint(leaf):
             return candidate
+    # the chain may reach an anchor through intermediates held by the store itself
+    current = last_presented
+    for _ in range(10):
+        parent = next((c for c in store.intermediates if current.issuer == c.subject and verify_signature(current, c)), None)
+        if parent is None:
+            break
+        current = parent
+        anchor = next((c for c in store.certificates if current.issuer == c.subject and verify_signature(current, c)), None)
+        if anchor is not None:
+            return anchor
     return None
 
 

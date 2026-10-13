@@ -29,7 +29,7 @@ from .constants import (
 
 DEFAULT_POLICY_NAME = "anssi_encryption_policy"
 from .models import ConfigError, EncryptionPolicy, ScanJob, TargetGroup, TrustStoreConfig
-from .pki import load_trust_stores
+from .pki import load_inline_store, load_trust_stores
 from .network import parse_ports
 
 
@@ -278,6 +278,34 @@ def parse_ports_config(value, field_name="scan.ports"):
         raise ConfigError(f"{field_name} is invalid: {error}") from error
 
 
+def parse_inline_stores(items):
+    """Trust stores carried as PEM text (used by the WebUI, which never hands the engine a file path)."""
+    if items is None:
+        return ()
+    if not isinstance(items, list):
+        raise ConfigError("checks.certificate.trust.inline_stores must be a list")
+    stores = []
+    for item in items:
+        if not isinstance(item, dict):
+            raise ConfigError("checks.certificate.trust.inline_stores[] must be a mapping")
+        name, store_id = item.get("name"), item.get("store_id")
+        if not isinstance(name, str) or not name.strip() or not isinstance(store_id, str) or not store_id.strip():
+            raise ConfigError("checks.certificate.trust.inline_stores[] needs a name and a store_id")
+        lists = {}
+        for key in ("anchors", "intermediates"):
+            values = item.get(key) or []
+            if not isinstance(values, list) or not all(isinstance(v, str) for v in values):
+                raise ConfigError(f"checks.certificate.trust.inline_stores[].{key} must be a list of PEM strings")
+            lists[key] = values
+        if not lists["anchors"]:
+            raise ConfigError(f"trust store {name} has no trust anchor")
+        metadata = item.get("metadata") or {}
+        if not isinstance(metadata, dict):
+            raise ConfigError("checks.certificate.trust.inline_stores[].metadata must be a mapping")
+        stores.append(load_inline_store(name, store_id, lists["anchors"], lists["intermediates"], metadata))
+    return tuple(stores)
+
+
 def parse_trust_config(certificate_config):
     trust_config = require_mapping(certificate_config.get("trust", {}), "checks.certificate.trust")
     trust_enabled = trust_config.get("enabled", True)
@@ -318,7 +346,8 @@ def parse_trust_config(certificate_config):
             raise ConfigError("checks.certificate.trust.custom_stores[].path must be a non-empty string")
         custom_stores.append(TrustStoreConfig(name=name, store_type=store_type, path=path))
 
-    stores = load_trust_stores(public_enabled, custom_stores) if trust_enabled else ()
+    inline_stores = parse_inline_stores(trust_config.get("inline_stores")) if trust_enabled else ()
+    stores = load_trust_stores(public_enabled, custom_stores, inline_stores) if trust_enabled else ()
     return trust_enabled, public_enabled, stores
 
 

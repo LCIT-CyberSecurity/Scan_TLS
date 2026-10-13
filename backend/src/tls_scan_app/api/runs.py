@@ -21,6 +21,7 @@ from tls_scan_app.models.scan import ACTIVE_STATUSES, FINAL_STATUSES
 from tls_scan_app.models.user import role_at_least
 from tls_scan_app.services import audit, comparison, dashboard as dashboard_service, results, runs
 from tls_scan_app.services.schedule_calc import ScheduleError, next_after, validate
+from tls_scan_app.services.trust_stores import public_snapshot
 
 router = APIRouter(prefix="/api", tags=["runs"])
 auditor = require_role(Role.AUDITOR)
@@ -38,7 +39,7 @@ def run_out(r: ScanRun, detail: bool = False) -> dict:
         "reports": [{"format": f["format"], "size": f["size"], "sha256": f["sha256"]} for f in (r.report_files or [])],
     }
     if detail:
-        data |= {"config_snapshot": r.config_snapshot, "scanned_hosts": r.scanned_hosts, "skipped_hosts": r.skipped_hosts, "worker_id": r.worker_id}
+        data |= {"config_snapshot": public_snapshot(r.config_snapshot), "trust_stores": (r.config_snapshot or {}).get("trust_stores") or [], "scanned_hosts": r.scanned_hosts, "skipped_hosts": r.skipped_hosts, "worker_id": r.worker_id}
     return data
 
 

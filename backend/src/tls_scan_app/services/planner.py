@@ -20,6 +20,7 @@ from tls_scan_app.models import (
 )
 from tls_scan_app.models.policy import PUBLISHED
 from tls_scan_app.services.targets import address_count
+from tls_scan_app.services.trust_stores import TrustStoreError, resolve_for_snapshot
 from tls_scanner.config import build_job_from_sections
 from tls_scanner.constants import ALLOWED_EXPORT_FORMATS
 from tls_scanner.models import ConfigError, EncryptionPolicy
@@ -38,11 +39,16 @@ def validate_profile_content(content: dict[str, Any]) -> None:
     if set(content) - allowed:
         raise PlanError(f"unsupported profile sections: {sorted(set(content) - allowed)}")
     checks = content.get("checks", {})
-    stores = ((checks.get("certificate") or {}).get("trust") or {}).get("custom_stores") or []
-    if stores:
-        raise PlanError("custom trust stores are not supported in the WebUI in V1")
+    trust = (checks.get("certificate") or {}).get("trust") or {}
+    if trust.get("custom_stores"):
+        raise PlanError("file-based trust stores are not available in the WebUI: use Administration > Trust authorities")
+    if trust.get("inline_stores"):
+        raise PlanError("inline certificates are not accepted in a profile: import them in Administration > Trust authorities")
     try:
-        build_job_from_sections(content.get("scan", {}), {}, {}, ["192.0.2.1"], None, checks)
+        # `private_stores` (administered store ids) is resolved at launch time; the engine only sees the stores inlined by the planner
+        engine_checks = copy.deepcopy(checks)
+        ((engine_checks.get("certificate") or {}).get("trust") or {}).pop("private_stores", None)
+        build_job_from_sections(content.get("scan", {}), {}, {}, ["192.0.2.1"], None, engine_checks)
     except ConfigError as error:
         raise PlanError(str(error)) from error
 
@@ -118,11 +124,16 @@ def build_snapshot(db: DbSession, definition: ScanDefinition, max_addresses: int
 
     template = db.get(ReportTemplate, definition.report_template_id) if definition.report_template_id else None
     formats = [f for f in (template.export_formats if template else DEFAULT_FORMATS) if f in ALLOWED_EXPORT_FORMATS]
+    try:
+        checks, trust_stores = resolve_for_snapshot(db, profile_version.content.get("checks", {}))
+    except TrustStoreError as error:
+        raise PlanError(str(error)) from error
     return {
         "definition": {"id": str(definition.id), "name": definition.name},
         "profile": {"id": str(definition.profile_id), "version_id": str(profile_version.id), "version": profile_version.version},
         "scan": scan_cfg,
-        "checks": copy.deepcopy(profile_version.content.get("checks", {})),
+        "checks": checks,
+        "trust_stores": trust_stores,
         "passes": passes,
         "policy_mode": definition.policy_mode,
         "policies": policies,

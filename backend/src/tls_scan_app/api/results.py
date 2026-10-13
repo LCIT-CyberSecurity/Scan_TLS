@@ -116,7 +116,7 @@ def get_result(run_id: uuid.UUID, request: Request, db: DbSession = Depends(get_
     out |= {
         "profile": {"id": profile_id, "name": db.scalar(select(ScanProfile.name).where(ScanProfile.id == profile_id))} if profile_id else None,
         "profile_version": profile.get("version"),
-        "policy_versions": r.policy_versions or [], "progress": r.progress, "error": r.error or None,
+        "policy_versions": r.policy_versions or [], "trust_stores": snap.get("trust_stores") or [], "progress": r.progress, "error": r.error or None,
         "skipped_hosts": r.skipped_hosts or [], "reports": _reports(r, Path(request.app.state.settings.storage_root)),
     }
     rows = db.execute(select(RunEndpoint.endpoint_id, RunEndpoint.errors, RunEndpoint.untested_checks).where(RunEndpoint.run_id == r.id)
