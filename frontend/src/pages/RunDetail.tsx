@@ -51,7 +51,7 @@ function findingColumns(t: (key: never) => string, endpoints: Endpoint[]): Colum
     { key: "finding", header: tr("run.finding"), sort: (f) => f.title, values: (f) => [f.title],
       render: (f) => <><div className="font-medium">{f.title}</div><div className="text-xs text-muted">{f.evidence}</div><div className="mt-1 text-xs">{f.remediation}</div></> },
     { key: "category", header: "Category", values: (f) => [f.category], render: (f) => f.category || "—" },
-    { key: "affected", header: tr("run.affected"), values: (f) => f.affected_endpoint_ids, sort: (f) => f.affected_endpoint_ids.length, render: (f) => (
+    { key: "affected", header: tr("run.affected"), values: (f) => f.affected_endpoint_ids.map((id) => { const e = byId.get(id); return e ? endpointLabel(e) : id; }), sort: (f) => f.affected_endpoint_ids.map((id) => { const e = byId.get(id); return e ? endpointLabel(e) : id; }).join(", "), render: (f) => (
       <span className="text-xs">
         {f.affected_endpoint_ids.map((id, i) => {
           const e = byId.get(id);
