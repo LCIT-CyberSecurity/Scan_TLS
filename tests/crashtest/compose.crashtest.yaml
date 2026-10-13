@@ -24,7 +24,10 @@ services:
     image: postgres:16-alpine
     environment: {POSTGRES_USER: tls_scan, POSTGRES_PASSWORD: crashtest-db, POSTGRES_DB: tls_scan}
     healthcheck: {test: ["CMD-SHELL", "pg_isready -U tls_scan"], interval: 2s, retries: 30}
-  lab-tls: {build: {context: ../.., dockerfile: tests/lab/lab-tls.Dockerfile}}
+  lab-tls:
+    build: {context: ../.., dockerfile: tests/lab/lab-tls.Dockerfile}
+    networks: {default: {aliases: [intranet.acme.local]}}  # private-PKI scenarios (8470-8475), scanned under their real name
+    ports: ["${CRASHTEST_LAB_PORT:-5130}:80"]              # serves the public lab CA certificates under /pki/ (the e2e tests import them)
   mock-oidc:
     build: {context: ../.., dockerfile: tests/lab/mock_oidc/Dockerfile}
     environment:

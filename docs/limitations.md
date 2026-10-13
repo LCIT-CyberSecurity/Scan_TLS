@@ -68,3 +68,11 @@ Markdown, HTML and metadata **identical** to the baseline commit on the lab.
 ## V2 candidates
 Re-evaluating past results with a new policy; Google Workspace connector; tests against a real Entra tenant; report language and
 section selection (needs engine support); CLI ↔ WebUI link; clustered rate limits.
+
+## Trust authorities (WebUI)
+
+- A store's certificates are CA certificates in PEM: DER, PKCS#7 and PKCS#12 are not imported.
+- Only self-signed Root CAs are trust anchors (OpenSSL's default chain building, no partial-chain trust): an intermediate CA cannot be trusted on its own.
+- A profile always uses the latest version of a selected store at launch time; pinning a profile to an older version is not offered.
+- Name constraints, CRL/OCSP of the CA certificates themselves and revocation of imported CAs are not evaluated at import time.
+- There is no multi-tenant isolation: separation between customers is by explicit store selection per profile.

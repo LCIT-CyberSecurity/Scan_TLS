@@ -28,3 +28,6 @@ change the grade, and PKI trust / revocation stay in their own options above.
 version. Published versions are never modified: each run stores the exact version ids it used and the snapshot of
 their content, so history is never re-evaluated. Re-evaluating old results against a new policy is V2.
 Duplicate creates an independent copy; *Archive* hides an item from new definitions without touching history.
+
+
+The certificate section can also select private trust stores: see [Trust authorities](trust-authorities.md).
