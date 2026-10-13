@@ -12,7 +12,7 @@ test("admin declares the lab DNS server, then an operator discovers, selects and
   await adminPage.getByRole("link", { name: "Administration", exact: true }).first().click();
   await adminPage.getByRole("tab", { name: "Settings" }).click();
   await adminPage.getByLabel(/DNS servers a discovery may be pointed at/).fill(LAB_DNS);
-  await adminPage.getByRole("button", { name: "Save" }).nth(1).click();
+  await adminPage.locator(".card", { has: adminPage.getByLabel(/DNS servers a discovery may be pointed at/) }).getByRole("button", { name: "Save" }).click();
   await expect(adminPage.getByText("Saved.")).toBeVisible();
 
   const page = await (await browser.newContext({ ignoreHTTPSErrors: true, locale: "en-US" })).newPage();
