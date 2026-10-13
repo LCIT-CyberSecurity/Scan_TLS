@@ -9,6 +9,7 @@ import { RecentRuns } from "../components/RecentRuns";
 import { ComplianceBreakdown } from "../components/dashboard/ComplianceBreakdown";
 import { ComplianceTrend } from "../components/dashboard/ComplianceTrend";
 import { SecurityKpis } from "../components/dashboard/SecurityKpis";
+import { Evolution } from "../components/dashboard/Evolution";
 import { Vigilance } from "../components/dashboard/Vigilance";
 import { useI18n } from "../i18n";
 import { formatDate } from "../lib/utils";
@@ -22,7 +23,8 @@ export default function Dashboard() {
   const [tag, setTag] = useState("");
   const [si, setSi] = useState("");
   const [trendDef, setTrendDef] = useState("");
-  const { data, error } = useLoad(() => api<Data>("/dashboard", { params: { scope, tag, si, trend_definition: trendDef } }), [scope, tag, si, trendDef], 10000);
+  const [range, setRange] = useState(() => { const to = new Date(); const from = new Date(to.getTime() - 30 * 86400000); return { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) }; });
+  const { data, error } = useLoad(() => api<Data>("/dashboard", { params: { scope, tag, si, trend_definition: trendDef, evolution_from: range.from, evolution_to: range.to } }), [scope, tag, si, trendDef, range], 10000);
   const { data: tags } = useLoad(() => api<Tag[]>("/tags"));
   const { data: systems } = useLoad(() => api<SI[]>("/information-systems"));
   const counts = data?.counts ?? {};
@@ -43,6 +45,7 @@ export default function Dashboard() {
           <ComplianceBreakdown posture={posture} />
           <ComplianceTrend trend={data?.trend} onDefinition={setTrendDef} />
         </div>
+        <Evolution data={data?.evolution} from={range.from} to={range.to} onRange={(from, to) => setRange({ from, to })} />
         <Vigilance posture={posture} />
       </section>
       <section className="dash-section" aria-label={t("dash.section.activity")}>

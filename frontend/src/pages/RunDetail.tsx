@@ -1,6 +1,6 @@
 import { Download, GitCompare, Trash2, XCircle } from "lucide-react";
 import { useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api, downloadUrl } from "../api/client";
 import type { Comparison, Endpoint, Finding, FindingBrief, RunDetail as Detail } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
@@ -73,9 +73,9 @@ function FindingList({ title, items, tone }: { title: string; items: FindingBrie
   );
 }
 
-function ComparisonView({ runId }: { runId: string }) {
+function ComparisonView({ runId, withRun }: { runId: string; withRun?: string }) {
   const { t } = useI18n();
-  const { data, error } = useLoad(() => api<Comparison>(`/scan-runs/${runId}/compare`), [runId]);
+  const { data, error } = useLoad(() => api<Comparison>(`/scan-runs/${runId}/compare`, { params: withRun ? { with_run: withRun } : undefined }), [runId, withRun]);
   if (error) return <ErrorNote error={error} />;
   if (!data) return null;
   return (
@@ -98,7 +98,9 @@ export default function RunDetail() {
   const { user, atLeast } = useAuth();
   const navigate = useNavigate();
   const [byHost, setByHost] = useState(true);
-  const [cmp, setCmp] = useState(false);
+  const [params] = useSearchParams();
+  const withRun = params.get("compare") ?? undefined;   // set by the dashboard evolution card: compare with that scan instead of the previous one
+  const [cmp, setCmp] = useState(!!withRun);
   const [error, setError] = useState<unknown>();
   const { data: run, error: loadError, reload } = useLoad(() => api<Detail>(`/scan-runs/${id}`), [id], 3000);
   if (loadError) return <ErrorNote error={loadError} />;
@@ -133,7 +135,7 @@ export default function RunDetail() {
           ))}
         </div>
       )}
-      {cmp && <div className="mb-6"><ComparisonView runId={id} /></div>}
+      {cmp && <div className="mb-6"><ComparisonView runId={id} withRun={withRun} /></div>}
       {run.reports.length > 0 && (
         <Card className="mb-6"><CardHeader><CardTitle>{t("nav.reports")}</CardTitle></CardHeader><CardContent className="flex flex-wrap gap-2">
           {run.reports.filter((r) => ["html", "md", "csv", "cbom", "findings_csv"].includes(r.format)).map((r) => <Button key={r.format} asChild variant="outline" size="sm"><a href={downloadUrl(id, r.format)}><Download />{r.format.toUpperCase()}</a></Button>)}

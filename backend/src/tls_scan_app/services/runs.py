@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session as DbSession
 
 from tls_scan_app.models import RunEndpoint, RunFinding, ScanDefinition, ScanRun, ScanRunRequester, User
 from tls_scan_app.models.scan import ACTIVE_STATUSES, CANCELLED, COMPLETED, EXPIRED, FAILED, PARTIAL, QUEUED, RUNNING
-from tls_scan_app.services import audit, report_branding
+from tls_scan_app.services import audit, report_addendum, report_branding
 
 STALE_HEARTBEAT_SECONDS = 120
 CLAIM_LOCK_KEY = 727301  # pg advisory lock serialising queue claims (global concurrency cap)
@@ -164,10 +164,22 @@ def persist_results(db: DbSession, run: ScanRun, outcome: dict[str, Any], status
         ))
     files = []
     branding = run.config_snapshot.get("branding")
+    # what the previous scans bring to this report (evolution, renewals, trend, scope): needs this run's rows and end state
+    run.scanned_hosts, run.skipped_hosts = outcome.get("scanned_hosts", []), outcome.get("skipped_hosts", [])
+    run.summary, run.status, run.finished_at = model.get("statistics"), status, datetime.now(UTC)
+    db.flush()
+    try:
+        addendum = report_addendum.build(db, run)
+    except Exception:  # a report extra must never make a finished scan fail
+        addendum = None
     for path_str in outcome.get("written_files", []):
         path = Path(path_str)
         if path.suffix == ".html":
             report_branding.apply_to_html(path, branding)  # before hashing: the stored SHA-256 is of the delivered file
+            if addendum:
+                report_addendum.apply_to_html(path, addendum)
+        elif path.suffix == ".md" and addendum:
+            report_addendum.apply_to_markdown(path, addendum)
         if path.is_file():
             files.append({"format": _format_of(path), "path": str(path.relative_to(storage_root)),
                           "sha256": hashlib.sha256(path.read_bytes()).hexdigest(), "size": path.stat().st_size})

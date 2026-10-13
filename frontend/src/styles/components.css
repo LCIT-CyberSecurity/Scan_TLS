@@ -203,6 +203,20 @@
   .trend-point--changed { fill: var(--surface); stroke: var(--primary); stroke-width: 2.5; }
   .trend-detail { margin: 16px 0 0; font-size: 14.5px; line-height: 22px; color: var(--text-secondary); }
   .trend-detail strong { color: var(--text-primary); }
+  .evo-range { display: flex; flex-wrap: wrap; gap: 12px; }
+  .evo-range label { display: grid; gap: 4px; font-size: 12px; color: var(--text-secondary); }
+  .evo-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+  .evo-tile { display: grid; gap: 2px; padding: 12px; border: 1px solid var(--hairline); border-radius: 10px; }
+  .evo-tile strong { font-size: 24px; line-height: 28px; }
+  .evo-tile span { font-size: 13px; color: var(--text-secondary); }
+  .evo-tile--new strong { color: var(--danger); }
+  .evo-tile--fixed strong { color: var(--success); }
+  .evo-chart { display: block; width: 100%; height: auto; max-height: 190px; }
+  .evo-bar--critical { fill: #7f1d1d; background: #7f1d1d; } .evo-bar--high { fill: var(--danger); background: var(--danger); }
+  .evo-bar--medium { fill: #d97706; background: #d97706; } .evo-bar--low { fill: var(--text-faint); background: var(--text-faint); }
+  .evo-legend { display: inline-flex; align-items: center; gap: 6px; margin-right: 14px; }
+  .evo-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
+  @media (max-width: 640px) { .evo-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
   .trend-select { width: min(340px, 100%); }
   .trend-legend-dot { display: inline-block; width: 10px; height: 10px; margin-right: 8px; border: 2px solid var(--primary); border-radius: 50%; }
   .watch-list { display: grid; margin: 0; padding: 0; list-style: none; }

@@ -36,7 +36,13 @@ export interface Posture {
 }
 export interface TrendPoint { run_id: string; name: string; finished_at: string; rate: number | null; compliant: number; non_compliant: number; evaluated: number; total: number; comparable: boolean }
 export interface Trend { definition_id: string | null; definitions: { id: string; name: string; runs: number }[]; points: TrendPoint[] }
-export interface Dashboard { counts: Record<string, number>; posture?: Posture; trend?: Trend; recent: Run[]; compliance_trend: { run_id: string; name: string; finished_at: string; compliant: number; non_compliant: number }[]; upcoming: Schedule[] }
+export interface Dashboard { counts: Record<string, number>; posture?: Posture; trend?: Trend; evolution?: Evolution; recent: Run[]; compliance_trend: { run_id: string; name: string; finished_at: string; compliant: number; non_compliant: number }[]; upcoming: Schedule[] }
+export interface EvolutionRun { run_id: string; name: string; finished_at: string; endpoints: number; compliant: number; non_compliant: number; rate: number | null; findings: Record<"critical" | "high" | "medium" | "low", number> }
+export interface EvolutionFinding { finding_id: string; title: string; severity: string; endpoints: number }
+export interface Evolution { definition_id: string | null; date_from: string; date_to: string; status: "ok" | "single_run" | "no_runs" | "invalid_range";
+  from_run: EvolutionRun | null; to_run: EvolutionRun | null; series: EvolutionRun[];
+  comparison: { counts: { new: number; fixed: number; persistent: number; not_retested: number }; warnings: string[]; new: EvolutionFinding[]; fixed: EvolutionFinding[]; persistent: EvolutionFinding[];
+    endpoints_added: number; endpoints_removed: number; certificate_changes: { endpoint_id: string; before: string | null; after: string | null }[]; compliance: { improved: number; degraded: number } } | null }
 export interface Tag { id: string; name: string; color: string }
 
 export interface TrustCert {

@@ -270,6 +270,19 @@ def starttls_protocol_for_port(port: int | str) -> str:
     return ""
 
 
+_NO_CHAIN_NOISE = ("CONNECTED(", "---", "DONE", "Can't use SSL_get_servername", "depth=", "verify ")
+_NO_CHAIN_CAUSES = ("no peer certificate", "unexpected eof", "wrong version", "routines", "errno", "connect:", "handshake failure", "alert", "error")
+
+
+def no_chain_reason(output: bytes) -> str:
+    """Why openssl printed no certificate, in words: its first line is only "CONNECTED(...)", which says nothing."""
+    lines = [line.strip() for line in output.decode("utf-8", errors="replace").splitlines() if line.strip()]
+    useful = [line for line in lines if not line.startswith(_NO_CHAIN_NOISE)]
+    cause = next((line for line in useful if any(word in line.lower() for word in _NO_CHAIN_CAUSES)), "")
+    base = "no certificate chain presented: the service did not complete a TLS handshake (not a TLS service on this port, or a protocol needing STARTTLS)"
+    return f"{base} [{cause[:160]}]" if cause else base
+
+
 def collect_peer_certificate_chain(host: str, port: int | str, fqdn: str = "", timeout: int = 10, starttls_protocol: str | None = None) -> PeerCertificateChain:
     """`starttls_protocol=None` keeps the historical rule by port (SMTP only); a value from the complementary
     checks (including "" for direct TLS) overrides it."""
@@ -294,13 +307,21 @@ def collect_peer_certificate_chain(host: str, port: int | str, fqdn: str = "", t
             timeout=timeout,
             check=False,
         )
-    except (OSError, subprocess.TimeoutExpired) as error:
+    except subprocess.TimeoutExpired as error:
+        # Some services complete the handshake and then keep the connection open: what openssl printed before being stopped is
+        # still the chain they presented. Without any certificate the service never answered the TLS handshake: that is a check
+        # that could not be performed, not a scanner error.
+        output = (error.stdout or b"") + (error.stderr or b"")
+        if not PEM_CERTIFICATE_RE.findall(output):
+            return PeerCertificateChain((), "not_tested", f"no TLS handshake completed within {timeout} seconds (the service did not answer the TLS ClientHello)")
+        result = None
+    except OSError as error:
         return PeerCertificateChain((), "error", str(error))
-    output = result.stdout + result.stderr
+    if result is not None:
+        output = result.stdout + result.stderr
     blocks = PEM_CERTIFICATE_RE.findall(output)
     if not blocks:
-        message = output.decode("utf-8", errors="replace").splitlines()[:1]
-        return PeerCertificateChain((), "not_tested", message[0] if message else "no certificate chain presented")
+        return PeerCertificateChain((), "not_tested", no_chain_reason(output))
     certificates = []
     for block in blocks:
         try:

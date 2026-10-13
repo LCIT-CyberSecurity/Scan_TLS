@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import re
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -19,7 +19,7 @@ from tls_scan_app.models import (
 )
 from tls_scan_app.models.scan import ACTIVE_STATUSES, FINAL_STATUSES
 from tls_scan_app.models.user import role_at_least
-from tls_scan_app.services import audit, comparison, dashboard as dashboard_service, results, runs
+from tls_scan_app.services import audit, comparison, dashboard as dashboard_service, evolution as evolution_service, results, runs
 from tls_scan_app.services.schedule_calc import ScheduleError, next_after, validate
 from tls_scan_app.services.trust_stores import public_snapshot
 
@@ -267,8 +267,8 @@ def delete_schedule(schedule_id: uuid.UUID, db: DbSession = Depends(get_db), use
 
 # ---------- dashboard ----------
 @router.get("/dashboard")
-def dashboard(tag: str | None = None, si: uuid.UUID | None = None, scope: str = "mine", trend_definition: uuid.UUID | None = None, db: DbSession = Depends(get_db),
-              user: User = Depends(auditor)) -> dict:
+def dashboard(tag: str | None = None, si: uuid.UUID | None = None, scope: str = "mine", trend_definition: uuid.UUID | None = None, evolution_from: date | None = None,
+              evolution_to: date | None = None, db: DbSession = Depends(get_db), user: User = Depends(auditor)) -> dict:
     stmt = select(ScanRun)
     if scope == "mine" or not role_at_least(user.role, Role.OPERATOR):
         stmt = stmt.where(or_(ScanRun.initiated_by == user.id, ScanRun.id.in_(select(ScanRunRequester.run_id).where(ScanRunRequester.user_id == user.id))))
@@ -282,5 +282,10 @@ def dashboard(tag: str | None = None, si: uuid.UUID | None = None, scope: str = 
               "compliant": (r.summary or {}).get("compliant_endpoints", 0), "non_compliant": (r.summary or {}).get("non_compliant_endpoints", 0)}
              for r in reversed(finished[:20])]
     upcoming = db.execute(select(ScanSchedule).where(ScanSchedule.active.is_(True), ScanSchedule.owner_id == user.id).order_by(ScanSchedule.next_run_at).limit(5)).scalars().all()
-    return {"counts": counts, "posture": dashboard_service.posture(db, finished), "trend": dashboard_service.trend(db, finished, trend_definition), "recent": [run_out(r) for r in recent], "compliance_trend": trend,
+    trend_data = dashboard_service.trend(db, finished, trend_definition)
+    today = datetime.now(UTC).date()
+    window_to = evolution_to or today
+    window_from = evolution_from or (window_to - timedelta(days=30))
+    definition = uuid.UUID(trend_data["definition_id"]) if trend_data["definition_id"] else None
+    return {"counts": counts, "posture": dashboard_service.posture(db, finished), "trend": trend_data, "evolution": evolution_service.between(db, finished, definition, window_from, window_to), "recent": [run_out(r) for r in recent], "compliance_trend": trend,
             "upcoming": [schedule_out(db, s) for s in upcoming]}
