@@ -6,6 +6,7 @@ The map is available in **Scanning → Exposure map** for `USER` roles and above
 
 - The global view shows each top-level information system once. Counts include its sub-SIs, target groups and targets assigned to its explicitly associated zones; a target associated more than once is counted once within each SI and once in installation totals.
 - Select an SI to open its sub-SIs, existing target groups and top-level network zones. Select a group to inspect its existing members, or a zone to open its subzones and assigned TLS targets. The network-architecture mode also shows explicitly recorded devices and their links.
+- The **Systems** mode emphasizes the SI/sub-SI hierarchy. **Network architecture** prioritizes zones, declared devices and explicit links; sub-SIs remain available through Systems mode and the SI selector.
 - Hosts without an associated scan are shown neutrally. A scan result is associated only with its exact scanned FQDN/IP or an address in a CIDR that was explicitly scanned. A DNS alias, shared IP, or CIDR alone does not create an observed connection.
 - Open a host to see the latest completed or partial run with matching persisted endpoints, certificates, findings, freshness and a link to the full scan. Older scans are not presented as current state.
 - Search accepts system, zone, host, IP, CIDR, device and target-tag text. The SI selector and exposure filter limit the visible scope. Pan, wheel zoom, zoom buttons and center controls operate on the same map.
@@ -40,3 +41,5 @@ The graph endpoint loads a level at a time. Host results are paged (500 by defau
 ## Visual regression checks
 
 The CrashTest seed adds an isolated, idempotent example topology using documentation-only IP ranges. It is test data only and is never inserted into a normal installation. The Playwright Network Map journey runs a real lab TLS scan, then writes global, SI/zone and host-exposure screenshots at 1920×1080, 1440×900 and 1366×768 under `artifacts/network-map/`; Chromium and Google Chrome both exercise the map rendering. Run these browser checks only in the designated Docker integration environment, not against production data.
+
+The checked-in screenshots are the latest reviewed rendering from the integration VM. They include a scanned TLS 443 endpoint with its persisted non-compliance and findings; the topology links shown are the declared CrashTest links, not scanner-discovered routes.
