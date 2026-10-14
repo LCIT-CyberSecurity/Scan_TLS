@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const graphState = vi.hoisted(() => ({
   handlers: {} as Record<string, (event: { target: { id: string } }) => void>,
-  data: undefined as { nodes: { id: string; data?: Record<string, unknown> }[]; edges: unknown[]; combos: unknown[] } | undefined,
+  data: undefined as { nodes: { id: string; data?: Record<string, unknown> }[]; edges: { source: string; target: string }[]; combos: unknown[] } | undefined,
 }));
 
 vi.mock("@antv/g6", () => ({
@@ -19,7 +19,12 @@ vi.mock("@antv/g6", () => ({
   },
   Graph: class {
     on(event: string, handler: (event: { target: { id: string } }) => void) { graphState.handlers[event] = handler; return this; }
-    setData(data: typeof graphState.data) { graphState.data = data; }
+    setData(data: typeof graphState.data) {
+      if (data?.edges.some((edge) => !data.nodes.some((node) => node.id === edge.source) || !data.nodes.some((node) => node.id === edge.target))) {
+        throw new Error("Graph edge endpoint is missing from current node set");
+      }
+      graphState.data = data;
+    }
     render() { return Promise.resolve(); }
     fitView() { return Promise.resolve(); }
     resize() {}
@@ -43,6 +48,15 @@ vi.mock("../api/client", async (original) => ({
     if (path === "/information-systems") return [{ id: "si-1", name: "Production", description: "", parent_id: null }];
     if (path === "/map/graph") {
       if (options.params?.zone_id) return { scope: { zone: { id: "zone-1", name: "Public DMZ" } }, mode: "si", nodes: [{ id: "target:host-1", kind: "host", name: "web.example.test", target_id: "host-1", value: "web.example.test", exposure: null }], links: [], truncated: false };
+      if (options.params?.si_id && options.params?.mode === "network") return {
+        scope: { si: { id: "si-1", name: "Production", description: "" } }, mode: "network",
+        nodes: [
+          { id: "zone:zone-1", kind: "zone", name: "Public DMZ", zone_id: "zone-1", zone_type: "dmz" },
+          { id: "device:device-1", kind: "device", name: "Edge firewall", device_type: "firewall", zone_id: "zone-1" },
+          { id: "device:device-2", kind: "device", name: "Core router", device_type: "router", zone_id: "zone-1" },
+        ],
+        links: [{ id: "link-1", source_device_id: "device-1", target_device_id: "device-2", provenance: "DECLARED" }], truncated: false,
+      };
       if (options.params?.si_id) return { scope: { si: { id: "si-1", name: "Production", description: "" } }, mode: "si", nodes: [{ id: "zone:zone-1", kind: "zone", name: "Public DMZ", zone_id: "zone-1", zone_type: "dmz" }], links: [], truncated: false };
       return { scope: {}, mode: "si", nodes: [{ id: "si:si-1", kind: "si", name: "Production", si_id: "si-1", exposure: { targets: 1, scanned_targets: 0, unscanned_targets: 1, severity: {} } }], links: [], truncated: false };
     }
@@ -98,5 +112,14 @@ describe("Network Exposure Map", () => {
     fireEvent.change(screen.getByLabelText("Information systems"), { target: { value: "si-1" } });
     fireEvent.click((await screen.findAllByRole("button", { name: "New zone" }))[0]);
     await waitFor(() => expect(calls.some((item) => item.path === "/targets")).toBe(true));
+  });
+
+  it("never submits stale network links without their matching device nodes", async () => {
+    render(<I18nProvider initial="en"><NetworkMap /></I18nProvider>);
+    await screen.findByText("Network exposure map");
+    fireEvent.change(screen.getByLabelText("Information systems"), { target: { value: "si-1" } });
+    await waitFor(() => expect(graphState.data?.nodes[0]?.id).toBe("zone:zone-1"));
+    fireEvent.click(screen.getByRole("button", { name: "Network architecture" }));
+    await waitFor(() => expect(graphState.data?.edges).toEqual([{ id: "link:link-1", source: "device:device-1", target: "device:device-2", data: { provenance: "DECLARED" }, style: expect.any(Object) }]));
   });
 });

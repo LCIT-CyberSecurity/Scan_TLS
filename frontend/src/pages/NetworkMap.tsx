@@ -188,13 +188,16 @@ export default function NetworkMap() {
       id: `zone-group:${zoneItem.id}`,
       style: { fill: "#14263a", fillOpacity: 0.22, stroke: "#36516a", lineWidth: 1, radius: 14, padding: 22 },
     }));
-    const ids = new Set(visibleNodes.map((node) => node.id.replace("device:", "")));
-    const edges = (graphData.links ?? []).filter((link) => ids.has(link.source_device_id) && ids.has(link.target_device_id)).map((link) => ({
+    const deviceNodeIds = new Set(visibleNodes.filter((node) => node.kind === "device").map((node) => node.id));
+    // A mode switch can render once with the previous graph response still in state.
+    // Never combine that stale response's links with the new mode's node set.
+    const edges = graphData.mode === mode ? (graphData.links ?? []).filter((link) =>
+      deviceNodeIds.has(`device:${link.source_device_id}`) && deviceNodeIds.has(`device:${link.target_device_id}`)).map((link) => ({
       id: `link:${link.id}`, source: `device:${link.source_device_id}`, target: `device:${link.target_device_id}`,
       data: { provenance: link.provenance }, style: { stroke: link.provenance === "OBSERVED" ? "#56a98f" : link.provenance === "INFERRED" ? "#dfa95a" : "#7897b4",
         lineDash: link.provenance === "OBSERVED" ? undefined : link.provenance === "DECLARED" ? [7, 4] : [2, 4],
         lineWidth: 1.2, strokeOpacity: 0.62 },
-    }));
+    })) : [];
     const hasZoneScope = Boolean(graphData.scope.zone);
     const scopeZoneId = graphData.scope.zone?.id ?? "current";
     const scopeZoneName = graphData.scope.zone?.name ?? t("map.zone");
