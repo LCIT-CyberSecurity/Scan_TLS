@@ -120,6 +120,6 @@ describe("Network Exposure Map", () => {
     fireEvent.change(screen.getByLabelText("Information systems"), { target: { value: "si-1" } });
     await waitFor(() => expect(graphState.data?.nodes[0]?.id).toBe("zone:zone-1"));
     fireEvent.click(screen.getByRole("button", { name: "Network architecture" }));
-    await waitFor(() => expect(graphState.data?.edges).toEqual([{ id: "link:link-1", source: "device:device-1", target: "device:device-2", data: { provenance: "DECLARED" }, style: expect.any(Object) }]));
+    await waitFor(() => expect(graphState.data?.edges).toEqual([{ id: "link:link-1", source: "device:device-1", target: "device:device-2", type: "line", data: { provenance: "DECLARED" }, style: expect.any(Object) }]));
   });
 });
