@@ -80,6 +80,9 @@ async function captureMapAtSize(browser: Browser, project: string, size: { width
     await expect(detail.locator(".network-map-detail-meta")).toContainText("443");
     await expect(detail.locator(".network-map-endpoints article").first()).toBeVisible();
     await saveScreenshot(page, project, "host-exposure", size.width, size.height);
+    const lastFinding = detail.locator(".network-map-findings li").last();
+    await lastFinding.evaluate((element) => element.scrollIntoView({ block: "nearest" }));
+    await expect(lastFinding).toBeInViewport();
   } finally {
     await context.close();
   }

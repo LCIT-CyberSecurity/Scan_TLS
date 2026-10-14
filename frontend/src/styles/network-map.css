@@ -47,7 +47,7 @@
 .network-map-legend span { display: inline-flex; align-items: center; gap: 5px; }
 .map-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; }
 .map-dot--critical { background: #ee6b79; }.map-dot--high { background: #f0b862; }.map-dot--neutral { border: 1px solid #7897b4; }
-.network-map-detail { flex: 0 0 350px; max-width: 40vw; overflow: auto; padding: 20px; border-left: 1px solid var(--border); color: var(--text-primary); background: var(--surface); animation: map-panel-in .22s ease-out; }
+.network-map-detail { flex: 0 0 350px; min-height: 0; max-width: 40vw; overflow: auto; overscroll-behavior: contain; padding: 20px; border-left: 1px solid var(--border); color: var(--text-primary); background: var(--surface); animation: map-panel-in .22s ease-out; }
 :root[data-appearance="dark"] .network-map-detail { background: rgba(16, 28, 45, .96); border-color: rgba(92, 130, 164, .25); }
 @keyframes map-panel-in { from { opacity: .6; transform: translateX(8px); } to { opacity: 1; transform: translateX(0); } }
 .network-map-detail-head { display: flex; justify-content: space-between; gap: 10px; }
@@ -119,6 +119,7 @@
 .network-map-workspace { height: min(70vh, 820px); min-height: 500px; }
 .network-map-canvas, .network-map-canvas-wrap { min-height: 500px; }
 .network-map-detail { flex-basis: clamp(300px, 28vw, 370px); max-width: 38vw; }
+.network-map-detail { scrollbar-gutter: stable; }
 .network-map-findings li span:last-child { overflow-wrap: anywhere; }
 .network-map-device-evidence strong { overflow-wrap: anywhere; }
 .network-map-manage summary:focus-visible,
@@ -138,6 +139,15 @@
   .network-map-legend { max-width: calc(100% - 66px); gap: 6px 10px; font-size: 9px; }
   .network-map-footer { align-items: flex-start; flex-direction: column; }
   .network-map-footer p { text-align: left; }
+}
+@media (max-height: 820px) and (min-width: 761px) {
+  .network-map-detail { padding: 14px; }
+  .network-map-detail-meta { margin-top: 11px; padding: 7px 0; }
+  .network-map-scan-summary { margin: 10px 0 8px; }
+  .network-map-severity-list { margin: 8px 0 12px; }
+  .network-map-detail h3 { margin: 11px 0 6px; }
+  .network-map-endpoints article { padding: 8px; }
+  .network-map-run-link { margin-top: 11px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .network-map-detail { animation: none; }
