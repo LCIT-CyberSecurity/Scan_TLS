@@ -46,6 +46,18 @@ describe("network map graph presentation", () => {
     expect(positions.every(({ x, y }) => Number.isFinite(x) && Number.isFinite(y))).toBe(true);
   });
 
+  it("leaves a clear, stable corridor between devices so declared links can be seen", () => {
+    const graph = { ...siGraph("network"), scope: { zone: { id: "z1", name: "DMZ", description: "", zone_type: "dmz", parent_zone_id: null, cidr: null, si_ids: [], target_ids: [], primary_target_ids: [] } } };
+    const nodes: MapNode[] = [
+      { id: "device:d1", kind: "device", zone_id: "z1", name: "Edge firewall", device_type: "firewall" },
+      { id: "device:d2", kind: "device", zone_id: "z1", name: "Core router", device_type: "router" },
+    ];
+    const first = positionMapNodes(nodes, graph, 1440).sort((a, b) => a.x - b.x);
+    const second = positionMapNodes(nodes, graph, 1440).sort((a, b) => a.x - b.x);
+    expect(first).toEqual(second);
+    expect(first[1].x - first[0].x).toBeGreaterThan(232);
+  });
+
   it("marks unscanned assets as neutral and never labels them compliant", () => {
     const card = mapCardAttributes({
       id: "si:si-1", kind: "si", si_id: "si-1", name: "Production",

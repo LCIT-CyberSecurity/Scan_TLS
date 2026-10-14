@@ -25,6 +25,7 @@ const DEVICE_WIDTH = 208;
 const DEVICE_HEIGHT = 92;
 const HOST_GAP_X = 46;
 const HOST_GAP_Y = 108;
+const DEVICE_GAP_X = 100;
 const NODE_GAP_X = 46;
 const NODE_GAP_Y = 34;
 const DEVICE_ABBREVIATIONS: Record<string, string> = {
@@ -204,10 +205,10 @@ export function mapCardAttributes(node: MapNode, t: Translate) {
   };
 }
 
-function placeLane(nodes: MapNode[], y: number, viewportWidth: number, kind: "card" | "host" = "card", xOffset = 0): GraphNodePosition[] {
+function placeLane(nodes: MapNode[], y: number, viewportWidth: number, kind: "card" | "host" = "card", xOffset = 0, customGapX?: number): GraphNodePosition[] {
   if (!nodes.length) return [];
   const width = kind === "host" ? HOST_CARD_WIDTH : CARD_WIDTH;
-  const gapX = kind === "host" ? HOST_GAP_X : NODE_GAP_X;
+  const gapX = kind === "host" ? HOST_GAP_X : customGapX ?? NODE_GAP_X;
   const gapY = kind === "host" ? HOST_GAP_Y : CARD_HEIGHT + NODE_GAP_Y;
   const columns = Math.max(1, Math.min(kind === "host" ? 12 : 5, Math.floor((Math.max(viewportWidth, 420) - 120) / (width + gapX))));
   const rows = Math.ceil(nodes.length / columns);
@@ -231,7 +232,7 @@ export function positionMapNodes(nodes: MapNode[], graph: MapGraph, viewportWidt
   if (zone) {
     const positions = [
       ...placeLane(ordered.filter((item) => item.kind === "zone"), -150, viewportWidth),
-      ...placeLane(ordered.filter((item) => item.kind === "device"), 10, viewportWidth),
+      ...placeLane(ordered.filter((item) => item.kind === "device"), 10, viewportWidth, "card", 0, DEVICE_GAP_X),
       ...placeLane(ordered.filter((item) => item.kind === "host"), 170, viewportWidth, "host"),
     ];
     return positions;
@@ -248,7 +249,7 @@ export function positionMapNodes(nodes: MapNode[], graph: MapGraph, viewportWidt
         const rows = Math.ceil(members.length / innerColumns);
         return { zone, members, innerColumns, rows, height: rows * (CARD_HEIGHT + 26) + 48 };
       });
-      const clusterWidth = 2 * (CARD_WIDTH + 26) + 64;
+      const clusterWidth = 2 * (CARD_WIDTH + DEVICE_GAP_X) + 64;
       const parentColumns = Math.max(1, Math.min(2, Math.floor((Math.max(viewportWidth, 560) - 120) / (clusterWidth + 72))));
       const rowCount = Math.ceil(clusters.length / parentColumns);
       const rowHeights = Array.from({ length: rowCount }, (_, row) => Math.max(0, ...clusters.slice(row * parentColumns, (row + 1) * parentColumns).map((cluster) => cluster.height)));
@@ -268,7 +269,7 @@ export function positionMapNodes(nodes: MapNode[], graph: MapGraph, viewportWidt
           const itemColumn = memberIndex % cluster.innerColumns;
           positions.push({
             id: item.id,
-            x: centerX + (itemColumn - (rowLength - 1) / 2) * (CARD_WIDTH + 26),
+            x: centerX + (itemColumn - (rowLength - 1) / 2) * (CARD_WIDTH + DEVICE_GAP_X),
             y: centerY + (itemRow - (cluster.rows - 1) / 2) * (CARD_HEIGHT + 26),
             combo: zoneCombo,
           });
