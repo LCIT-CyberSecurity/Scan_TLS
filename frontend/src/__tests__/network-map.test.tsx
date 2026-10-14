@@ -4,7 +4,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-libra
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const graphState = vi.hoisted(() => ({
-  click: undefined as ((event: { target: { id: string } }) => void) | undefined,
+  handlers: {} as Record<string, (event: { target: { id: string } }) => void>,
   data: undefined as { nodes: { id: string; data?: Record<string, unknown> }[]; edges: unknown[]; combos: unknown[] } | undefined,
 }));
 
@@ -18,7 +18,7 @@ vi.mock("@antv/g6", () => ({
     upsert() {}
   },
   Graph: class {
-    on(_event: string, handler: (event: { target: { id: string } }) => void) { graphState.click = handler; return this; }
+    on(event: string, handler: (event: { target: { id: string } }) => void) { graphState.handlers[event] = handler; return this; }
     setData(data: typeof graphState.data) { graphState.data = data; }
     render() { return Promise.resolve(); }
     fitView() { return Promise.resolve(); }
@@ -58,7 +58,7 @@ import { I18nProvider } from "../i18n";
 afterEach(cleanup);
 beforeEach(() => {
   calls.length = 0;
-  graphState.click = undefined;
+  graphState.handlers = {};
   graphState.data = undefined;
   globalThis.ResizeObserver = class { observe() {} disconnect() {} unobserve() {} } as unknown as typeof ResizeObserver;
 });
@@ -69,14 +69,14 @@ describe("Network Exposure Map", () => {
     await screen.findByText("Network exposure map");
     await waitFor(() => expect(graphState.data?.nodes[0]?.id).toBe("si:si-1"));
 
-    act(() => graphState.click?.({ target: { id: "si:si-1" } }));
+    act(() => graphState.handlers["node:click"]?.({ target: { id: "si:si-1" } }));
     await waitFor(() => expect(calls.some((item) => item.path === "/map/graph" && item.params?.si_id === "si-1")).toBe(true));
     await waitFor(() => expect(graphState.data?.nodes[0]?.id).toBe("zone:zone-1"));
 
-    act(() => graphState.click?.({ target: { id: "zone:zone-1" } }));
+    act(() => graphState.handlers["node:click"]?.({ target: { id: "zone:zone-1" } }));
     await waitFor(() => expect(calls.some((item) => item.path === "/map/graph" && item.params?.zone_id === "zone-1")).toBe(true));
     await waitFor(() => expect(graphState.data?.nodes[0]?.id).toBe("target:host-1"));
-    act(() => graphState.click?.({ target: { id: "target:host-1" } }));
+    act(() => graphState.handlers["node:click"]?.({ target: { id: "target:host-1" } }));
     expect(await screen.findByText("No TLS scan result is associated with this target.")).toBeInTheDocument();
   });
 
@@ -96,7 +96,7 @@ describe("Network Exposure Map", () => {
     await waitFor(() => expect(calls.some((item) => item.path === "/map/summary")).toBe(true));
     expect(calls.some((item) => item.path === "/targets")).toBe(false);
     fireEvent.change(screen.getByLabelText("Information systems"), { target: { value: "si-1" } });
-    fireEvent.click(await screen.findByRole("button", { name: "New zone" }));
+    fireEvent.click((await screen.findAllByRole("button", { name: "New zone" }))[0]);
     await waitFor(() => expect(calls.some((item) => item.path === "/targets")).toBe(true));
   });
 });
