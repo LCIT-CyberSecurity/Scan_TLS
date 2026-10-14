@@ -130,6 +130,7 @@ def test_gmp_reads_all_collections_with_mocked_python_gvm(monkeypatch):
             return self._response("get_tasks", "task")
 
         def get_port_lists(self, **kwargs):
+            assert kwargs.get("details") is True
             return self._response("get_port_lists", "port_list")
 
         def get_scan_configs(self, **kwargs):
