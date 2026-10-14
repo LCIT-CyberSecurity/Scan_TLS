@@ -33,6 +33,27 @@ describe("network map graph presentation", () => {
     expect(first.find(({ id }) => id === "zone:z1")?.y).toBeLessThan(first.find(({ id }) => id === "group:g1")?.y ?? 0);
   });
 
+  it("centers a lone unassigned host without inventing a system or network path", () => {
+    const graph: MapGraph = { mode: "si", scope: {}, nodes: [], links: [], truncated: false };
+    const positions = positionMapNodes([{ id: "target:only", kind: "host", name: "unassigned.example.test" }], graph, 1200);
+    expect(positions).toEqual([{ id: "target:only", x: 0, y: 0 }]);
+  });
+
+  it("uses a balanced constellation for up to five global systems", () => {
+    const graph: MapGraph = { mode: "si", scope: {}, nodes: [], links: [], truncated: false };
+    const nodes: MapNode[] = ["Alpha", "Bravo", "Charlie", "Delta", "Echo"].map((name) => ({
+      id: `si:${name}`, kind: "si", name,
+    }));
+    const positions = positionMapNodes(nodes, graph, 1440);
+    expect(positions).toEqual(positionMapNodes(nodes, graph, 1440));
+    expect(positions).toHaveLength(5);
+    for (let left = 0; left < positions.length; left += 1) {
+      for (let right = left + 1; right < positions.length; right += 1) {
+        expect(Math.abs(positions[left].x - positions[right].x) < 232 && Math.abs(positions[left].y - positions[right].y) < 116).toBe(false);
+      }
+    }
+  });
+
   it("groups zone devices only by their explicit zone association", () => {
     const graph = siGraph("network");
     const nodes: MapNode[] = [
@@ -89,5 +110,17 @@ describe("network map graph presentation", () => {
     expect(card.style.mapSubtitle).toBe("tls.example.test · :443");
     expect(card.style.mapMetrics).toBe("1 map.endpoints");
     expect(card.style.mapSeverity).toBe("map.highShort1");
+    expect(card.style.mapIcon).toMatch(/^data:image\/svg\+xml;charset=utf-8,/);
+  });
+
+  it("uses distinct Lucide SVG symbols for network equipment types", () => {
+    const router = mapCardAttributes({ id: "device:r1", kind: "device", name: "edge-router", device_type: "router" }, translate);
+    const firewall = mapCardAttributes({ id: "device:f1", kind: "device", name: "edge-firewall", device_type: "firewall" }, translate);
+    const routerSvg = decodeURIComponent(String(router.style.mapIcon).split(",").slice(1).join(","));
+    const firewallSvg = decodeURIComponent(String(firewall.style.mapIcon).split(",").slice(1).join(","));
+
+    expect(routerSvg).toContain("<svg");
+    expect(firewallSvg).toContain("<svg");
+    expect(router.style.mapIcon).not.toBe(firewall.style.mapIcon);
   });
 });

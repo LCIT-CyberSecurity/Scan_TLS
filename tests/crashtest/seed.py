@@ -79,12 +79,13 @@ quick_profile = versioned("profiles", "Lab - HTTPS only", {"scan": {"ports": "44
 
 # classification
 si = {}
-for name, parent in (("Production", None), ("Internal", None), ("Hosting", None), ("Web", "Production"), ("Messaging", "Production"), ("Infrastructure", "Internal")):
+for name, parent in (("Production", None), ("Internal", None), ("Hosting", None), ("Web", "Production"), ("Messaging", "Production"),
+                    ("Infrastructure", "Internal"), ("Cloud Services", None), ("Partner Network", None)):
     body = {"name": name, "parent_id": si[parent] if parent else None}
     r = user.call("POST", "/api/information-systems", json=body)
     if r and "id" in r:
         si[name] = r["id"]
-if len(si) < 6:
+if len(si) < 8:
     si = {s["name"]: s["id"] for s in user.call("GET", "/api/information-systems")}
 
 # targets (the lab host is the only thing ever scanned by the CrashTest)
@@ -115,6 +116,20 @@ d_https = definition("Lab - HTTPS only", quick_profile, [anssi, lenient], [tids[
 
 # Network-map fixtures are confined to the CrashTest database and use documentation-only addresses.
 targets_by_port = {target["ports"]: target["id"] for target in user.call("GET", "/api/targets", params={"q": LAB})}
+existing_targets = user.call("GET", "/api/targets")
+
+def demo_target(name, value, si_ids=()):
+    found = next((target for target in existing_targets if target["value"] == value), None)
+    if found:
+        return found["id"]
+    created = user.call("POST", "/api/targets", json={"name": name, "value": value, "ports": "443", "si_ids": list(si_ids)})
+    existing_targets.append(created)
+    return created["id"]
+
+
+cloud_target = demo_target("Cloud web service", "cloud-web.example.test", [si["Cloud Services"]])
+partner_target = demo_target("Partner portal", "partner-portal.example.test", [si["Partner Network"]])
+unassigned_target = demo_target("Unassigned edge service", "unassigned-edge.example.test")
 existing_zones = op.call("GET", "/api/map/zones")
 
 def map_zone(name, zone_type, cidr, si_ids, target_ids, parent_zone_id=None):
@@ -135,6 +150,9 @@ app_dmz = map_zone("Application segment", "vlan", "192.0.2.64/26", [si["Web"]],
 internal_lan = map_zone("Production LAN", "production", "198.51.100.0/24", [si["Internal"], si["Infrastructure"]],
                         [targets_by_port["8444"], targets_by_port["8445"]])
 admin_net = map_zone("Administration network", "administration", "203.0.113.0/24", [si["Internal"]], [])
+cloud_edge = map_zone("Cloud landing zone", "cloud", None, [si["Cloud Services"]], [])
+cloud_workload = map_zone("Cloud workloads", "subnet", None, [si["Cloud Services"]], [cloud_target], cloud_edge["id"])
+partner_zone = map_zone("Partner services", "partner", None, [si["Partner Network"]], [partner_target])
 
 existing_devices = op.call("GET", "/api/map/devices")
 
@@ -155,14 +173,26 @@ reverse_proxy = map_device("application-proxy", "reverse_proxy", app_dmz, "192.0
 core_switch = map_device("production-switch", "switch", internal_lan, "198.51.100.1")
 app_server = map_device("application-server", "server", internal_lan, "198.51.100.20", targets_by_port["8444"])
 admin_gateway = map_device("admin-gateway", "gateway", admin_net, "203.0.113.1")
+cloud_gateway = map_device("cloud-gateway", "gateway", cloud_workload, None)
+cloud_server = map_device("cloud-web-node", "server", cloud_workload, None, cloud_target)
+partner_gateway = map_device("partner-gateway", "gateway", partner_zone, None)
+partner_proxy = map_device("partner-reverse-proxy", "reverse_proxy", partner_zone, None, partner_target)
 
 existing_links = op.call("GET", "/api/map/links")
-for source, target in ((edge_firewall, dmz_router), (dmz_router, reverse_proxy), (core_switch, app_server)):
+link_specs = [
+    (edge_firewall, dmz_router, "DECLARED", {"source": "CrashTest topology fixture"}),
+    (dmz_router, reverse_proxy, "DECLARED", {"source": "CrashTest topology fixture"}),
+    (core_switch, app_server, "DECLARED", {"source": "CrashTest topology fixture"}),
+    (cloud_gateway, cloud_server, "OBSERVED", {"source": "CrashTest synthetic telemetry", "observed_at": "2026-10-14T12:00:00Z"}),
+    (partner_gateway, partner_proxy, "INFERRED", {"source": "CrashTest synthetic topology example", "confidence": 0.72}),
+]
+for source, target, provenance, evidence in link_specs:
     if not any(link["source_device_id"] == source["id"] and link["target_device_id"] == target["id"] for link in existing_links):
-        existing_links.append(op.call("POST", "/api/map/links", json={
+        created = op.call("POST", "/api/map/links", json={
             "source_device_id": source["id"], "target_device_id": target["id"], "link_type": "network",
-            "provenance": "DECLARED", "source": "CrashTest topology fixture",
-        }))
+            "provenance": provenance, **evidence,
+        })
+        existing_links.append(created)
 
 if not user.call("GET", "/api/schedules"):
     user.call("POST", "/api/schedules", json={"definition_id": d_https["id"], "kind": "daily", "params": {"time": "03:00"}, "timezone": "Europe/Paris"})

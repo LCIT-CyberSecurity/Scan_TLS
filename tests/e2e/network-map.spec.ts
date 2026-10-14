@@ -55,6 +55,15 @@ async function captureMapAtSize(browser: Browser, project: string, size: { width
     await expect(page.getByRole("group", { name: "Map overview" })).toBeVisible();
     await saveScreenshot(page, project, "global", size.width, size.height);
 
+    await searchAndSelect(page, "unassigned-edge", /Unassigned edge service/i);
+    const minimalDetail = page.getByRole("complementary", { name: "Host exposure" });
+    await expect(minimalDetail).toBeVisible();
+    await expect(minimalDetail.getByText("No TLS scan result is associated with this target.")).toBeVisible();
+    await saveScreenshot(page, project, "minimal-asset", size.width, size.height);
+    const globalGraph = page.waitForResponse((response) => response.url().includes("/api/map/graph") && response.status() === 200);
+    await page.locator(".network-map-crumbs button").first().click();
+    await globalGraph;
+
     await searchAndSelect(page, "Production", /Production\s+si/i);
     const networkGraph = page.waitForResponse((response) => response.url().includes("/api/map/graph") && response.url().includes("mode=network") && response.status() === 200);
     await page.getByRole("button", { name: "Network architecture" }).click();

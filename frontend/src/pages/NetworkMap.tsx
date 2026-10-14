@@ -81,13 +81,21 @@ export default function NetworkMap() {
     return () => { cancelled = true; };
   }, [siId, zoneId, groupId, focusTargetId, expandUnassigned, mode, revision]);
 
-  const visibleNodes = useMemo(() => (graphData?.nodes ?? []).filter((node) => {
-    if (mode === "network" && siId && node.kind === "si") return false;
-    if (exposureFilter === "critical") return Boolean(node.exposure?.severity?.critical);
-    if (exposureFilter === "high") return Boolean(node.exposure?.severity?.critical || node.exposure?.severity?.high);
-    if (exposureFilter === "unscanned") return node.exposure && "unscanned_targets" in node.exposure ? node.exposure.unscanned_targets > 0 : node.kind === "host" && !node.exposure;
-    return true;
-  }), [graphData, exposureFilter, mode, siId]);
+  const visibleNodes = useMemo(() => {
+    const nodes = graphData?.nodes ?? [];
+    const visibleZoneIds = new Set(nodes.filter((node) => node.kind === "zone" && node.zone_id).map((node) => node.zone_id));
+    return nodes.filter((node) => {
+      if (mode === "network" && siId && node.kind === "si") return false;
+      if (!siId && focusTargetId && node.kind === "si") return false;
+      // The SI view shows only equipment in its visible zone level. Equipment belonging to a
+      // child zone becomes visible when the user enters that zone, keeping the hierarchy legible.
+      if (mode === "network" && graphData?.scope.si && node.kind === "device" && node.zone_id && !visibleZoneIds.has(node.zone_id)) return false;
+      if (exposureFilter === "critical") return Boolean(node.exposure?.severity?.critical);
+      if (exposureFilter === "high") return Boolean(node.exposure?.severity?.critical || node.exposure?.severity?.high);
+      if (exposureFilter === "unscanned") return node.exposure && "unscanned_targets" in node.exposure ? node.exposure.unscanned_targets > 0 : node.kind === "host" && !node.exposure;
+      return true;
+    });
+  }, [graphData, exposureFilter, mode, siId, focusTargetId]);
   const nodeById = useMemo(() => new Map(visibleNodes.map((node) => [node.id, node])), [visibleNodes]);
   const si = systems.find((item) => item.id === siId);
   const zone = zones.find((item) => item.id === zoneId);
@@ -193,7 +201,7 @@ export default function NetworkMap() {
     const scopeZoneId = graphData.scope.zone?.id ?? "current";
     const scopeZoneName = graphData.scope.zone?.name ?? t("map.zone");
     const scopeKey = graphData.scope.zone?.id ?? graphData.scope.group?.id ?? graphData.scope.si?.id ?? "global";
-    const layoutKey = `${scopeKey}:${mode}:${Math.floor((viewportWidth || 1200) / 320)}`;
+    const layoutKey = `${scopeKey}:${mode}:${Math.floor((viewportWidth || 1200) / 320)}:${focusTargetId}:${expandUnassigned ? "expanded" : "summary"}`;
     const shouldFit = lastFitScope.current !== layoutKey;
     if (shouldFit) lastFitScope.current = layoutKey;
     const scopeCombo = hasZoneScope ? [{ id: `zone-scope:${scopeZoneId}`, data: { label: scopeZoneName }, style: {
@@ -214,7 +222,7 @@ export default function NetworkMap() {
       return instance.fitView({ when: "always", direction: "both" }, reducedMotion() ? false : { duration: 220 })
         .then(() => instance.zoomBy(0.82, reducedMotion() ? false : { duration: 100 }));
     });
-  }, [visibleNodes, graphData, t, mode, zones, viewportWidth]);
+  }, [visibleNodes, graphData, t, mode, zones, viewportWidth, focusTargetId, expandUnassigned]);
 
   useEffect(() => {
     function escape(event: KeyboardEvent) {
@@ -384,8 +392,8 @@ export default function NetworkMap() {
       <div className="network-map-workspace">
         <div className="network-map-canvas-wrap">
           {loading && !summary && <div className="network-map-overlay">{t("map.loading")}</div>}
-          {!loading && !summary?.systems.length && <div className="network-map-empty"><MapIconFallback /><h2>{t("map.empty")}</h2></div>}
-          {!loading && summary?.systems.length && allNodes.length === 0 && <div className="network-map-empty"><h2>{t("map.emptyGraph")}</h2></div>}
+          {!loading && graphData && allNodes.length === 0 && summary?.totals.targets === 0 && <div className="network-map-empty"><MapIconFallback /><h2>{t("map.empty")}</h2></div>}
+          {!loading && graphData && summary?.totals.targets !== 0 && allNodes.length === 0 && <div className="network-map-empty"><h2>{t("map.emptyGraph")}</h2></div>}
           <div className="network-map-canvas" ref={stage} />
           <div className="network-map-canvas-actions">
             <button type="button" aria-label={t("map.zoomIn")} onClick={() => void graph.current?.zoomBy(1.2, reducedMotion() ? false : { duration: 180 })}><Plus size={16} /></button>

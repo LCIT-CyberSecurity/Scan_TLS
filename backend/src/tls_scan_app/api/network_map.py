@@ -456,6 +456,10 @@ def summary(db: DbSession = Depends(get_db), _: User = Depends(reader)) -> dict:
         targets = _targets_for_si(db, member_ids)
         targets_by_system[si.id] = targets
         all_targets.update({target.id: target for target in targets})
+    # The global map also represents assets that have not been classified into an SI.
+    # Keep totals unique across SI, group and zone assignments.
+    inventory = db.execute(select(Target)).scalars().all()
+    all_targets.update({target.id: target for target in inventory})
     latest = _target_latest(db, {t.value for t in all_targets.values()})
     for si in systems:
         targets = targets_by_system[si.id]
@@ -581,7 +585,10 @@ def graph(
     child_ids = db.execute(select(InformationSystem.id).where(InformationSystem.parent_id.is_not(None))).scalars().all()
     all_si_ids = {item.id for item in systems} | set(child_ids)
     targets = _targets_for_si(db, all_si_ids)
-    latest = _target_latest(db, {item.value for item in targets})
+    all_targets = db.execute(select(Target).order_by(Target.value)).scalars().all()
+    assigned_target_ids = {item.id for item in targets}
+    unassigned = [item for item in all_targets if item.id not in assigned_target_ids]
+    latest = _target_latest(db, {item.value for item in all_targets})
     children_by_parent: dict[uuid.UUID, set[uuid.UUID]] = {}
     for child_id, parent_id in db.execute(select(InformationSystem.id, InformationSystem.parent_id).where(InformationSystem.parent_id.is_not(None))):
         children_by_parent.setdefault(parent_id, set()).add(child_id)
@@ -591,14 +598,28 @@ def graph(
         member_targets = _targets_for_si(db, member_ids)
         nodes.append({"id": f"si:{item.id}", "kind": "si", "name": item.name, "si_id": str(item.id),
                       "child_count": len(children_by_parent.get(item.id, set())), "exposure": _exposure(member_targets, latest)})
+    focus_is_unassigned = bool(focus_target_id and any(item.id == focus_target_id for item in unassigned))
+    if expand_unassigned:
+        page = unassigned[offset:offset + limit]
+        nodes += [{"id": f"target:{item.id}", "kind": "host", "name": item.name or item.value, "value": item.value,
+                   "target_id": str(item.id), "ports": item.ports, "exposure": _target_result(item, latest)} for item in page]
+    elif len(unassigned) == 1 and not focus_is_unassigned:
+        item = unassigned[0]
+        nodes.append({"id": f"target:{item.id}", "kind": "host", "name": item.name or item.value, "value": item.value,
+                      "target_id": str(item.id), "ports": item.ports, "exposure": _target_result(item, latest)})
+    elif unassigned and not focus_is_unassigned:
+        nodes.append({"id": "unassigned", "kind": "unassigned", "name": "Unassigned assets", "count": len(unassigned),
+                      "exposure": _exposure(unassigned, latest)})
     if focus_target_id:
         focused = get_or_404(db, Target, focus_target_id, "Target")
         if all(node.get("target_id") != str(focused.id) for node in nodes):
             nodes.append({"id": f"target:{focused.id}", "kind": "host", "name": focused.name or focused.value, "value": focused.value,
                           "target_id": str(focused.id), "ports": focused.ports,
                           "exposure": _target_latest(db, {focused.value}).get(focused.value)})
-    return {"scope": {}, "mode": mode, "nodes": nodes, "links": [], "truncated": False, "next_offset": None,
-            "totals": {"systems": len(systems), "targets": len(targets)}}
+    truncated = expand_unassigned and offset + limit < len(unassigned)
+    return {"scope": {}, "mode": mode, "nodes": nodes, "links": [], "truncated": truncated,
+            "next_offset": offset + limit if truncated else None,
+            "totals": {"systems": len(systems), "targets": len(all_targets)}}
 
 
 @router.get("/hosts/{target_id}", response_model=HostDetailOut)

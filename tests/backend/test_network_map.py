@@ -96,6 +96,44 @@ def test_map_reads_require_user_and_topology_writes_require_operator(user: Api, 
     assert auditor.get("/api/map/summary").status_code == 403
 
 
+def test_global_map_surfaces_unassigned_targets_without_fabricating_a_system(operator: Api) -> None:
+    suffix = uuid.uuid4().hex[:8]
+    before = operator.get("/api/map/summary").json()["totals"]["targets"]
+    created: list[str] = []
+    try:
+        for index in range(2):
+            response = operator.post("/api/targets", json={
+                "name": f"unassigned-map-{suffix}-{index}",
+                "value": f"unassigned-map-{suffix}-{index}.example.test",
+                "ports": "443",
+            })
+            assert response.status_code == 201, response.text
+            created.append(response.json()["id"])
+
+        summary = operator.get("/api/map/summary")
+        assert summary.status_code == 200, summary.text
+        assert summary.json()["totals"]["targets"] == before + len(created)
+
+        global_graph = operator.get("/api/map/graph")
+        assert global_graph.status_code == 200, global_graph.text
+        aggregate = next(node for node in global_graph.json()["nodes"] if node["kind"] == "unassigned")
+        assert aggregate["count"] >= len(created)
+        assert all(node["kind"] == "si" for node in global_graph.json()["nodes"] if node["kind"] != "unassigned")
+
+        expanded = operator.get("/api/map/graph", params={"expand_unassigned": "true"})
+        assert expanded.status_code == 200, expanded.text
+        expanded_ids = {node.get("target_id") for node in expanded.json()["nodes"]}
+        assert set(created).issubset(expanded_ids)
+
+        focused = operator.get("/api/map/graph", params={"focus_target_id": created[0]})
+        assert focused.status_code == 200, focused.text
+        assert any(node.get("target_id") == created[0] and node["kind"] == "host" for node in focused.json()["nodes"])
+    finally:
+        for target_id in created:
+            response = operator.delete(f"/api/targets/{target_id}")
+            assert response.status_code == 204, response.text
+
+
 def test_host_map_uses_the_real_latest_tls_run(operator: Api, catalog: dict) -> None:
     definition = make_definition(operator, catalog, ["intranet.acme.local"], name=f"map-real-{uuid.uuid4().hex[:8]}", ports="443")
     queued = operator.post(f"/api/scan-definitions/{definition['id']}/run")

@@ -1,4 +1,7 @@
 import { ExtensionCategory, Rect, register } from "@antv/g6";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { ArrowLeftRight, Boxes, Cable, CircleHelp, Cloud, Gauge, Globe, Layers3, Network, Router, Server, Shield, Workflow, type LucideIcon } from "lucide-react";
 import type { MapGraph, MapNode } from "../api/types";
 import type { Messages } from "../i18n/en";
 
@@ -9,12 +12,12 @@ type CardAttributes = Record<string, unknown> & {
   mapTitle?: string;
   mapSubtitle?: string;
   mapKind?: string;
-  mapBadge?: string;
   mapMetrics?: string;
   mapSeverity?: string;
   mapRatio?: number;
   mapAccent?: string;
   mapSeverityColor?: string;
+  mapIcon?: string;
 };
 
 const CARD_WIDTH = 232;
@@ -28,10 +31,18 @@ const HOST_GAP_Y = 108;
 const DEVICE_GAP_X = 100;
 const NODE_GAP_X = 46;
 const NODE_GAP_Y = 34;
-const DEVICE_ABBREVIATIONS: Record<string, string> = {
-  router: "RT", firewall: "FW", gateway: "GW", switch: "SW", load_balancer: "LB",
-  reverse_proxy: "RP", server: "SV", subnet: "SN", generic: "NW",
+const DEVICE_ICONS: Record<string, LucideIcon> = {
+  router: Router,
+  firewall: Shield,
+  gateway: Cable,
+  switch: Workflow,
+  load_balancer: Gauge,
+  reverse_proxy: ArrowLeftRight,
+  server: Server,
+  subnet: Network,
+  generic: Boxes,
 };
+const ICON_CACHE = new WeakMap<LucideIcon, Map<string, string>>();
 
 function clipped(value: string, max: number): string {
   return value.length > max ? `${value.slice(0, max - 1)}…` : value;
@@ -39,6 +50,32 @@ function clipped(value: string, max: number): string {
 
 function mapCanvasColor(name: string, fallback: string): string {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim() || fallback;
+}
+
+function nodeIcon(node: MapNode): LucideIcon {
+  if (node.kind === "si") return Layers3;
+  if (node.kind === "zone") return node.zone_type === "cloud" ? Cloud : Network;
+  if (node.kind === "group") return Boxes;
+  if (node.kind === "unassigned") return CircleHelp;
+  if (node.kind === "host") return Globe;
+  return DEVICE_ICONS[node.device_type || "generic"] || Boxes;
+}
+
+function iconSource(node: MapNode, color: string): string {
+  const Icon = nodeIcon(node);
+  const colors = ICON_CACHE.get(Icon) ?? new Map<string, string>();
+  const cached = colors.get(color);
+  if (cached) return cached;
+  const svg = renderToStaticMarkup(createElement(Icon, {
+    size: 18,
+    color,
+    strokeWidth: 1.8,
+    "aria-hidden": true,
+  }));
+  const source = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  colors.set(color, source);
+  ICON_CACHE.set(Icon, colors);
+  return source;
 }
 
 class ExposureCardNode extends Rect {
@@ -62,18 +99,17 @@ class ExposureCardNode extends Rect {
     }, container);
     const compact = height < 105;
     this.upsert("map-badge-bg", "rect", {
-      x: left, y: top + 29, width: 28, height: 24, radius: 6, fill: softSurface,
+      x: left, y: top + 29, width: 32, height: 28, radius: 7, fill: softSurface,
     }, container);
-    this.upsert("map-badge", "text", {
-      x: left + 14, y: top + 41, text: clipped(String(card.mapBadge || ""), 4), fontSize: 8,
-      fontWeight: 700, fill: accent, textAlign: "center", textBaseline: "middle",
+    this.upsert("map-icon", "image", {
+      x: left + 7, y: top + 34, width: 18, height: 18, src: card.mapIcon,
     }, container);
     this.upsert("map-title", "text", {
-      x: left + 38, y: top + (compact ? 35 : 42), text: clipped(String(card.mapTitle || ""), 23), fontSize: 13,
+      x: left + 43, y: top + (compact ? 35 : 42), text: clipped(String(card.mapTitle || ""), 23), fontSize: 13,
       fontWeight: 600, fill: mainText, textAlign: "left", textBaseline: "middle",
     }, container);
     this.upsert("map-subtitle", "text", {
-      x: left + 38, y: top + (compact ? 51 : 61), text: clipped(String(card.mapSubtitle || ""), 26), fontSize: 10,
+      x: left + 43, y: top + (compact ? 51 : 61), text: clipped(String(card.mapSubtitle || ""), 26), fontSize: 10,
       fill: secondaryText, textAlign: "left", textBaseline: "middle",
     }, container);
     this.upsert("map-divider", "rect", {
@@ -167,15 +203,6 @@ function nodeSubtitle(node: MapNode, t: Translate): string {
   return t("map.host");
 }
 
-function nodeBadge(node: MapNode): string {
-  if (node.kind === "si") return "SI";
-  if (node.kind === "zone") return clipped((node.zone_type || "ZONE").toUpperCase(), 4);
-  if (node.kind === "group") return "GRP";
-  if (node.kind === "unassigned") return "—";
-  if (node.kind === "device") return DEVICE_ABBREVIATIONS[node.device_type || "generic"] || "NW";
-  return "TLS";
-}
-
 export function mapCardAttributes(node: MapNode, t: Translate) {
   const exposure = exposureMetrics(node, t);
   const severity = node.exposure?.severity ?? {};
@@ -193,7 +220,6 @@ export function mapCardAttributes(node: MapNode, t: Translate) {
       lineWidth: 1,
       labelText: "",
       mapTitle: title,
-      mapBadge: nodeBadge(node),
       mapKind: nodeSubtitle(node, t),
       mapSubtitle: exposure.subtitle,
       mapMetrics: exposure.metrics,
@@ -201,6 +227,7 @@ export function mapCardAttributes(node: MapNode, t: Translate) {
       mapRatio: exposure.ratio,
       mapAccent: cardAccent(node),
       mapSeverityColor: severityColor,
+      mapIcon: iconSource(node, cardAccent(node)),
     },
   };
 }
@@ -224,6 +251,18 @@ function placeLane(nodes: MapNode[], y: number, viewportWidth: number, kind: "ca
     positions.push({ id: nodes[index].id, x, y: yPosition });
   }
   return positions;
+}
+
+function positionSystemCards(nodes: MapNode[], viewportWidth: number, yOffset = 0): GraphNodePosition[] {
+  const count = nodes.length;
+  if (count > 5) return placeLane(nodes, yOffset, viewportWidth);
+  const horizontalPair = (CARD_WIDTH + NODE_GAP_X) / 2;
+  const positions: Array<[number, number]> = count === 1 ? [[0, 0]] :
+    count === 2 ? [[-horizontalPair, 0], [horizontalPair, 0]] :
+      count === 3 ? [[0, -130], [-170, 130], [170, 130]] :
+        count === 4 ? [[-horizontalPair, -92], [horizontalPair, -92], [-horizontalPair, 92], [horizontalPair, 92]] :
+          [[0, -185], [247, -57], [153, 150], [-153, 150], [-247, -57]];
+  return nodes.map((node, index) => ({ id: node.id, x: positions[index][0], y: positions[index][1] + yOffset }));
 }
 
 export function positionMapNodes(nodes: MapNode[], graph: MapGraph, viewportWidth: number): GraphNodePosition[] {
@@ -296,6 +335,13 @@ export function positionMapNodes(nodes: MapNode[], graph: MapGraph, viewportWidt
     return positions;
   }
   if (group) return placeLane(ordered.filter((item) => item.kind === "host"), 0, viewportWidth, "host");
-  return placeLane(ordered.filter((item) => item.kind === "si"), 0, viewportWidth);
+  const systems = ordered.filter((item) => item.kind === "si");
+  const unassigned = ordered.filter((item) => item.kind === "unassigned" || item.kind === "group");
+  const hosts = ordered.filter((item) => item.kind === "host");
+  const hasAdditionalAssets = unassigned.length > 0 || hosts.length > 0;
+  const positions = positionSystemCards(systems, viewportWidth, hasAdditionalAssets ? -130 : 0);
+  positions.push(...placeLane(unassigned, systems.length ? 170 : hosts.length ? -150 : 0, viewportWidth));
+  positions.push(...placeLane(hosts, systems.length ? unassigned.length ? 330 : 170 : unassigned.length ? 160 : 0, viewportWidth, "host"));
+  return positions;
 }
 
