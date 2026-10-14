@@ -11,6 +11,14 @@ async function saveScreenshot(page: Page, project: string, view: string, width: 
   await page.screenshot({ path: join(artifacts, `${project}-${view}-${width}x${height}.png`) });
 }
 
+async function saveCanvasScreenshot(page: Page, project: string, view: string, width: number, height: number) {
+  mkdirSync(artifacts, { recursive: true });
+  await page.waitForTimeout(350);
+  await page.locator(".network-map-canvas-wrap").screenshot({
+    path: join(artifacts, `${project}-${view}-canvas-${width}x${height}.png`),
+  });
+}
+
 async function waitForApplication(page: Page) {
   await expect.poll(async () => {
     const response = await page.request.get("/api/health/ready").catch(() => undefined);
@@ -54,12 +62,14 @@ async function captureMapAtSize(browser: Browser, project: string, size: { width
     await expect(page.locator(".network-map-canvas canvas").first()).toBeVisible({ timeout: 30_000 });
     await expect(page.getByRole("group", { name: "Map overview" })).toBeVisible();
     await saveScreenshot(page, project, "global", size.width, size.height);
+    await saveCanvasScreenshot(page, project, "global", size.width, size.height);
 
     await searchAndSelect(page, "unassigned-edge", /Unassigned edge service/i);
     const minimalDetail = page.getByRole("complementary", { name: "Host exposure" });
     await expect(minimalDetail).toBeVisible();
     await expect(minimalDetail.getByText("No TLS scan result is associated with this target.")).toBeVisible();
     await saveScreenshot(page, project, "minimal-asset", size.width, size.height);
+    await saveCanvasScreenshot(page, project, "minimal-asset", size.width, size.height);
     const globalGraph = page.waitForResponse((response) => response.url().includes("/api/map/graph") && response.status() === 200);
     await page.locator(".network-map-crumbs button").first().click();
     await globalGraph;
@@ -70,6 +80,7 @@ async function captureMapAtSize(browser: Browser, project: string, size: { width
     await networkGraph;
     await expect(page.getByRole("button", { name: "Network architecture" })).toHaveAttribute("aria-pressed", "true");
     await saveScreenshot(page, project, "si-zones", size.width, size.height);
+    await saveCanvasScreenshot(page, project, "si-zones", size.width, size.height);
 
     const zoneNetworkGraph = page.waitForResponse((response) => response.url().includes("/api/map/graph") && response.url().includes("zone_id=") && response.url().includes("mode=network") && response.status() === 200);
     await searchAndSelect(page, "Public DMZ", /Public DMZ\s+zone/i);
@@ -89,6 +100,7 @@ async function captureMapAtSize(browser: Browser, project: string, size: { width
     await expect(detail.locator(".network-map-detail-meta")).toContainText("443");
     await expect(detail.locator(".network-map-endpoints article").first()).toBeVisible();
     await saveScreenshot(page, project, "host-exposure", size.width, size.height);
+    await saveCanvasScreenshot(page, project, "host-exposure", size.width, size.height);
     const lastFinding = detail.locator(".network-map-findings li").last();
     await lastFinding.evaluate((element) => element.scrollIntoView({ block: "nearest" }));
     await expect(lastFinding).toBeInViewport();
