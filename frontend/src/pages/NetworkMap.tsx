@@ -194,7 +194,11 @@ export default function NetworkMap() {
     const layoutKey = `${scopeKey}:${mode}:${Math.floor((viewportWidth || 1200) / 320)}`;
     const shouldFit = lastFitScope.current !== layoutKey;
     if (shouldFit) lastFitScope.current = layoutKey;
-    const scopeCombo = hasZoneScope ? [{ id: `zone-scope:${scopeZoneId}`, data: { label: scopeZoneName }, style: { labelText: scopeZoneName, labelPlacement: "top" as const, labelFontSize: 15 } }] : [];
+    const scopeCombo = hasZoneScope ? [{ id: `zone-scope:${scopeZoneId}`, data: { label: scopeZoneName }, style: {
+      labelText: scopeZoneName, labelPlacement: "top" as const, labelFontSize: 13,
+      labelFill: getComputedStyle(document.documentElement).getPropertyValue("--text-secondary").trim() || "#aeb6c6",
+      labelFontWeight: 600,
+    } }] : [];
     const nodes: NodeData[] = visibleNodes.map((item) => {
       const position = positions.get(item.id);
       const card = mapCardAttributes(item, t);
@@ -206,7 +210,7 @@ export default function NetworkMap() {
     void instance.render().then(() => {
       if (!shouldFit) return;
       return instance.fitView({ when: "always", direction: "both" }, reducedMotion() ? false : { duration: 220 })
-        .then(() => instance.zoomBy(0.92, reducedMotion() ? false : { duration: 100 }));
+        .then(() => instance.zoomBy(0.82, reducedMotion() ? false : { duration: 100 }));
     });
   }, [visibleNodes, graphData, t, mode, zones, viewportWidth]);
 

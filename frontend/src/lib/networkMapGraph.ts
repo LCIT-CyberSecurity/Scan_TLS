@@ -281,7 +281,7 @@ export function positionMapNodes(nodes: MapNode[], graph: MapGraph, viewportWidt
       positions.push(
         ...placeLane(ordered.filter((item) => item.kind === "si"), clusterTop - 112, viewportWidth),
         ...placeLane(freeDevices, clusterBottom + 170, viewportWidth),
-        ...placeLane(ordered.filter((item) => item.kind === "group" || item.kind === "unassigned"), clusterBottom + 112, viewportWidth),
+        ...placeLane(ordered.filter((item) => item.kind === "group" || item.kind === "unassigned"), clusterBottom + 190, viewportWidth),
         ...placeLane(ordered.filter((item) => item.kind === "host"), clusterBottom + 245, viewportWidth, "host"),
       );
       return positions;
