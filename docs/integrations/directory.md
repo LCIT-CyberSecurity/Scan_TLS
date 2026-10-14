@@ -1,8 +1,8 @@
 # Directory connectors
 
 A directory connector is **not** the sign-in mechanism. SSO (OIDC/Entra) and local accounts authenticate people; a
-connector is a read-only lookup used by an administrator to **pre-provision** people with a role
-(*Administration → Directory*). When a pre-provisioned person first signs in through SSO, their account is adopted by
+connector is a read-only lookup configured in *Administration → Directory* and used by an administrator to **pre-provision** selected accounts with a role
+(*Administration → Users*). When a pre-provisioned person first signs in through SSO, their account is adopted by
 e-mail address and keeps the chosen role (no duplicate, no default-role surprise).
 
 | Connector | Settings | Secret | Tested against |

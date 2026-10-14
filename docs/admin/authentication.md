@@ -32,7 +32,7 @@ The page only shows whether each secret is set.
 
 ## People, roles and accounts
 
-- The stable identity is **(issuer, subject)**, never the e-mail. A person pre-provisioned in **Administration → Directory**
+- The stable identity is **(issuer, subject)**, never the e-mail. A person selected from the configured source and pre-provisioned in **Administration → Users**
   (account `Pre-provisioned`, with the role you chose) is adopted at their first sign-in by e-mail — and only that kind of account:
   a local, SSO or LDAP account is never taken over through an e-mail match, and an unknown person whose e-mail is already used by
   another account is refused (`email_conflict`), not merged.
@@ -56,8 +56,9 @@ The page only shows whether each secret is set.
 5. In TLS Scan: provider *Microsoft Entra ID*, **Tenant ID** and **Client ID** (the issuer is built from the tenant).
    The multi-tenant endpoints `common`, `organizations`, `consumers` are refused, and the token's `tid` must be your tenant.
 
-Microsoft Graph is **not** needed to sign in. It is only used by the optional directory lookup (Administration → Directory,
-application permission `User.Read.All`, secret `TLS_SCAN_DIRECTORY_CLIENT_SECRET`).
+Microsoft Graph is **not** needed to sign in. It is only used by the optional directory lookup configured in Administration → Directory;
+account search and import are in Administration → Users. This lookup needs the application permission `User.Read.All` and the
+secret `TLS_SCAN_DIRECTORY_CLIENT_SECRET`.
 
 ## Google Workspace
 
@@ -70,7 +71,7 @@ application permission `User.Read.All`, secret `TLS_SCAN_DIRECTORY_CLIENT_SECRET
 
 Directory lookup (optional, separate from the sign-in): a service account with domain-wide delegation of the single scope
 `admin.directory.user.readonly`, its JSON key file in `TLS_SCAN_GOOGLE_DIRECTORY_KEY_FILE`, and the Workspace domain plus the
-delegated administrator's e-mail in Administration → Directory.
+delegated administrator's e-mail in Administration → Directory. Accounts are selected and imported in Administration → Users.
 
 ## LDAP / Active Directory / OpenLDAP
 

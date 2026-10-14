@@ -4,6 +4,7 @@ import type { AccessService, Role, User } from "../api/types";
 import { Empty, ErrorNote, Note, PageHeader, useLoad } from "../components/common";
 import { ExternalAccessSwitches, SERVICES } from "../components/ExternalAccess";
 import { AuthSettings } from "../components/AuthSettings";
+import { DirectoryUserImport } from "../components/DirectoryUserImport";
 import { TrustStoresTab } from "../components/TrustStores";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -51,6 +52,7 @@ function Users() {
               </div></Td></tr>
           ))}</tbody></Table>
       ) : <Empty>—</Empty>}</Card>
+      <DirectoryUserImport />
       {secret && <Dialog open onOpenChange={() => setSecret(null)} title={t("admin.tempPassword")}><p className="mb-3 text-sm text-muted">{t("admin.tempPasswordHint")}</p><code className="block break-all rounded-sm bg-surface-2 p-3 text-sm">{secret}</code><div className="mt-4 flex justify-end"><Button onClick={() => setSecret(null)}>{t("action.close")}</Button></div></Dialog>}
     </>
   );
@@ -166,16 +168,12 @@ function SettingsTab() {
 }
 
 
-interface Person { external_id: string; email: string; display_name: string; provisioned: boolean }
 interface DirCfg { kind: string; ldap: Record<string, string | boolean>; entra: Record<string, string>; google?: Record<string, string> }
 function Directory() {
   const { t } = useI18n();
   const { data, reload } = useLoad(() => api<DirCfg>("/admin/directory"));
   const [cfg, setCfg] = useState<DirCfg | null>(null);
   const [steps, setSteps] = useState<Step[]>([]);
-  const [q, setQ] = useState("");
-  const [people, setPeople] = useState<Person[]>([]);
-  const [roles, setRoles] = useState<Record<string, Role>>({});
   const [err, setErr] = useState<unknown>();
   const c = cfg ?? data;
   if (!c) return null;
@@ -226,21 +224,7 @@ function Directory() {
         </div>
         {steps.map((s) => <Note key={s.step} tone={s.status === "ok" ? "success" : "danger"}><b>{s.step}</b> — {s.status}{s.detail && `: ${s.detail}`}</Note>)}
       </CardContent></Card>
-      {c.kind !== "none" && (
-        <Card><CardContent className="space-y-3">
-          <div className="flex gap-3"><Input aria-label={t("admin.dirSearch")} placeholder={t("admin.dirSearch")} value={q} onChange={(e) => setQ(e.target.value)} />
-            <Button disabled={q.trim().length < 2} onClick={() => void run(async () => setPeople(await api<Person[]>("/admin/directory/search", { params: { q } })))}>{t("action.search")}</Button></div>
-          {people.map((p) => (
-            <div key={p.external_id} className="flex items-center justify-between gap-3 border-b border-hairline py-2 text-sm">
-              <span>{p.display_name}<span className="block text-xs text-muted">{p.email}</span></span>
-              {p.provisioned ? <Badge>{t("admin.dirExists")}</Badge> : (
-                <span className="flex gap-2"><Select aria-label={t("admin.role")} className="compact w-32" value={roles[p.email] ?? "USER"} onChange={(e) => setRoles({ ...roles, [p.email]: e.target.value as Role })}>{ROLES.map((r) => <option key={r}>{r}</option>)}</Select>
-                  <Button size="sm" onClick={() => void run(async () => { await api("/admin/directory/provision", { method: "POST", body: { email: p.email, display_name: p.display_name, role: roles[p.email] ?? "USER" } }); setPeople(await api<Person[]>("/admin/directory/search", { params: { q } })); })}>{t("admin.dirAdd")}</Button></span>
-              )}
-            </div>
-          ))}
-        </CardContent></Card>
-      )}
+      <Note>{t("admin.dirImportInUsers")}</Note>
     </div>
   );
 }
