@@ -1,6 +1,16 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { MapGraph, MapNode } from "../api/types";
 import { mapCardAttributes, positionMapNodes } from "../lib/networkMapGraph";
+
+vi.mock("@antv/g6", () => ({
+  ExtensionCategory: { NODE: "node" },
+  register: vi.fn(),
+  Rect: class {
+    render() {}
+    getSize(attributes: { size?: [number, number] }) { return attributes.size ?? [232, 116]; }
+    upsert() {}
+  },
+}));
 
 const translate = (key: string) => key;
 
