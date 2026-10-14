@@ -67,6 +67,10 @@ Details: [external API](../integrations/external-api.md) · [MCP server](../inte
 
 *Targets → DNS discovery*: enter a domain you are authorised to query and confirm it. TLS Scan looks up the domain's name servers and asks each one, once, for a **zone transfer (AXFR)** of that domain. If a server accepts, the host names (A, AAAA, CNAME) are listed so you can tick the ones to add as targets (grouped under the domain name); an accepted transfer is also reported as a DNS weakness. Refusal is the normal, safe answer: then add names yourself or import a list. Nothing is guessed or brute-forced; loopback, link-local and multicast servers are never queried; each request is audited.
 
+## Network exposure map
+
+The **Scanning → Exposure map** explores information systems, explicitly associated network zones, topology records and real TLS scan results. Operators can organize zones and declare devices/links; scanner results are never fabricated and opening the map does not send traffic. See the [Network Exposure Map guide](network-map.md) for provenance, permissions and API details.
+
 ## Several targets at once
 
 In *New target*, the *Targets* field accepts several values (FQDN, IP address or network in CIDR notation, one per line or separated by commas). Each becomes a target; with several values they are gathered in a group named after the label you typed.
