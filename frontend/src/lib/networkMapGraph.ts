@@ -113,12 +113,12 @@ class ExposureCardNode extends Rect {
     }, container);
     this.upsert("map-title", "text", {
       x: left + (emphasized ? 51 : 43), y: top + (emphasized ? 60 : compact ? 35 : 42),
-      text: clipped(String(card.mapTitle || ""), emphasized ? 30 : 23), fontSize: emphasized ? 16 : 13,
+      text: clipped(String(card.mapTitle || ""), emphasized ? 22 : 23), fontSize: emphasized ? 14 : 13,
       fontWeight: 600, fill: mainText, textAlign: "left", textBaseline: "middle",
     }, container);
     this.upsert("map-subtitle", "text", {
       x: left + (emphasized ? 51 : 43), y: top + (emphasized ? 82 : compact ? 51 : 61),
-      text: clipped(String(card.mapSubtitle || ""), emphasized ? 36 : 26), fontSize: emphasized ? 12 : 10,
+      text: clipped(String(card.mapSubtitle || ""), 26), fontSize: emphasized ? 11 : 10,
       fill: secondaryText, textAlign: "left", textBaseline: "middle",
     }, container);
     this.upsert("map-divider", "rect", {
