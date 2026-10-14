@@ -131,8 +131,8 @@ function exposureMetrics(node: MapNode, t: Translate) {
     severity.low ? `${t("map.lowShort")}${severity.low}` : "",
   ].filter(Boolean).join("   ") || (exposure.scanned_targets ? t("map.noFindings") : t("map.notScannedState"));
   return {
-    subtitle: node.kind === "zone" ? [node.zone_type, node.cidr].filter(Boolean).join(" · ") || targetLabel :
-      node.kind === "si" ? `${node.child_count ?? 0} ${t("map.subsystems")}` : targetLabel,
+    subtitle: node.kind === "zone" ? [node.cidr || node.zone_type, targetLabel].filter(Boolean).join(" · ") :
+      node.kind === "si" ? `${targetLabel} · ${node.child_count ?? 0} ${t("map.subsystems")}` : targetLabel,
     metrics,
     severity: findingSummary,
     ratio: exposure.targets ? Math.min(1, exposure.scanned_targets / exposure.targets) : 0,

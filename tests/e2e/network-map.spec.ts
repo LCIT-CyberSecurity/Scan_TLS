@@ -8,7 +8,8 @@ const artifacts = join(process.cwd(), "../../artifacts/network-map");
 async function saveScreenshot(page: Page, project: string, view: string, width: number, height: number) {
   mkdirSync(artifacts, { recursive: true });
   await page.setViewportSize({ width, height });
-  await page.screenshot({ path: join(artifacts, `${project}-${view}-${width}x${height}.png`), fullPage: true });
+  await page.waitForTimeout(350);
+  await page.screenshot({ path: join(artifacts, `${project}-${view}-${width}x${height}.png`) });
 }
 
 async function searchAndSelect(page: Page, term: string, result: RegExp) {
@@ -17,12 +18,22 @@ async function searchAndSelect(page: Page, term: string, result: RegExp) {
   await search.press("Enter");
   const match = page.getByRole("button", { name: result }).last();
   await expect(match).toBeVisible();
+  const graph = page.waitForResponse((response) => response.url().includes("/api/map/graph") && response.status() === 200);
   await match.click();
+  await graph;
+  await page.waitForTimeout(350);
+}
+
+async function selectDarkAppearance(page: Page) {
+  await page.locator("details.user-menu > summary").click();
+  await page.getByRole("group", { name: "Appearance" }).getByRole("button", { name: "Dark" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-appearance", "dark");
 }
 
 test("Chromium: real TLS scan, progressive map navigation and responsive captures", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "Chromium", "The scan is launched once; Chrome performs a separate rendering smoke check.");
   await login(page, "admin", ADMIN);
+  await selectDarkAppearance(page);
   await page.goto("/scans");
   await page.getByRole("tab", { name: "Definitions" }).click();
   await page.getByRole("row", { name: /Lab - full scenario scan \(ANSSI\)/ }).getByRole("button", { name: "Run" }).click();
@@ -37,7 +48,9 @@ test("Chromium: real TLS scan, progressive map navigation and responsive capture
   }
 
   await searchAndSelect(page, "Production", /Production\s+si/i);
+  const chromiumNetworkGraph = page.waitForResponse((response) => response.url().includes("/api/map/graph") && response.url().includes("mode=network") && response.status() === 200);
   await page.getByRole("button", { name: "Network architecture" }).click();
+  await chromiumNetworkGraph;
   await expect(page.getByRole("button", { name: "Network architecture" })).toHaveAttribute("aria-pressed", "true");
   for (const size of [{ width: 1920, height: 1080 }, { width: 1440, height: 900 }, { width: 1366, height: 768 }]) {
     await saveScreenshot(page, testInfo.project.name.toLowerCase(), "si-zones", size.width, size.height);
@@ -56,12 +69,15 @@ test("Chromium: real TLS scan, progressive map navigation and responsive capture
 test("Google Chrome: map loads and displays its actual graph canvas", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "Google Chrome", "Chromium runs the full journey and capture matrix.");
   await login(page, "admin", ADMIN);
+  await selectDarkAppearance(page);
   await page.goto("/scans/map");
   await expect(page.locator(".network-map-canvas canvas").first()).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole("group", { name: "Map overview" })).toBeVisible();
   await saveScreenshot(page, "chrome", "global", 1440, 900);
   await searchAndSelect(page, "Production", /Production\s+si/i);
+  const chromeNetworkGraph = page.waitForResponse((response) => response.url().includes("/api/map/graph") && response.url().includes("mode=network") && response.status() === 200);
   await page.getByRole("button", { name: "Network architecture" }).click();
+  await chromeNetworkGraph;
   await saveScreenshot(page, "chrome", "si-zones", 1440, 900);
   await searchAndSelect(page, "lab-tls", /lab-tls/i);
   await expect(page.getByRole("complementary", { name: "Host exposure" })).toBeVisible();
