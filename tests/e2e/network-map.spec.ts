@@ -103,3 +103,23 @@ test("Google Chrome: map loads and displays its actual graph canvas", async ({ b
   test.skip(testInfo.project.name !== "Google Chrome", "Chromium runs the full journey and capture matrix.");
   await captureMapAtSize(browser, "chrome", { width: 1440, height: 900 });
 });
+
+test("zone graph includes both endpoints of a declared in-zone link", async ({ page }) => {
+  await waitForApplication(page);
+  await login(page, "admin", ADMIN);
+  await page.goto("/scans/map");
+  await expect(page.locator(".network-map-canvas canvas").first()).toBeVisible({ timeout: 30_000 });
+  await searchAndSelect(page, "Production", /Production\s+si/i);
+  const networkResponse = page.waitForResponse((response) => response.url().includes("/api/map/graph") && response.url().includes("mode=network") && response.status() === 200);
+  await page.getByRole("button", { name: "Network architecture" }).click();
+  await networkResponse;
+  const zoneResponse = page.waitForResponse((response) => response.url().includes("/api/map/graph") && response.url().includes("zone_id=") && response.url().includes("mode=network") && response.status() === 200);
+  await searchAndSelect(page, "Public DMZ", /Public DMZ\s+zone/i);
+  const graph = await (await zoneResponse).json() as {
+    nodes: { id: string; kind: string }[];
+    links: { source_device_id: string; target_device_id: string }[];
+  };
+  const deviceIds = new Set(graph.nodes.filter((node) => node.kind === "device").map((node) => node.id));
+  const linked = graph.links.find((link) => deviceIds.has(`device:${link.source_device_id}`) && deviceIds.has(`device:${link.target_device_id}`));
+  expect(linked, JSON.stringify({ deviceIds: [...deviceIds], links: graph.links })).toBeTruthy();
+});
