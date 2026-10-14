@@ -132,3 +132,37 @@ class TargetDnsObservation(Base):
     created_discovery_id: Mapped[uuid.UUID | None] = mapped_column()  # set only when a discovery created the target (not when it enriched it)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class GreenboneImport(Base):
+    """A bounded import snapshot and its user-visible processing history."""
+
+    __tablename__ = "greenbone_imports"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    status: Mapped[str] = mapped_column(String(12), default="queued", index=True)
+    mode: Mapped[str] = mapped_column(String(8))  # gmp | xml
+    source_name: Mapped[str] = mapped_column(String(160), default="")
+    requested_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    snapshot: Mapped[dict | None] = mapped_column(JsonType)
+    result: Mapped[dict | None] = mapped_column(JsonType)
+    progress: Mapped[dict | None] = mapped_column(JsonType)
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    error: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class GreenboneObjectLink(Base):
+    """Stable source-to-TLS Scan mapping; tags are presentation, never provenance."""
+
+    __tablename__ = "greenbone_object_links"
+    __table_args__ = (UniqueConstraint("source_id", "object_type", "external_id", name="uq_greenbone_source_object"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    source_id: Mapped[str] = mapped_column(String(255))
+    object_type: Mapped[str] = mapped_column(String(24))
+    external_id: Mapped[str] = mapped_column(String(128))
+    tls_id: Mapped[str] = mapped_column(String(128))
+    mode: Mapped[str] = mapped_column(String(8))
+    imported_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

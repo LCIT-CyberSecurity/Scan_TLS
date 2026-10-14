@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response
 
-from tls_scan_app.api import access, admin, auth, catalog, definitions, external, health, policies, results, runs, sso, swagger, trust_stores, admin_auth
+from tls_scan_app.api import access, admin, auth, catalog, definitions, external, greenbone, health, policies, results, runs, sso, swagger, trust_stores, admin_auth
 from tls_scan_app.config import Settings, get_settings
 from tls_scan_app.mcp_server import build_mcp_asgi
 from tls_scan_app.database import make_engine, make_session_factory
@@ -54,7 +54,7 @@ def make_app(settings: Settings | None = None, bootstrap: bool = True) -> FastAP
         response.headers["X-Request-ID"] = request_id
         return response
 
-    for module in (health, auth, sso, catalog, policies, definitions, runs, admin, results, swagger, access, external, trust_stores, admin_auth):
+    for module in (health, auth, sso, catalog, policies, definitions, runs, admin, results, swagger, access, external, trust_stores, admin_auth, greenbone):
         app.include_router(module.router)
     app.include_router(trust_stores.selection)
     app.include_router(external.docs)

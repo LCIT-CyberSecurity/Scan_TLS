@@ -34,4 +34,13 @@ export async function api<T = unknown>(path: string, options: { method?: string;
   return data as T;
 }
 
+export async function upload<T = unknown>(path: string, files: File[]): Promise<T> {
+  const body = new FormData();
+  files.forEach((file) => body.append("files", file));
+  const response = await fetch("/api" + path, { method: "POST", credentials: "same-origin", headers: { "X-CSRF-Token": csrfToken }, body });
+  const data = await response.json();
+  if (!response.ok) throw new ApiError(response.status, detailToMessage(data?.detail ?? data));
+  return data as T;
+}
+
 export const downloadUrl = (runId: string, format: string, inline = false) => `/api/scan-runs/${runId}/reports/${format}${inline ? "?inline=true" : ""}`;
