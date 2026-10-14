@@ -64,8 +64,14 @@ async function captureMapAtSize(browser: Browser, project: string, size: { width
 
     const zoneNetworkGraph = page.waitForResponse((response) => response.url().includes("/api/map/graph") && response.url().includes("zone_id=") && response.url().includes("mode=network") && response.status() === 200);
     await searchAndSelect(page, "Public DMZ", /Public DMZ\s+zone/i);
-    const zoneData = await (await zoneNetworkGraph).json() as { links?: unknown[] };
+    const zoneData = await (await zoneNetworkGraph).json() as {
+      nodes: { id: string; kind: string }[];
+      links?: { source_device_id: string; target_device_id: string }[];
+    };
     expect(zoneData.links?.length ?? 0, "the CrashTest zone has explicitly declared device links").toBeGreaterThan(0);
+    const deviceIds = new Set(zoneData.nodes.filter((node) => node.kind === "device").map((node) => node.id));
+    expect(zoneData.links?.some((link) => deviceIds.has(`device:${link.source_device_id}`) && deviceIds.has(`device:${link.target_device_id}`)),
+      "at least one declared link has both endpoints in the rendered zone").toBe(true);
     await expect(page.locator(".network-map-crumbs")).toContainText("Public DMZ");
     await searchAndSelect(page, "lab-tls", /lab-tls/i);
     const detail = page.getByRole("complementary", { name: "Host exposure" });

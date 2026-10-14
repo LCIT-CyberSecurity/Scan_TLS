@@ -184,7 +184,8 @@ export default function NetworkMap() {
     const edges = graphData.mode === mode ? (graphData.links ?? []).filter((link) =>
       deviceNodeIds.has(`device:${link.source_device_id}`) && deviceNodeIds.has(`device:${link.target_device_id}`)).map((link) => ({
       id: `link:${link.id}`, source: `device:${link.source_device_id}`, target: `device:${link.target_device_id}`,
-      data: { provenance: link.provenance }, style: { stroke: link.provenance === "OBSERVED" ? "#56a98f" : link.provenance === "INFERRED" ? "#dfa95a" : "#91a8bd",
+      type: "line", data: { provenance: link.provenance }, style: { zIndex: 2,
+        stroke: link.provenance === "OBSERVED" ? "#56a98f" : link.provenance === "INFERRED" ? "#dfa95a" : "#91a8bd",
         lineDash: link.provenance === "OBSERVED" ? undefined : link.provenance === "DECLARED" ? [7, 4] : [2, 4],
         lineWidth: 1.6, strokeOpacity: 0.82 },
     })) : [];
