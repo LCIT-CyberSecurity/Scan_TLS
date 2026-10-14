@@ -28,6 +28,8 @@ Then sign in as `ldap-user` with `CrashTest-LDAP-2026!`. The LDAP provider repla
 active; local sign-in remains available as the recovery path. Select the generic provider again to restore the OIDC
 mock. The LDAP CA, service password and user credentials are synthetic, disposable CrashTest material only.
 
+For repeatable quick checks, see [`tests/crashtest/test/README.md`](../../tests/crashtest/test/README.md).
+
 Lab scenarios (`tests/lab`): 443 TLS 1.2/1.3 self-signed · 8443 TLS 1.2 CBC/SHA-1 suites · 8444 expired certificate ·
 8445 certificate expiring in 10 days · 8500-8505 private PKI (ACME root/issuing CA: full chain, incomplete chain, wrong SAN, expired, revoked via CRL; Globex: another customer) reachable as `intranet.acme.local`, CA files published on `http://<host>:5130/pki/` · 8446 legacy protocol config · 80 plain HTTP.
 

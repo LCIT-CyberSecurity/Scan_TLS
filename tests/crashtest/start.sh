@@ -19,4 +19,4 @@ if [ ! -f ldap-certs/ldap.crt ]; then
 fi
 docker compose -f compose.crashtest.yaml up -d --build
 docker compose -f compose.crashtest.yaml exec -T api python - < seed.py
-echo "WebUI: https://$CRASHTEST_HOST:${CRASHTEST_HTTPS_PORT:-5100}  mailbox: http://$CRASHTEST_HOST:${CRASHTEST_MAIL_PORT:-5125}/messages  SSO mock: http://$CRASHTEST_HOST:${CRASHTEST_OIDC_PORT:-5110}"
+echo "WebUI: https://$CRASHTEST_HOST:${CRASHTEST_HTTPS_PORT:-5100}  mailbox: http://$CRASHTEST_HOST:${CRASHTEST_MAIL_PORT:-5125}/messages  SSO mock: http://$CRASHTEST_HOST:${CRASHTEST_OIDC_PORT:-5110}  LDAP lab: ldaps://openldap:636 (internal Compose network)"
