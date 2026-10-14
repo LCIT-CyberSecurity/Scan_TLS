@@ -62,7 +62,10 @@ async function captureMapAtSize(browser: Browser, project: string, size: { width
     await expect(page.getByRole("button", { name: "Network architecture" })).toHaveAttribute("aria-pressed", "true");
     await saveScreenshot(page, project, "si-zones", size.width, size.height);
 
+    const zoneNetworkGraph = page.waitForResponse((response) => response.url().includes("/api/map/graph") && response.url().includes("zone_id=") && response.url().includes("mode=network") && response.status() === 200);
     await searchAndSelect(page, "Public DMZ", /Public DMZ\s+zone/i);
+    const zoneData = await (await zoneNetworkGraph).json() as { links?: unknown[] };
+    expect(zoneData.links?.length ?? 0, "the CrashTest zone has explicitly declared device links").toBeGreaterThan(0);
     await expect(page.locator(".network-map-crumbs")).toContainText("Public DMZ");
     await searchAndSelect(page, "lab-tls", /lab-tls/i);
     const detail = page.getByRole("complementary", { name: "Host exposure" });
