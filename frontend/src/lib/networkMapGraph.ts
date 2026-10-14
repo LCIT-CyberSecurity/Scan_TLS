@@ -18,6 +18,7 @@ type CardAttributes = Record<string, unknown> & {
   mapAccent?: string;
   mapSeverityColor?: string;
   mapIcon?: string;
+  mapEmphasized?: boolean;
 };
 
 const CARD_WIDTH = 232;
@@ -26,6 +27,8 @@ const HOST_CARD_WIDTH = 216;
 const HOST_CARD_HEIGHT = 96;
 const DEVICE_WIDTH = 208;
 const DEVICE_HEIGHT = 92;
+const SOLO_HOST_WIDTH = 300;
+const SOLO_HOST_HEIGHT = 146;
 const HOST_GAP_X = 46;
 const HOST_GAP_Y = 108;
 const DEVICE_GAP_X = 100;
@@ -91,36 +94,42 @@ class ExposureCardNode extends Rect {
     const secondaryText = mapCanvasColor("--text-secondary", "#aeb6c6");
     const faintText = mapCanvasColor("--text-muted", "#96a0b2");
     const softSurface = mapCanvasColor("--surface-secondary", "#1b1f29");
+    const emphasized = Boolean(card.mapEmphasized);
 
     this.upsert("map-accent", "rect", { x: -width / 2, y: top, width: 3, height, radius: 2, fill: accent }, container);
     this.upsert("map-kind", "text", {
-      x: left, y: top + 19, text: clipped(String(card.mapKind || ""), 24), fontSize: 9,
+      x: left, y: top + (emphasized ? 27 : 19), text: clipped(String(card.mapKind || ""), 24), fontSize: emphasized ? 10 : 9,
       fontWeight: 650, letterSpacing: 0.7, fill: accent, textAlign: "left", textBaseline: "middle",
     }, container);
     const compact = height < 105;
+    const badgeSize = emphasized ? 36 : 28;
+    const badgeTop = top + (emphasized ? 39 : 29);
+    const iconSize = emphasized ? 22 : 18;
     this.upsert("map-badge-bg", "rect", {
-      x: left, y: top + 29, width: 32, height: 28, radius: 7, fill: softSurface,
+      x: left, y: badgeTop, width: emphasized ? 40 : 32, height: badgeSize, radius: 7, fill: softSurface,
     }, container);
     this.upsert("map-icon", "image", {
-      x: left + 7, y: top + 34, width: 18, height: 18, src: card.mapIcon,
+      x: left + (emphasized ? 9 : 7), y: badgeTop + (badgeSize - iconSize) / 2, width: iconSize, height: iconSize, src: card.mapIcon,
     }, container);
     this.upsert("map-title", "text", {
-      x: left + 43, y: top + (compact ? 35 : 42), text: clipped(String(card.mapTitle || ""), 23), fontSize: 13,
+      x: left + (emphasized ? 51 : 43), y: top + (emphasized ? 60 : compact ? 35 : 42),
+      text: clipped(String(card.mapTitle || ""), emphasized ? 30 : 23), fontSize: emphasized ? 16 : 13,
       fontWeight: 600, fill: mainText, textAlign: "left", textBaseline: "middle",
     }, container);
     this.upsert("map-subtitle", "text", {
-      x: left + 43, y: top + (compact ? 51 : 61), text: clipped(String(card.mapSubtitle || ""), 26), fontSize: 10,
+      x: left + (emphasized ? 51 : 43), y: top + (emphasized ? 82 : compact ? 51 : 61),
+      text: clipped(String(card.mapSubtitle || ""), emphasized ? 36 : 26), fontSize: emphasized ? 12 : 10,
       fill: secondaryText, textAlign: "left", textBaseline: "middle",
     }, container);
     this.upsert("map-divider", "rect", {
-      x: left, y: top + (compact ? 62 : 76), width: width - 31, height: 1, fill: mapCanvasColor("--border", "#294159"),
+      x: left, y: top + (emphasized ? 101 : compact ? 62 : 76), width: width - 31, height: 1, fill: mapCanvasColor("--border", "#294159"),
     }, container);
     this.upsert("map-metrics", "text", {
-      x: left, y: top + (compact ? 74 : 91), text: clipped(String(card.mapMetrics || ""), 34), fontSize: 9,
+      x: left, y: top + (emphasized ? 118 : compact ? 74 : 91), text: clipped(String(card.mapMetrics || ""), 34), fontSize: emphasized ? 11 : 9,
       fill: faintText, textAlign: "left", textBaseline: "middle",
     }, container);
     this.upsert("map-severity", "text", {
-      x: left, y: top + (compact ? 85 : 106), text: clipped(String(card.mapSeverity || ""), 34), fontSize: 9,
+      x: left, y: top + (emphasized ? 133 : compact ? 85 : 106), text: clipped(String(card.mapSeverity || ""), 34), fontSize: emphasized ? 10 : 9,
       fontWeight: 600, fill: String(card.mapSeverityColor || secondaryText), textAlign: "left", textBaseline: "middle",
     }, container);
 
@@ -203,7 +212,7 @@ function nodeSubtitle(node: MapNode, t: Translate): string {
   return t("map.host");
 }
 
-export function mapCardAttributes(node: MapNode, t: Translate) {
+export function mapCardAttributes(node: MapNode, t: Translate, emphasizeHost = false) {
   const exposure = exposureMetrics(node, t);
   const severity = node.exposure?.severity ?? {};
   const severityColor = severity.critical ? "#dc6b76" : severity.high ? "#dfa95a" : cardAccent(node);
@@ -211,7 +220,8 @@ export function mapCardAttributes(node: MapNode, t: Translate) {
   return {
     type: "network-exposure-card" as const,
     style: {
-      size: node.kind === "host" ? [HOST_CARD_WIDTH, HOST_CARD_HEIGHT] as [number, number] :
+      size: node.kind === "host" && emphasizeHost ? [SOLO_HOST_WIDTH, SOLO_HOST_HEIGHT] as [number, number] :
+        node.kind === "host" ? [HOST_CARD_WIDTH, HOST_CARD_HEIGHT] as [number, number] :
         node.kind === "device" ? [DEVICE_WIDTH, DEVICE_HEIGHT] as [number, number] : [CARD_WIDTH, CARD_HEIGHT] as [number, number],
       radius: 10,
       fill: mapCanvasColor("--surface", "#14171f"),
@@ -228,6 +238,7 @@ export function mapCardAttributes(node: MapNode, t: Translate) {
       mapAccent: cardAccent(node),
       mapSeverityColor: severityColor,
       mapIcon: iconSource(node, cardAccent(node)),
+      mapEmphasized: node.kind === "host" && emphasizeHost,
     },
   };
 }

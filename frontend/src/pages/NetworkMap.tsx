@@ -211,7 +211,7 @@ export default function NetworkMap() {
     } }] : [];
     const nodes: NodeData[] = visibleNodes.map((item) => {
       const position = positions.get(item.id);
-      const card = mapCardAttributes(item, t);
+      const card = mapCardAttributes(item, t, visibleNodes.length === 1 && item.kind === "host");
       return { id: item.id, type: card.type, combo: hasZoneScope ? `zone-scope:${scopeZoneId}` : position?.combo,
         data: { label: item.kind === "host" && item.value ? item.value : item.name, kind: item.kind, mapNode: item },
         style: { ...card.style, x: position?.x ?? 0, y: position?.y ?? 0 } };

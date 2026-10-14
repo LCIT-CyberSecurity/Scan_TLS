@@ -39,6 +39,12 @@ describe("network map graph presentation", () => {
     expect(positions).toEqual([{ id: "target:only", x: 0, y: 0 }]);
   });
 
+  it("gives a lone host a larger, more legible card", () => {
+    const card = mapCardAttributes({ id: "target:only", kind: "host", name: "unassigned.example.test" }, translate, true);
+    expect(card.style.size).toEqual([300, 146]);
+    expect(card.style.mapEmphasized).toBe(true);
+  });
+
   it("uses a balanced constellation for up to five global systems", () => {
     const graph: MapGraph = { mode: "si", scope: {}, nodes: [], links: [], truncated: false };
     const nodes: MapNode[] = ["Alpha", "Bravo", "Charlie", "Delta", "Echo"].map((name) => ({
