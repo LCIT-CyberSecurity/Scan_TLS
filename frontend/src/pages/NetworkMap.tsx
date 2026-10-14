@@ -19,17 +19,6 @@ type ZoneForm = { id?: string; name: string; description: string; zone_type: str
 const emptyZone: ZoneForm = { name: "", description: "", zone_type: "custom", parent_zone_id: "", cidr: "", si_ids: [], target_ids: [] };
 const deviceTypes = ["router", "firewall", "gateway", "switch", "load_balancer", "reverse_proxy", "server", "subnet", "generic"] as const;
 
-function nodeColor(node: MapNode): string {
-  const severity = node.exposure?.severity;
-  if (severity?.critical) return "#dc6b76";
-  if (severity?.high) return "#dfa95a";
-  if (node.kind === "host" && !node.exposure) return "#78889a";
-  if (node.kind === "device") return node.provenance === "OBSERVED" ? "#56a98f" : node.provenance === "INFERRED" ? "#dfa95a" : "#6d9eba";
-  if (node.exposure && "scanned_targets" in node.exposure && node.exposure.scanned_targets > 0) return "#56a98f";
-  if (node.kind === "zone") return "#688eaa";
-  return "#7899ca";
-}
-
 export default function NetworkMap() {
   const { t, locale } = useI18n();
   const { atLeast } = useAuth();
@@ -208,21 +197,14 @@ export default function NetworkMap() {
     const scopeCombo = hasZoneScope ? [{ id: `zone-scope:${scopeZoneId}`, data: { label: scopeZoneName }, style: { labelText: scopeZoneName, labelPlacement: "top" as const, labelFontSize: 15 } }] : [];
     const nodes: NodeData[] = visibleNodes.map((item) => {
       const position = positions.get(item.id);
-      const card = item.kind === "host" ? {
-        type: "circle" as const,
-        style: {
-          size: 42, fill: nodeColor(item), fillOpacity: 0.72, stroke: nodeColor(item), lineWidth: 1.5,
-          labelText: item.value || item.name, labelPlacement: "bottom" as const, labelFill: getComputedStyle(document.documentElement).getPropertyValue("--text-primary").trim() || "#e9ebf1",
-          labelFontSize: 10, labelMaxWidth: 148, labelWordWrap: true,
-        },
-      } : mapCardAttributes(item, t);
+      const card = mapCardAttributes(item, t);
       return { id: item.id, type: card.type, combo: hasZoneScope ? `zone-scope:${scopeZoneId}` : position?.combo,
         data: { label: item.kind === "host" && item.value ? item.value : item.name, kind: item.kind, mapNode: item },
         style: { ...card.style, x: position?.x ?? 0, y: position?.y ?? 0 } };
     });
     instance.setData({ nodes, edges, combos: [...scopeCombo, ...combos] });
     void instance.render().then(() => {
-      if (shouldFit) return instance.fitView({ when: "always", direction: "both" }, reducedMotion() ? false : { duration: 260 });
+      if (shouldFit) return instance.fitView({ when: "always", direction: "both", padding: 48 }, reducedMotion() ? false : { duration: 260 });
     });
   }, [visibleNodes, graphData, t, mode, zones, viewportWidth]);
 

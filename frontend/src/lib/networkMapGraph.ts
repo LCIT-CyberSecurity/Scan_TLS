@@ -19,10 +19,12 @@ type CardAttributes = Record<string, unknown> & {
 
 const CARD_WIDTH = 232;
 const CARD_HEIGHT = 116;
+const HOST_CARD_WIDTH = 216;
+const HOST_CARD_HEIGHT = 96;
 const DEVICE_WIDTH = 208;
 const DEVICE_HEIGHT = 92;
-const HOST_GAP_X = 132;
-const HOST_GAP_Y = 112;
+const HOST_GAP_X = 46;
+const HOST_GAP_Y = 108;
 const NODE_GAP_X = 46;
 const NODE_GAP_Y = 34;
 const DEVICE_ABBREVIATIONS: Record<string, string> = {
@@ -112,6 +114,22 @@ function cardAccent(node: MapNode): string {
 
 function exposureMetrics(node: MapNode, t: Translate) {
   const exposure = node.exposure;
+  if (node.kind === "host") {
+    const scan = exposure && "endpoints" in exposure ? exposure : undefined;
+    const severity = scan?.severity ?? {};
+    const findingSummary = [
+      severity.critical ? `${t("map.criticalShort")}${severity.critical}` : "",
+      severity.high ? `${t("map.highShort")}${severity.high}` : "",
+      severity.medium ? `${t("map.mediumShort")}${severity.medium}` : "",
+      severity.low ? `${t("map.lowShort")}${severity.low}` : "",
+    ].filter(Boolean).join("   ");
+    return {
+      subtitle: [node.value || node.name, node.ports ? `:${node.ports}` : ""].filter(Boolean).join(" · "),
+      metrics: scan ? `${scan.endpoints.length} ${t("map.endpoints")}` : t("map.notScannedState"),
+      severity: scan ? findingSummary || (scan.endpoints.length ? t("map.noFindings") : t("map.notScannedState")) : "",
+      ratio: scan ? 1 : 0,
+    };
+  }
   if (!exposure || !("targets" in exposure)) {
     const count = node.count ?? 0;
     return {
@@ -165,7 +183,8 @@ export function mapCardAttributes(node: MapNode, t: Translate) {
   return {
     type: "network-exposure-card" as const,
     style: {
-      size: [node.kind === "device" ? DEVICE_WIDTH : CARD_WIDTH, node.kind === "device" ? DEVICE_HEIGHT : CARD_HEIGHT] as [number, number],
+      size: node.kind === "host" ? [HOST_CARD_WIDTH, HOST_CARD_HEIGHT] as [number, number] :
+        node.kind === "device" ? [DEVICE_WIDTH, DEVICE_HEIGHT] as [number, number] : [CARD_WIDTH, CARD_HEIGHT] as [number, number],
       radius: 10,
       fill: mapCanvasColor("--surface", "#14171f"),
       fillOpacity: 0.98,
@@ -187,7 +206,7 @@ export function mapCardAttributes(node: MapNode, t: Translate) {
 
 function placeLane(nodes: MapNode[], y: number, viewportWidth: number, kind: "card" | "host" = "card", xOffset = 0): GraphNodePosition[] {
   if (!nodes.length) return [];
-  const width = kind === "host" ? 92 : CARD_WIDTH;
+  const width = kind === "host" ? HOST_CARD_WIDTH : CARD_WIDTH;
   const gapX = kind === "host" ? HOST_GAP_X : NODE_GAP_X;
   const gapY = kind === "host" ? HOST_GAP_Y : CARD_HEIGHT + NODE_GAP_Y;
   const columns = Math.max(1, Math.min(kind === "host" ? 12 : 5, Math.floor((Math.max(viewportWidth, 420) - 120) / (width + gapX))));
