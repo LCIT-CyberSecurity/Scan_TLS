@@ -41,7 +41,7 @@ describe("network map graph presentation", () => {
 
   it("gives a lone host a larger, more legible card", () => {
     const card = mapCardAttributes({ id: "target:only", kind: "host", name: "unassigned.example.test" }, translate, true);
-    expect(card.style.size).toEqual([300, 146]);
+    expect(card.style.size).toEqual([340, 150]);
     expect(card.style.mapEmphasized).toBe(true);
   });
 

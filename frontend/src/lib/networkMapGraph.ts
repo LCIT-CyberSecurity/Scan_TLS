@@ -27,8 +27,8 @@ const HOST_CARD_WIDTH = 216;
 const HOST_CARD_HEIGHT = 96;
 const DEVICE_WIDTH = 208;
 const DEVICE_HEIGHT = 92;
-const SOLO_HOST_WIDTH = 300;
-const SOLO_HOST_HEIGHT = 146;
+const SOLO_HOST_WIDTH = 340;
+const SOLO_HOST_HEIGHT = 150;
 const HOST_GAP_X = 46;
 const HOST_GAP_Y = 108;
 const DEVICE_GAP_X = 100;
@@ -122,14 +122,14 @@ class ExposureCardNode extends Rect {
       fill: secondaryText, textAlign: "left", textBaseline: "middle",
     }, container);
     this.upsert("map-divider", "rect", {
-      x: left, y: top + (emphasized ? 101 : compact ? 62 : 76), width: width - 31, height: 1, fill: mapCanvasColor("--border", "#294159"),
+      x: left, y: top + (emphasized ? 97 : compact ? 62 : 76), width: width - 31, height: 1, fill: mapCanvasColor("--border", "#294159"),
     }, container);
     this.upsert("map-metrics", "text", {
-      x: left, y: top + (emphasized ? 118 : compact ? 74 : 91), text: clipped(String(card.mapMetrics || ""), 34), fontSize: emphasized ? 11 : 9,
+      x: left, y: top + (emphasized ? 108 : compact ? 74 : 91), text: clipped(String(card.mapMetrics || ""), 34), fontSize: emphasized ? 10 : 9,
       fill: faintText, textAlign: "left", textBaseline: "middle",
     }, container);
     this.upsert("map-severity", "text", {
-      x: left, y: top + (emphasized ? 133 : compact ? 85 : 106), text: clipped(String(card.mapSeverity || ""), 34), fontSize: emphasized ? 10 : 9,
+      x: left, y: top + (emphasized ? 123 : compact ? 85 : 106), text: clipped(String(card.mapSeverity || ""), 34), fontSize: emphasized ? 10 : 9,
       fontWeight: 600, fill: String(card.mapSeverityColor || secondaryText), textAlign: "left", textBaseline: "middle",
     }, container);
 
