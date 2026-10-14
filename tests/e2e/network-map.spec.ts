@@ -45,6 +45,8 @@ async function captureMapAtSize(browser: Browser, project: string, size: { width
   });
   try {
     const page = await context.newPage();
+    page.on("pageerror", (error) => console.log(`[${project} ${size.width}] PAGEERROR ${error.stack ?? error.message}`));
+    page.on("console", (message) => { if (message.type() === "error") console.log(`[${project} ${size.width}] CONSOLE ${message.text()}`); });
     await waitForApplication(page);
     await login(page, "admin", ADMIN);
     await selectDarkAppearance(page);
