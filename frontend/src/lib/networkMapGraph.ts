@@ -98,7 +98,7 @@ class ExposureCardNode extends Rect {
 
     this.upsert("map-accent", "rect", { x: -width / 2, y: top, width: 3, height, radius: 2, fill: accent }, container);
     this.upsert("map-kind", "text", {
-      x: left, y: top + (emphasized ? 27 : 19), text: clipped(String(card.mapKind || ""), 24), fontSize: emphasized ? 10 : 9,
+      x: left, y: top + (emphasized ? 27 : 19), text: clipped(String(card.mapKind || ""), 24), fontSize: 10,
       fontWeight: 650, letterSpacing: 0.7, fill: accent, textAlign: "left", textBaseline: "middle",
     }, container);
     const compact = height < 105;
@@ -113,23 +113,23 @@ class ExposureCardNode extends Rect {
     }, container);
     this.upsert("map-title", "text", {
       x: left + (emphasized ? 51 : 43), y: top + (emphasized ? 60 : compact ? 35 : 42),
-      text: clipped(String(card.mapTitle || ""), emphasized ? 22 : 23), fontSize: emphasized ? 14 : 13,
+      text: clipped(String(card.mapTitle || ""), 22), fontSize: 14,
       fontWeight: 600, fill: mainText, textAlign: "left", textBaseline: "middle",
     }, container);
     this.upsert("map-subtitle", "text", {
       x: left + (emphasized ? 51 : 43), y: top + (emphasized ? 82 : compact ? 51 : 61),
-      text: clipped(String(card.mapSubtitle || ""), 26), fontSize: emphasized ? 11 : 10,
+      text: clipped(String(card.mapSubtitle || ""), 26), fontSize: 11,
       fill: secondaryText, textAlign: "left", textBaseline: "middle",
     }, container);
     this.upsert("map-divider", "rect", {
       x: left, y: top + (emphasized ? 97 : compact ? 62 : 76), width: width - 31, height: 1, fill: mapCanvasColor("--border", "#294159"),
     }, container);
     this.upsert("map-metrics", "text", {
-      x: left, y: top + (emphasized ? 108 : compact ? 74 : 91), text: clipped(String(card.mapMetrics || ""), 34), fontSize: emphasized ? 10 : 9,
+      x: left, y: top + (emphasized ? 108 : compact ? 74 : 91), text: clipped(String(card.mapMetrics || ""), 34), fontSize: 10,
       fill: faintText, textAlign: "left", textBaseline: "middle",
     }, container);
     this.upsert("map-severity", "text", {
-      x: left, y: top + (emphasized ? 123 : compact ? 85 : 106), text: clipped(String(card.mapSeverity || ""), 34), fontSize: emphasized ? 10 : 9,
+      x: left, y: top + (emphasized ? 123 : compact ? 85 : 106), text: clipped(String(card.mapSeverity || ""), 34), fontSize: 10,
       fontWeight: 600, fill: String(card.mapSeverityColor || secondaryText), textAlign: "left", textBaseline: "middle",
     }, container);
 
