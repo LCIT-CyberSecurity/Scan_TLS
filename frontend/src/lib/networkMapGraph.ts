@@ -1,5 +1,8 @@
 import { ExtensionCategory, Rect, register } from "@antv/g6";
 import type { MapGraph, MapNode } from "../api/types";
+import type { Messages } from "../i18n/en";
+
+type Translate = (key: keyof Messages) => string;
 
 type GraphNodePosition = { id: string; x: number; y: number; combo?: string };
 type CardAttributes = Record<string, unknown> & {
@@ -37,6 +40,7 @@ function mapCanvasColor(name: string, fallback: string): string {
 
 class ExposureCardNode extends Rect {
   override render(attributes: Parameters<Rect["render"]>[0], container: Parameters<Rect["render"]>[1]) {
+    if (!container) return;
     super.render(attributes, container);
     const card = attributes as unknown as CardAttributes;
     const [width, height] = this.getSize(attributes);
@@ -106,7 +110,7 @@ function cardAccent(node: MapNode): string {
   return "#7897b4";
 }
 
-function exposureMetrics(node: MapNode, t: (key: string) => string) {
+function exposureMetrics(node: MapNode, t: Translate) {
   const exposure = node.exposure;
   if (!exposure || !("targets" in exposure)) {
     const count = node.count ?? 0;
@@ -135,12 +139,12 @@ function exposureMetrics(node: MapNode, t: (key: string) => string) {
   };
 }
 
-function nodeSubtitle(node: MapNode, t: (key: string) => string): string {
+function nodeSubtitle(node: MapNode, t: Translate): string {
   if (node.kind === "si") return t("map.systems");
   if (node.kind === "zone") return t("map.zone");
   if (node.kind === "group") return t("map.group");
   if (node.kind === "unassigned") return t("map.unassigned");
-  if (node.kind === "device") return t(`map.deviceType.${node.device_type || "generic"}`);
+  if (node.kind === "device") return t(`map.deviceType.${node.device_type || "generic"}` as keyof Messages);
   return t("map.host");
 }
 
@@ -153,7 +157,7 @@ function nodeBadge(node: MapNode): string {
   return "TLS";
 }
 
-export function mapCardAttributes(node: MapNode, t: (key: string) => string) {
+export function mapCardAttributes(node: MapNode, t: Translate) {
   const exposure = exposureMetrics(node, t);
   const severity = node.exposure?.severity ?? {};
   const severityColor = severity.critical ? "#dc6b76" : severity.high ? "#dfa95a" : cardAccent(node);
@@ -161,7 +165,7 @@ export function mapCardAttributes(node: MapNode, t: (key: string) => string) {
   return {
     type: "network-exposure-card",
     style: {
-      size: [node.kind === "device" ? DEVICE_WIDTH : CARD_WIDTH, node.kind === "device" ? DEVICE_HEIGHT : CARD_HEIGHT],
+      size: [node.kind === "device" ? DEVICE_WIDTH : CARD_WIDTH, node.kind === "device" ? DEVICE_HEIGHT : CARD_HEIGHT] as [number, number],
       radius: 10,
       fill: mapCanvasColor("--surface", "#14171f"),
       fillOpacity: 0.98,
@@ -184,7 +188,6 @@ export function mapCardAttributes(node: MapNode, t: (key: string) => string) {
 function placeLane(nodes: MapNode[], y: number, viewportWidth: number, kind: "card" | "host" = "card", xOffset = 0): GraphNodePosition[] {
   if (!nodes.length) return [];
   const width = kind === "host" ? 92 : CARD_WIDTH;
-  const height = kind === "host" ? 48 : CARD_HEIGHT;
   const gapX = kind === "host" ? HOST_GAP_X : NODE_GAP_X;
   const gapY = kind === "host" ? HOST_GAP_Y : CARD_HEIGHT + NODE_GAP_Y;
   const columns = Math.max(1, Math.min(kind === "host" ? 12 : 5, Math.floor((Math.max(viewportWidth, 420) - 120) / (width + gapX))));

@@ -1,4 +1,4 @@
-import { Graph, NodeEvent } from "@antv/g6";
+import { Graph, NodeEvent, type NodeData } from "@antv/g6";
 import { ArrowUpRight, CircleHelp, Crosshair, Layers3, Minus, Pencil, Plus, Search, Settings2, X } from "lucide-react";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
@@ -203,10 +203,10 @@ export default function NetworkMap() {
     const shouldFit = lastFitScope.current !== layoutKey;
     if (shouldFit) lastFitScope.current = layoutKey;
     const scopeCombo = hasZoneScope ? [{ id: `zone-scope:${scopeZoneId}`, data: { label: scopeZoneName }, style: { labelText: scopeZoneName, labelPlacement: "top" as const, labelFontSize: 15 } }] : [];
-    const nodes = visibleNodes.map((item) => {
+    const nodes: NodeData[] = visibleNodes.map((item) => {
       const position = positions.get(item.id);
       const card = item.kind === "host" ? {
-        type: "circle",
+        type: "circle" as const,
         style: {
           size: 42, fill: nodeColor(item), fillOpacity: 0.72, stroke: nodeColor(item), lineWidth: 1.5,
           labelText: item.value || item.name, labelPlacement: "bottom", labelFill: getComputedStyle(document.documentElement).getPropertyValue("--text-primary").trim() || "#e9ebf1",
