@@ -64,10 +64,14 @@ def test_zone_hierarchy_and_target_membership_are_persistent(operator: Api) -> N
 
 def test_device_links_validate_addresses_and_keep_provenance(operator: Api) -> None:
     suffix = uuid.uuid4().hex[:8]
+    si = operator.post("/api/information-systems", json={"name": f"link-si-{suffix}"})
+    assert si.status_code == 201, si.text
+    zone = operator.post("/api/map/zones", json={"name": f"link-zone-{suffix}", "zone_type": "dmz", "si_ids": [si.json()["id"]]})
+    assert zone.status_code == 201, zone.text
     bad = operator.post("/api/map/devices", json={"name": "bad", "ip_address": "192.0.2.999"})
     assert bad.status_code == 422
-    left = operator.post("/api/map/devices", json={"name": f"edge-{suffix}", "device_type": "firewall", "ip_address": "192.0.2.1"})
-    right = operator.post("/api/map/devices", json={"name": f"core-{suffix}", "device_type": "router", "ip_address": "192.0.2.2"})
+    left = operator.post("/api/map/devices", json={"name": f"edge-{suffix}", "device_type": "firewall", "zone_id": zone.json()["id"], "ip_address": "192.0.2.1"})
+    right = operator.post("/api/map/devices", json={"name": f"core-{suffix}", "device_type": "router", "zone_id": zone.json()["id"], "ip_address": "192.0.2.2"})
     assert left.status_code == right.status_code == 201
 
     link = operator.post("/api/map/links", json={"source_device_id": left.json()["id"], "target_device_id": right.json()["id"],
@@ -75,6 +79,13 @@ def test_device_links_validate_addresses_and_keep_provenance(operator: Api) -> N
     assert link.status_code == 201, link.text
     assert link.json()["provenance"] == "OBSERVED"
     assert link.json()["confidence"] == 0.9
+    for params in ({"zone_id": zone.json()["id"], "mode": "network"}, {"si_id": si.json()["id"], "mode": "network"}):
+        graph = operator.get("/api/map/graph", params=params)
+        assert graph.status_code == 200, graph.text
+        device_ids = {item["id"] for item in graph.json()["nodes"] if item["kind"] == "device"}
+        assert {f"device:{left.json()['id']}", f"device:{right.json()['id']}"}.issubset(device_ids)
+        assert any(item["source_device_id"] == left.json()["id"] and item["target_device_id"] == right.json()["id"]
+                   for item in graph.json()["links"])
     duplicate = operator.post("/api/map/links", json={"source_device_id": left.json()["id"], "target_device_id": right.json()["id"]})
     assert duplicate.status_code == 409
 

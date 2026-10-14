@@ -504,7 +504,7 @@ def graph(
             nodes.append({"id": f"target:{focused.id}", "kind": "host", "name": focused.name or focused.value, "value": focused.value,
                           "target_id": str(focused.id), "ports": focused.ports, "exposure": _target_latest(db, {focused.value}).get(focused.value)})
         if mode == "network":
-            nodes += [{"id": f"device:{item.id}", "kind": "device", **_device_out(item)} for item in devices]
+            nodes += [{**_device_out(item), "id": f"device:{item.id}", "kind": "device"} for item in devices]
         return {"scope": {"zone": _zone_out(db, zone)}, "mode": mode, "nodes": nodes,
                 "links": [_link_out(item) for item in links], "truncated": offset + len(targets) < len(target_ids),
                 "next_offset": offset + len(targets) if offset + len(targets) < len(target_ids) else None}
@@ -556,7 +556,7 @@ def graph(
             if device_ids:
                 network_links = db.execute(select(NetworkLink).where(or_(NetworkLink.source_device_id.in_(device_ids),
                                                                          NetworkLink.target_device_id.in_(device_ids)))).scalars().all()
-            nodes += [{"id": f"device:{item.id}", "kind": "device", **_device_out(item)} for item in network_devices]
+            nodes += [{**_device_out(item), "id": f"device:{item.id}", "kind": "device"} for item in network_devices]
         flat_targets = mode == "si" and not zones and not child_systems
         if unassigned and not expand_unassigned and not flat_targets:
             nodes.append({"id": "unassigned", "kind": "unassigned", "name": "Unassigned assets", "count": len(unassigned),
