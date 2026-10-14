@@ -70,7 +70,7 @@ describe("network map graph presentation", () => {
   it("renders a scanned host as a populated compact card instead of an empty fallback shape", () => {
     const card = mapCardAttributes({
       id: "target:t1", kind: "host", target_id: "t1", name: "tls.example.test", value: "tls.example.test", ports: "443",
-      exposure: { run_id: "run-1", status: "COMPLETED", finished_at: "2026-10-14T12:00:00Z", endpoints: [{ endpoint_id: "ep-1", hostname: "tls.example.test", ip_address: "192.0.2.5", port: 443, grade: "F", compliance_status: "non_compliant", highest_severity: "high", tls_versions: ["TLSv1.2"], cipher_suites: [], certificate: null, errors: [], untested_checks: [], tls_checks: [] }], severity: { high: 1 }, compliant: 0, non_compliant: 1, unevaluated: 0 },
+      exposure: { run_id: "run-1", status: "completed", finished_at: "2026-10-14T12:00:00Z", endpoints: [{ endpoint_id: "ep-1", hostname: "tls.example.test", ip_address: "192.0.2.5", port: 443, grade: "F", compliance_status: "non_compliant", highest_severity: "high", tls_versions: ["TLSv1.2"], cipher_suites: [], certificate: null, errors: [], untested_checks: [], tls_checks: [] }], severity: { high: 1 }, compliant: 0, non_compliant: 1, unevaluated: 0 },
     }, translate);
     expect(card.type).toBe("network-exposure-card");
     expect(card.style.size).toEqual([216, 96]);

@@ -204,7 +204,9 @@ export default function NetworkMap() {
     });
     instance.setData({ nodes, edges, combos: [...scopeCombo, ...combos] });
     void instance.render().then(() => {
-      if (shouldFit) return instance.fitView({ when: "always", direction: "both", padding: 48 }, reducedMotion() ? false : { duration: 260 });
+      if (!shouldFit) return;
+      return instance.fitView({ when: "always", direction: "both" }, reducedMotion() ? false : { duration: 220 })
+        .then(() => instance.zoomBy(0.92, reducedMotion() ? false : { duration: 100 }));
     });
   }, [visibleNodes, graphData, t, mode, zones, viewportWidth]);
 
