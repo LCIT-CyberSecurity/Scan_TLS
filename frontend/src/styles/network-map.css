@@ -78,3 +78,67 @@
 @media (max-width: 1100px) { .network-map-toolbar { align-items: flex-start; flex-direction: column; }.network-map-tools { justify-content: flex-start; width: 100%; flex-wrap: wrap; }.network-map-search-results { left: 0; right: auto; }.network-map-detail { flex-basis: 310px; } }
 @media (max-width: 760px) { .network-map-workspace { min-height: 520px; height: 68vh; }.network-map-canvas, .network-map-canvas-wrap { min-height: 520px; }.network-map-detail { position: absolute; inset: 0 0 0 auto; z-index: 3; width: min(360px, 94vw); max-width: 94vw; box-shadow: var(--shadow-overlay); }.network-map-footer { align-items: flex-start; flex-direction: column; }.network-map-footer p { text-align: left; }.network-map-segmented { order: 2; } }
 @media (prefers-reduced-motion: reduce) { .network-map-detail { animation: none; } }
+
+/* V2 hierarchy: compact telemetry above a deliberately quiet graph canvas. */
+.network-map-overview {
+  display: flex;
+  align-items: center;
+  gap: clamp(14px, 2.2vw, 34px);
+  min-height: 48px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-muted);
+  background: var(--surface);
+}
+.network-map-overview > div { display: inline-flex; align-items: center; gap: 8px; min-width: 0; font-size: 11px; }
+.network-map-overview strong { color: var(--text-primary); font-size: 13px; font-weight: 620; font-variant-numeric: tabular-nums; }
+.network-map-overview svg { color: var(--primary); }
+.network-map-form-note { color: var(--text-muted); font-size: 11px; }
+.network-map-legend {
+  max-width: min(760px, calc(100% - 76px));
+  flex-wrap: wrap;
+  gap: 7px 13px;
+  padding: 8px 10px;
+  border: 1px solid color-mix(in srgb, var(--border-strong) 70%, transparent);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  backdrop-filter: blur(8px);
+}
+.map-dot--critical { background: #dc6b76; }
+.map-dot--high { background: #dfa95a; }
+.map-dot--scanned { background: #56a98f; }
+.map-dot--neutral { border: 1px solid #78889a; background: transparent; }
+.map-link-sample { display: inline-block; width: 18px; height: 0; border-top: 1.5px solid #7897b4; }
+.map-link-sample--observed { border-color: #56a98f; }
+.map-link-sample--declared { border-top-style: dashed; }
+.map-link-sample--inferred { border-top-style: dotted; border-color: #dfa95a; }
+.map-legend-divider { width: 1px; height: 12px; background: var(--border-strong); }
+.network-map-tools { flex-wrap: wrap; }
+.network-map-search { flex: 0 1 270px; }
+.network-map-toolbar { flex-wrap: wrap; }
+.network-map-workspace { height: min(70vh, 820px); min-height: 500px; }
+.network-map-canvas, .network-map-canvas-wrap { min-height: 500px; }
+.network-map-detail { flex-basis: clamp(300px, 28vw, 370px); max-width: 38vw; }
+.network-map-findings li span:last-child { overflow-wrap: anywhere; }
+.network-map-device-evidence strong { overflow-wrap: anywhere; }
+.network-map-manage summary:focus-visible,
+.network-map-crumbs button:focus-visible,
+.network-map-search > button:focus-visible,
+.network-map-canvas-actions button:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+@media (max-width: 1100px) {
+  .network-map-toolbar { align-items: flex-start; }
+  .network-map-overview { flex-wrap: wrap; gap: 10px 20px; }
+  .network-map-search { flex: 1 1 220px; }
+}
+@media (max-width: 760px) {
+  .network-map-overview { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .network-map-workspace { height: 68vh; min-height: 490px; }
+  .network-map-canvas, .network-map-canvas-wrap { min-height: 490px; }
+  .network-map-detail { max-width: 94vw; }
+  .network-map-legend { max-width: calc(100% - 66px); gap: 6px 10px; font-size: 9px; }
+  .network-map-footer { align-items: flex-start; flex-direction: column; }
+  .network-map-footer p { text-align: left; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .network-map-detail { animation: none; }
+}

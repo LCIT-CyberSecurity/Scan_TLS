@@ -112,7 +112,59 @@ def definition(name, profile, policies, target_ids, group_ids=()):
 
 d_all = definition("Lab - full scenario scan (ANSSI)", lab_profile, [anssi], [], [group["id"]])
 d_https = definition("Lab - HTTPS only", quick_profile, [anssi, lenient], [tids[0]])
+
+# Network-map fixtures are confined to the CrashTest database and use documentation-only addresses.
+targets_by_port = {target["ports"]: target["id"] for target in user.call("GET", "/api/targets", params={"q": LAB})}
+existing_zones = op.call("GET", "/api/map/zones")
+
+def map_zone(name, zone_type, cidr, si_ids, target_ids, parent_zone_id=None):
+    body = {"name": name, "zone_type": zone_type, "cidr": cidr, "si_ids": si_ids,
+            "target_ids": target_ids, "primary_target_ids": target_ids, "parent_zone_id": parent_zone_id}
+    found = next((zone for zone in existing_zones if zone["name"] == name), None)
+    if found:
+        return op.call("PUT", f"/api/map/zones/{found['id']}", json=body)
+    created = op.call("POST", "/api/map/zones", json=body)
+    existing_zones.append(created)
+    return created
+
+
+public_dmz = map_zone("Public DMZ", "dmz", "192.0.2.0/24", [si["Production"]],
+                      [targets_by_port["443"], targets_by_port["8443"]])
+app_dmz = map_zone("Application segment", "vlan", "192.0.2.64/26", [si["Web"]],
+                   [targets_by_port["8443"]], public_dmz["id"])
+internal_lan = map_zone("Production LAN", "production", "198.51.100.0/24", [si["Internal"], si["Infrastructure"]],
+                        [targets_by_port["8444"], targets_by_port["8445"]])
+admin_net = map_zone("Administration network", "administration", "203.0.113.0/24", [si["Internal"]], [])
+
+existing_devices = op.call("GET", "/api/map/devices")
+
+def map_device(name, device_type, zone, ip_address, target_id=None):
+    body = {"name": name, "device_type": device_type, "zone_id": zone["id"], "ip_address": ip_address,
+            "target_id": target_id, "provenance": "DECLARED", "source": "CrashTest topology fixture"}
+    found = next((device for device in existing_devices if device["name"] == name), None)
+    if found:
+        return op.call("PUT", f"/api/map/devices/{found['id']}", json=body)
+    created = op.call("POST", "/api/map/devices", json=body)
+    existing_devices.append(created)
+    return created
+
+
+edge_firewall = map_device("edge-firewall", "firewall", public_dmz, "192.0.2.1")
+dmz_router = map_device("dmz-router", "router", public_dmz, "192.0.2.2")
+reverse_proxy = map_device("application-proxy", "reverse_proxy", app_dmz, "192.0.2.65", targets_by_port["8443"])
+core_switch = map_device("production-switch", "switch", internal_lan, "198.51.100.1")
+app_server = map_device("application-server", "server", internal_lan, "198.51.100.20", targets_by_port["8444"])
+admin_gateway = map_device("admin-gateway", "gateway", admin_net, "203.0.113.1")
+
+existing_links = op.call("GET", "/api/map/links")
+for source, target in ((edge_firewall, dmz_router), (dmz_router, reverse_proxy), (core_switch, app_server)):
+    if not any(link["source_device_id"] == source["id"] and link["target_device_id"] == target["id"] for link in existing_links):
+        existing_links.append(op.call("POST", "/api/map/links", json={
+            "source_device_id": source["id"], "target_device_id": target["id"], "link_type": "network",
+            "provenance": "DECLARED", "source": "CrashTest topology fixture",
+        }))
+
 if not user.call("GET", "/api/schedules"):
     user.call("POST", "/api/schedules", json={"definition_id": d_https["id"], "kind": "daily", "params": {"time": "03:00"}, "timezone": "Europe/Paris"})
 admin.call("PUT", "/api/admin/settings/notifications", json={"value": {"connector": "smtp", "smtp": {"host": "smtp-sink", "port": 1025, "starttls": False, "from": "tls-scan@crashtest.example.com"}}})
-print("CrashTest seeded: users operator/user/user2/auditor@crashtest.example.com (demo password in seed.py); admin password:", ADMIN_FINAL)
+print("CrashTest users, TLS lab targets and Network Exposure Map fixtures are ready.")

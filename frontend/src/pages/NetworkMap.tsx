@@ -10,6 +10,7 @@ import { Button } from "../components/ui/button";
 import { Dialog } from "../components/ui/dialog";
 import { Field, Input, Select, Textarea } from "../components/ui/input";
 import { useI18n } from "../i18n";
+import { mapCardAttributes, positionMapNodes } from "../lib/networkMapGraph";
 import "../styles/network-map.css";
 
 type SearchItem = { kind: "host" | "si" | "zone" | "device"; id: string; name: string; value?: string; parent_zone_id?: string | null; zone_id?: string | null; si_ids?: string[]; zone_ids?: string[] };
@@ -20,10 +21,11 @@ const deviceTypes = ["router", "firewall", "gateway", "switch", "load_balancer",
 
 function nodeColor(node: MapNode): string {
   const severity = node.exposure?.severity;
-  if (severity?.critical) return "#ee6b79";
-  if (severity?.high) return "#f0b862";
-  if (node.kind === "host") return "#42cdea";
-  if (node.kind === "device") return node.provenance === "OBSERVED" ? "#53bfa2" : "#7897b4";
+  if (severity?.critical) return "#dc6b76";
+  if (severity?.high) return "#dfa95a";
+  if (node.kind === "host" && !node.exposure) return "#78889a";
+  if (node.kind === "device") return node.provenance === "OBSERVED" ? "#56a98f" : node.provenance === "INFERRED" ? "#dfa95a" : "#6d9eba";
+  if (node.exposure && "scanned_targets" in node.exposure && node.exposure.scanned_targets > 0) return "#56a98f";
   if (node.kind === "zone") return "#688eaa";
   return "#7899ca";
 }
@@ -35,11 +37,15 @@ export default function NetworkMap() {
   const graph = useRef<Graph | null>(null);
   const lastFitScope = useRef("");
   const selectNode = useRef<(node: MapNode) => void>(() => undefined);
+  const selectCombo = useRef<(comboId: string) => void>(() => undefined);
+  const targetLoad = useRef<Promise<Target[]> | null>(null);
   const [summary, setSummary] = useState<MapSummary>();
   const [graphData, setGraphData] = useState<MapGraph>();
   const [zones, setZones] = useState<MapZone[]>([]);
   const [devices, setDevices] = useState<MapDevice[]>([]);
   const [targets, setTargets] = useState<Target[]>([]);
+  const [targetsLoaded, setTargetsLoaded] = useState(false);
+  const [targetsLoading, setTargetsLoading] = useState(false);
   const [systems, setSystems] = useState<SI[]>([]);
   const [siId, setSiId] = useState("");
   const [zoneId, setZoneId] = useState("");
@@ -60,17 +66,18 @@ export default function NetworkMap() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [revision, setRevision] = useState(0);
+  const [viewportWidth, setViewportWidth] = useState(0);
   const canEdit = atLeast("OPERATOR");
 
   const reload = useCallback(async () => {
     setLoading(true);
     setError(undefined);
     try {
-      const [nextSummary, nextZones, nextDevices, nextTargets, nextSystems] = await Promise.all([
+      const [nextSummary, nextZones, nextDevices, nextSystems] = await Promise.all([
         api<MapSummary>("/map/summary"), api<MapZone[]>("/map/zones"), api<MapDevice[]>("/map/devices"),
-        api<Target[]>("/targets"), api<SI[]>("/information-systems"),
+        api<SI[]>("/information-systems"),
       ]);
-      setSummary(nextSummary); setZones(nextZones); setDevices(nextDevices); setTargets(nextTargets); setSystems(nextSystems);
+      setSummary(nextSummary); setZones(nextZones); setDevices(nextDevices); setSystems(nextSystems);
     } catch (cause) { setError(cause); }
     finally { setLoading(false); }
   }, []);
@@ -113,6 +120,11 @@ export default function NetworkMap() {
     } else setHost(undefined);
   }, []);
   selectNode.current = chooseNode;
+  selectCombo.current = (comboId) => {
+    if (!comboId.startsWith("zone-group:")) return;
+    const zoneRecord = zones.find((item) => item.id === comboId.slice("zone-group:".length));
+    if (zoneRecord) chooseNode({ id: `zone:${zoneRecord.id}`, kind: "zone", zone_id: zoneRecord.id, name: zoneRecord.name });
+  };
 
   useEffect(() => {
     if (!stage.current) return;
@@ -121,27 +133,19 @@ export default function NetworkMap() {
       container: element,
       autoFit: "view",
       zoomRange: [0.4, 2.5],
-      layout: { type: "grid", cols: 4 },
       behaviors: ["drag-canvas", "zoom-canvas"],
       node: {
-        type: "circle",
+        type: "network-exposure-card",
         style: {
-          size: (datum) => datum.data?.kind === "si" ? 100 : datum.data?.kind === "zone" ? 78 : datum.data?.kind === "host" ? 48 : 54,
-          fill: (datum) => nodeColor((datum.data?.mapNode ?? {}) as MapNode),
-          fillOpacity: (datum) => datum.data?.kind === "si" ? 0.16 : datum.data?.kind === "zone" ? 0.11 : 0.22,
-          stroke: (datum) => nodeColor((datum.data?.mapNode ?? {}) as MapNode),
-          strokeOpacity: 0.7,
+          size: [232, 116],
+          fill: getComputedStyle(document.documentElement).getPropertyValue("--surface").trim() || "#14171f",
+          stroke: getComputedStyle(document.documentElement).getPropertyValue("--border-strong").trim() || "#294159",
           lineWidth: 1,
-          labelText: (datum) => (datum.data?.label as string | undefined) ?? datum.id,
-          labelPlacement: "bottom",
-          labelFill: getComputedStyle(document.documentElement).getPropertyValue("--text-primary").trim() || "#e9ebf1",
-          labelFontSize: 13,
-          labelFontWeight: 500,
-          labelOffsetY: 12,
+          radius: 10,
         },
-        state: { selected: { lineWidth: 2.5, strokeOpacity: 1, shadowColor: "#42cdea", shadowBlur: 14 } },
+        state: { selected: { lineWidth: 2, stroke: "#42b8cd" }, inactive: { opacity: 0.4 } },
       },
-      edge: { style: { stroke: "#63809b", strokeOpacity: 0.34, lineWidth: 1, endArrow: false } },
+      edge: { style: { stroke: "#7891a8", strokeOpacity: 0.56, lineWidth: 1.2, endArrow: false } },
       combo: { type: "rect", style: { fill: "#14263a", fillOpacity: 0.42, stroke: "#294159", lineWidth: 1, radius: 18, padding: 28 } },
     });
     instance.on(NodeEvent.CLICK, (event) => {
@@ -150,9 +154,16 @@ export default function NetworkMap() {
       const record = nodeById.get(elementId) ?? (node?.data?.mapNode as MapNode | undefined);
       if (record) selectNode.current(record);
     });
+    instance.on("combo:click", (event) => {
+      const comboId = (event as { target: { id: string } }).target.id;
+      selectCombo.current(comboId);
+    });
     graph.current = instance;
     const resize = new ResizeObserver(([entry]) => {
-      if (entry && entry.contentRect.width > 0 && entry.contentRect.height > 0) instance.resize(entry.contentRect.width, entry.contentRect.height);
+      if (entry && entry.contentRect.width > 0 && entry.contentRect.height > 0) {
+        instance.resize(entry.contentRect.width, entry.contentRect.height);
+        setViewportWidth(Math.round(entry.contentRect.width));
+      }
     });
     resize.observe(element);
     return () => { resize.disconnect(); instance.destroy(); graph.current = null; };
@@ -161,36 +172,56 @@ export default function NetworkMap() {
   }, []);
 
   useEffect(() => {
+    const observer = new MutationObserver(() => { void graph.current?.render(); });
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-appearance", "data-theme"] });
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
     const instance = graph.current;
     if (!instance || !graphData) return;
-    const nodes = visibleNodes.map((item) => ({
-      id: item.id,
-      type: item.kind === "device" ? "rect" : "circle",
-      data: { label: item.kind === "host" && item.value ? item.value : item.name, kind: item.kind, mapNode: item },
-      style: { size: item.kind === "si" ? Math.min(150, 92 + Math.log2((item.exposure && "targets" in item.exposure ? item.exposure.targets : 0) + 1) * 10) : item.kind === "zone" ? 92 : item.kind === "host" ? 46 : item.kind === "unassigned" ? 82 : 58,
-        fill: nodeColor(item), fillOpacity: item.kind === "si" ? 0.13 : item.kind === "zone" ? 0.09 : 0.2,
-        stroke: nodeColor(item), lineWidth: 1, labelText: item.kind === "host" && item.value ? item.value : item.name,
-        labelMaxWidth: 180, labelWordWrap: true, labelFontSize: 12 },
+    const positions = new Map(positionMapNodes(visibleNodes, graphData, viewportWidth || stage.current?.clientWidth || 1200).map((item) => [item.id, item]));
+    const zoneGroups = graphData.scope.si && mode === "network" ? zones.filter((zoneItem) =>
+      visibleNodes.some((node) => node.kind === "zone" && node.zone_id === zoneItem.id) &&
+      visibleNodes.some((node) => node.kind === "device" && node.zone_id === zoneItem.id)) : [];
+    const combos = zoneGroups.map((zoneItem) => ({
+      id: `zone-group:${zoneItem.id}`,
+      style: { fill: "#14263a", fillOpacity: 0.22, stroke: "#36516a", lineWidth: 1, radius: 14, padding: 22 },
     }));
     const ids = new Set(visibleNodes.map((node) => node.id.replace("device:", "")));
     const edges = (graphData.links ?? []).filter((link) => ids.has(link.source_device_id) && ids.has(link.target_device_id)).map((link) => ({
       id: `link:${link.id}`, source: `device:${link.source_device_id}`, target: `device:${link.target_device_id}`,
-      data: { provenance: link.provenance }, style: { stroke: link.provenance === "OBSERVED" ? "#53bfa2" : link.provenance === "INFERRED" ? "#f0b862" : "#7897b4",
-        lineDash: link.provenance === "INFERRED" ? [5, 5] : undefined, lineWidth: 1, strokeOpacity: 0.48 },
+      data: { provenance: link.provenance }, style: { stroke: link.provenance === "OBSERVED" ? "#56a98f" : link.provenance === "INFERRED" ? "#dfa95a" : "#7897b4",
+        lineDash: link.provenance === "OBSERVED" ? undefined : link.provenance === "DECLARED" ? [7, 4] : [2, 4],
+        lineWidth: 1.2, strokeOpacity: 0.62 },
     }));
     const hasZoneScope = Boolean(graphData.scope.zone);
     const scopeZoneId = graphData.scope.zone?.id ?? "current";
     const scopeZoneName = graphData.scope.zone?.name ?? t("map.zone");
     const scopeKey = graphData.scope.zone?.id ?? graphData.scope.group?.id ?? graphData.scope.si?.id ?? "global";
-    const shouldFit = lastFitScope.current !== `${scopeKey}:${mode}`;
-    if (shouldFit) lastFitScope.current = `${scopeKey}:${mode}`;
-    const combos = hasZoneScope ? [{ id: `zone-scope:${scopeZoneId}`, data: { label: scopeZoneName }, style: { labelText: scopeZoneName, labelPlacement: "top" as const, labelFontSize: 15 } }] : [];
-    const scopedNodes = hasZoneScope ? nodes.map((node) => ({ ...node, combo: combos[0].id })) : nodes;
-    instance.setData({ nodes: scopedNodes, edges, combos });
+    const layoutKey = `${scopeKey}:${mode}:${Math.floor((viewportWidth || 1200) / 320)}`;
+    const shouldFit = lastFitScope.current !== layoutKey;
+    if (shouldFit) lastFitScope.current = layoutKey;
+    const scopeCombo = hasZoneScope ? [{ id: `zone-scope:${scopeZoneId}`, data: { label: scopeZoneName }, style: { labelText: scopeZoneName, labelPlacement: "top" as const, labelFontSize: 15 } }] : [];
+    const nodes = visibleNodes.map((item) => {
+      const position = positions.get(item.id);
+      const card = item.kind === "host" ? {
+        type: "circle",
+        style: {
+          size: 42, fill: nodeColor(item), fillOpacity: 0.72, stroke: nodeColor(item), lineWidth: 1.5,
+          labelText: item.value || item.name, labelPlacement: "bottom", labelFill: getComputedStyle(document.documentElement).getPropertyValue("--text-primary").trim() || "#e9ebf1",
+          labelFontSize: 10, labelMaxWidth: 148, labelWordWrap: true,
+        },
+      } : mapCardAttributes(item, t);
+      return { id: item.id, type: card.type, combo: hasZoneScope ? `zone-scope:${scopeZoneId}` : position?.combo,
+        data: { label: item.kind === "host" && item.value ? item.value : item.name, kind: item.kind, mapNode: item },
+        style: { ...card.style, x: position?.x ?? 0, y: position?.y ?? 0 } };
+    });
+    instance.setData({ nodes, edges, combos: [...scopeCombo, ...combos] });
     void instance.render().then(() => {
       if (shouldFit) return instance.fitView({ when: "always", direction: "both" }, reducedMotion() ? false : { duration: 260 });
     });
-  }, [visibleNodes, graphData, t, mode]);
+  }, [visibleNodes, graphData, t, mode, zones, viewportWidth]);
 
   useEffect(() => {
     function escape(event: KeyboardEvent) {
@@ -201,6 +232,21 @@ export default function NetworkMap() {
   }, []);
 
   async function refreshMap() { await reload(); setRevision((value) => value + 1); }
+  async function ensureTargets() {
+    if (targetsLoaded) return;
+    setTargetsLoading(true);
+    const request = targetLoad.current ?? (targetLoad.current = api<Target[]>("/targets"));
+    try {
+      const loaded = await request;
+      setTargets(loaded);
+      setTargetsLoaded(true);
+    } catch (cause) {
+      setError(cause);
+    } finally {
+      if (targetLoad.current === request) targetLoad.current = null;
+      setTargetsLoading(false);
+    }
+  }
   async function loadMore() {
     if (!graphData?.next_offset || loadingMore) return;
     setLoadingMore(true);
@@ -244,6 +290,7 @@ export default function NetworkMap() {
     }
   }
   function editZone(item?: MapZone) {
+    void ensureTargets();
     setZoneForm(item ? { id: item.id, name: item.name, description: item.description, zone_type: item.zone_type,
       parent_zone_id: item.parent_zone_id ?? "", cidr: item.cidr ?? "", si_ids: item.si_ids, target_ids: item.target_ids } :
       { ...emptyZone, parent_zone_id: zoneId, si_ids: siId ? [siId] : [] });
@@ -275,7 +322,7 @@ export default function NetworkMap() {
       setDeviceOpen(false); setDeviceEditing(undefined); await refreshMap();
     } catch (cause) { setError(cause); }
   }
-  function openDevice(item?: MapDevice) { setDeviceEditing(item); setDeviceOpen(true); }
+  function openDevice(item?: MapDevice) { void ensureTargets(); setDeviceEditing(item); setDeviceOpen(true); }
   async function createLink(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault(); const data = new FormData(event.currentTarget);
     try {
@@ -334,6 +381,13 @@ export default function NetworkMap() {
         </div>
       </div>
 
+      {summary && <div className="network-map-overview" role="group" aria-label={t("map.overview")}>
+        <div><Layers3 size={15} /><span>{t("map.systems")}</span><strong>{summary.totals.systems}</strong></div>
+        <div><CircleHelp size={15} /><span>{t("map.targets")}</span><strong>{summary.totals.targets}</strong></div>
+        <div><i className="map-dot map-dot--scanned" /><span>{t("map.scanned")}</span><strong>{summary.totals.scanned_targets}</strong></div>
+        <div><i className="map-dot map-dot--neutral" /><span>{t("map.unscanned")}</span><strong>{Math.max(0, summary.totals.targets - summary.totals.scanned_targets)}</strong></div>
+      </div>}
+
       <div className="network-map-workspace">
         <div className="network-map-canvas-wrap">
           {loading && !summary && <div className="network-map-overlay">{t("map.loading")}</div>}
@@ -345,7 +399,16 @@ export default function NetworkMap() {
             <button type="button" aria-label={t("map.zoomOut")} onClick={() => void graph.current?.zoomBy(0.84, reducedMotion() ? false : { duration: 180 })}><Minus size={16} /></button>
             <button type="button" aria-label={t("map.center")} onClick={() => void graph.current?.fitView({ when: "always" }, reducedMotion() ? false : { duration: 220 })}><Crosshair size={16} /></button>
           </div>
-          <div className="network-map-legend"><span><i className="map-dot map-dot--critical" />{t("map.critical")}</span><span><i className="map-dot map-dot--high" />{t("map.high")}</span><span><i className="map-dot map-dot--neutral" />{t("map.unscanned")}</span></div>
+          <div className="network-map-legend" aria-label={t("map.linksLegend")}>
+            <span><i className="map-dot map-dot--critical" />{t("map.critical")}</span>
+            <span><i className="map-dot map-dot--high" />{t("map.high")}</span>
+            <span><i className="map-dot map-dot--scanned" />{t("map.scanned")}</span>
+            <span><i className="map-dot map-dot--neutral" />{t("map.unscanned")}</span>
+            <span className="map-legend-divider" />
+            <span><i className="map-link-sample map-link-sample--observed" />{t("map.provenance.OBSERVED")}</span>
+            <span><i className="map-link-sample map-link-sample--declared" />{t("map.provenance.DECLARED")}</span>
+            <span><i className="map-link-sample map-link-sample--inferred" />{t("map.provenance.INFERRED")}</span>
+          </div>
         </div>
 
         {host && selected && <aside className="network-map-detail" aria-label={t("map.host")}>
@@ -395,7 +458,7 @@ export default function NetworkMap() {
         <Field label={t("map.zone.cidr")}><Input value={zoneForm.cidr} onChange={(event) => setZoneForm({ ...zoneForm, cidr: event.target.value })} placeholder="192.0.2.0/24" /></Field>
         <Field label={t("map.zone.description")}><Textarea rows={2} value={zoneForm.description} onChange={(event) => setZoneForm({ ...zoneForm, description: event.target.value })} /></Field>
         <Field label={t("map.zone.systems")}><select multiple value={zoneForm.si_ids} onChange={(event) => setZoneForm({ ...zoneForm, si_ids: Array.from(event.target.selectedOptions, (option) => option.value) })} className="network-map-multiselect">{systems.map((item) => <option key={item.id} value={item.id}>{item.parent_id ? "↳ " : ""}{item.name}</option>)}</select></Field>
-        <Field label={t("map.zone.targets")}><select multiple value={zoneForm.target_ids} onChange={(event) => setZoneForm({ ...zoneForm, target_ids: Array.from(event.target.selectedOptions, (option) => option.value) })} className="network-map-multiselect">{targets.map((item) => <option key={item.id} value={item.id}>{targetLabel(item)}</option>)}</select></Field>
+        <Field label={t("map.zone.targets")}><select multiple value={zoneForm.target_ids} onChange={(event) => setZoneForm({ ...zoneForm, target_ids: Array.from(event.target.selectedOptions, (option) => option.value) })} className="network-map-multiselect">{targets.map((item) => <option key={item.id} value={item.id}>{targetLabel(item)}</option>)}</select>{targetsLoading && <small className="network-map-form-note">{t("map.loadingTargets")}</small>}</Field>
         <div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={() => setZoneForm(null)}>{t("action.cancel")}</Button><Button type="submit">{t("map.zone.save")}</Button></div>
       </form>
     </Dialog>}
@@ -405,7 +468,7 @@ export default function NetworkMap() {
         <Field label={t("map.device.type")}><Select name="device_type" defaultValue={deviceEditing?.device_type ?? "generic"}>{deviceTypes.map((value) => <option key={value} value={value}>{t(`map.deviceType.${value}` as never)}</option>)}</Select></Field>
         <Field label={t("map.device.ip")}><Input name="ip_address" placeholder="192.0.2.10" defaultValue={deviceEditing?.ip_address ?? ""} /></Field>
         <Field label={t("map.device.zone")}><Select name="zone_id" defaultValue={deviceEditing?.zone_id ?? zoneId}>{zones.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select></Field>
-        <Field label={t("map.device.target")}><Select name="target_id" defaultValue={deviceEditing?.target_id ?? ""}><option value="">—</option>{targets.map((item) => <option key={item.id} value={item.id}>{targetLabel(item)}</option>)}</Select></Field>
+        <Field label={t("map.device.target")}><Select name="target_id" defaultValue={deviceEditing?.target_id ?? ""}><option value="">—</option>{targets.map((item) => <option key={item.id} value={item.id}>{targetLabel(item)}</option>)}</Select>{targetsLoading && <small className="network-map-form-note">{t("map.loadingTargets")}</small>}</Field>
         <Field label={t("map.device.provenance")}><Select name="provenance" defaultValue={deviceEditing?.provenance ?? "DECLARED"}><option value="DECLARED">{t("map.provenance.DECLARED")}</option><option value="OBSERVED">{t("map.provenance.OBSERVED")}</option><option value="INFERRED">{t("map.provenance.INFERRED")}</option></Select></Field>
         <Field label={t("map.device.source")}><Input name="source" maxLength={255} defaultValue={deviceEditing?.source ?? "TLS Scan administrator"} /></Field>
         <Field label={t("map.link.observedAt")}><Input name="observed_at" type="datetime-local" defaultValue={deviceEditing?.observed_at?.slice(0, 16) ?? ""} /></Field>

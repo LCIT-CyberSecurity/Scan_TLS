@@ -10,6 +10,13 @@ const graphState = vi.hoisted(() => ({
 
 vi.mock("@antv/g6", () => ({
   NodeEvent: { CLICK: "node:click" },
+  ExtensionCategory: { NODE: "node" },
+  register: vi.fn(),
+  Rect: class {
+    render() {}
+    getSize(attributes: { size?: [number, number] }) { return attributes.size ?? [232, 116]; }
+    upsert() {}
+  },
   Graph: class {
     on(_event: string, handler: (event: { target: { id: string } }) => void) { graphState.click = handler; return this; }
     setData(data: typeof graphState.data) { graphState.data = data; }
@@ -81,5 +88,15 @@ describe("Network Exposure Map", () => {
     fireEvent.click(await screen.findByRole("button", { name: /web.example.test/ }));
     expect(await screen.findByText("No TLS scan result is associated with this target.")).toBeInTheDocument();
     expect(calls.some((item) => item.path === "/map/hosts/host-1")).toBe(true);
+  });
+
+  it("does not load the full target inventory until an edit form is opened", async () => {
+    render(<I18nProvider initial="en"><NetworkMap /></I18nProvider>);
+    await screen.findByText("Network exposure map");
+    await waitFor(() => expect(calls.some((item) => item.path === "/map/summary")).toBe(true));
+    expect(calls.some((item) => item.path === "/targets")).toBe(false);
+    fireEvent.change(screen.getByLabelText("Information systems"), { target: { value: "si-1" } });
+    fireEvent.click(await screen.findByRole("button", { name: "New zone" }));
+    await waitFor(() => expect(calls.some((item) => item.path === "/targets")).toBe(true));
   });
 });

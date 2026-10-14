@@ -9,6 +9,8 @@ The map is available in **Scanning → Exposure map** for `USER` roles and above
 - Hosts without an associated scan are shown neutrally. A scan result is associated only with its exact scanned FQDN/IP or an address in a CIDR that was explicitly scanned. A DNS alias, shared IP, or CIDR alone does not create an observed connection.
 - Open a host to see the latest completed or partial run with matching persisted endpoints, certificates, findings, freshness and a link to the full scan. Older scans are not presented as current state.
 - Search accepts system, zone, host, IP, CIDR, device and target-tag text. The SI selector and exposure filter limit the visible scope. Pan, wheel zoom, zoom buttons and center controls operate on the same map.
+- Exposure cards show target, scanned and unscanned counts; finding severities are shown only when persisted scan results exist. An unscanned system is neutral, not green. At SI scope, network-architecture mode groups devices only with the zone explicitly assigned to them; connection line styles distinguish observed, declared and inferred links.
+- The target inventory is fetched only when an operator opens a zone/device editor, rather than on every map visit. This keeps read-only map navigation light on installations with large inventories.
 
 ## Add network context
 
@@ -34,3 +36,7 @@ Authenticated session routes (CSRF required for writes):
 Reads require `USER` or higher; topology changes require `OPERATOR` or `ADMIN`. Existing authenticated roles and sessions are used unchanged.
 
 The graph endpoint loads a level at a time. Host results are paged (500 by default, at most 2,000 per request); the response indicates truncation and supports loading the next page. TLS results are read from existing `scan_runs`, `run_endpoints` and `run_findings` data and matched to the target's requested ports. No alternate score or scan-result store is introduced.
+
+## Visual regression checks
+
+The CrashTest seed adds an isolated, idempotent example topology using documentation-only IP ranges. It is test data only and is never inserted into a normal installation. The Playwright Network Map journey runs a real lab TLS scan, then writes global, SI/zone and host-exposure screenshots at 1920×1080, 1440×900 and 1366×768 under `artifacts/network-map/`; Chromium and Google Chrome both exercise the map rendering. Run these browser checks only in the designated Docker integration environment, not against production data.
