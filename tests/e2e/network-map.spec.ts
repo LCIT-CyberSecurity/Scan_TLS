@@ -11,6 +11,13 @@ async function saveScreenshot(page: Page, project: string, view: string, width: 
   await page.screenshot({ path: join(artifacts, `${project}-${view}-${width}x${height}.png`) });
 }
 
+async function waitForApplication(page: Page) {
+  await expect.poll(async () => {
+    const response = await page.request.get("/api/health/ready").catch(() => undefined);
+    return response?.status() === 200;
+  }, { timeout: 30_000 }).toBe(true);
+}
+
 async function searchAndSelect(page: Page, term: string, result: RegExp) {
   const search = page.getByPlaceholder("Search systems, zones, hosts or IPs");
   await search.fill(term);
@@ -38,6 +45,7 @@ async function captureMapAtSize(browser: Browser, project: string, size: { width
   });
   try {
     const page = await context.newPage();
+    await waitForApplication(page);
     await login(page, "admin", ADMIN);
     await selectDarkAppearance(page);
     await page.goto("/scans/map");
@@ -66,6 +74,7 @@ async function captureMapAtSize(browser: Browser, project: string, size: { width
 
 test("Chromium: real TLS scan, progressive map navigation and responsive captures", async ({ page, browser }, testInfo) => {
   test.skip(testInfo.project.name !== "Chromium", "The scan is launched once; Chrome performs a separate rendering smoke check.");
+  await waitForApplication(page);
   await login(page, "admin", ADMIN);
   await page.goto("/scans");
   await page.getByRole("tab", { name: "Definitions" }).click();
