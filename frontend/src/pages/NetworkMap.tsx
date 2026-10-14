@@ -82,11 +82,12 @@ export default function NetworkMap() {
   }, [siId, zoneId, groupId, focusTargetId, expandUnassigned, mode, revision]);
 
   const visibleNodes = useMemo(() => (graphData?.nodes ?? []).filter((node) => {
+    if (mode === "network" && siId && node.kind === "si") return false;
     if (exposureFilter === "critical") return Boolean(node.exposure?.severity?.critical);
     if (exposureFilter === "high") return Boolean(node.exposure?.severity?.critical || node.exposure?.severity?.high);
     if (exposureFilter === "unscanned") return node.exposure && "unscanned_targets" in node.exposure ? node.exposure.unscanned_targets > 0 : node.kind === "host" && !node.exposure;
     return true;
-  }), [graphData, exposureFilter]);
+  }), [graphData, exposureFilter, mode, siId]);
   const nodeById = useMemo(() => new Map(visibleNodes.map((node) => [node.id, node])), [visibleNodes]);
   const si = systems.find((item) => item.id === siId);
   const zone = zones.find((item) => item.id === zoneId);
