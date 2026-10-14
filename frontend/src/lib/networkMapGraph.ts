@@ -116,7 +116,7 @@ function exposureMetrics(node: MapNode, t: Translate) {
     const count = node.count ?? 0;
     return {
       subtitle: node.kind === "device" ? node.ip_address || t("map.device") : `${count} ${t("map.targets")}`,
-      metrics: node.kind === "device" ? t(`map.provenance.${node.provenance || "DECLARED"}`) : t("map.notScannedState"),
+      metrics: node.kind === "device" ? t(`map.provenance.${node.provenance || "DECLARED"}` as keyof Messages) : t("map.notScannedState"),
       severity: "",
       ratio: 0,
     };
@@ -163,7 +163,7 @@ export function mapCardAttributes(node: MapNode, t: Translate) {
   const severityColor = severity.critical ? "#dc6b76" : severity.high ? "#dfa95a" : cardAccent(node);
   const title = node.name;
   return {
-    type: "network-exposure-card",
+    type: "network-exposure-card" as const,
     style: {
       size: [node.kind === "device" ? DEVICE_WIDTH : CARD_WIDTH, node.kind === "device" ? DEVICE_HEIGHT : CARD_HEIGHT] as [number, number],
       radius: 10,

@@ -209,7 +209,7 @@ export default function NetworkMap() {
         type: "circle" as const,
         style: {
           size: 42, fill: nodeColor(item), fillOpacity: 0.72, stroke: nodeColor(item), lineWidth: 1.5,
-          labelText: item.value || item.name, labelPlacement: "bottom", labelFill: getComputedStyle(document.documentElement).getPropertyValue("--text-primary").trim() || "#e9ebf1",
+          labelText: item.value || item.name, labelPlacement: "bottom" as const, labelFill: getComputedStyle(document.documentElement).getPropertyValue("--text-primary").trim() || "#e9ebf1",
           labelFontSize: 10, labelMaxWidth: 148, labelWordWrap: true,
         },
       } : mapCardAttributes(item, t);
