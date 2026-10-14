@@ -1,0 +1,11 @@
+dn: ou=people,dc=crashtest,dc=example,dc=com
+objectClass: organizationalUnit
+ou: people
+
+dn: uid=ldap-user,ou=people,dc=crashtest,dc=example,dc=com
+objectClass: inetOrgPerson
+uid: ldap-user
+cn: LDAP CrashTest User
+sn: User
+mail: ldap-user@crashtest.example.com
+userPassword: CrashTest-LDAP-2026!

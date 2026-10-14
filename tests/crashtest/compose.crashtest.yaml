@@ -16,6 +16,7 @@ x-app: &app
     TLS_SCAN_OIDC_ISSUER: http://mock-oidc:8080
     TLS_SCAN_OIDC_CLIENT_ID: tls-scan-crashtest
     TLS_SCAN_OIDC_CLIENT_SECRET: crashtest-only
+    TLS_SCAN_LDAP_BIND_PASSWORD: ldap-crashtest-only
     TLS_SCAN_STORAGE_ROOT: /var/lib/tls-scan
     TLS_SCAN_MAX_CONCURRENT_SCANS: "2"
   volumes: [data:/var/lib/tls-scan]
@@ -35,6 +36,29 @@ services:
       MOCK_OIDC_ISSUER: http://mock-oidc:8080
       MOCK_OIDC_PUBLIC_BASE_URL: http://${CRASHTEST_HOST:-localhost}:${CRASHTEST_OIDC_PORT:-5110}
     ports: ["${CRASHTEST_OIDC_PORT:-5110}:8080"]
+  openldap:
+    image: osixia/openldap:1.5.0
+    command: ["--copy-service"]
+    environment:
+      LDAP_ORGANISATION: TLS Scan CrashTest
+      LDAP_DOMAIN: crashtest.example.com
+      LDAP_ADMIN_PASSWORD: ldap-crashtest-only
+      LDAP_TLS_VERIFY_CLIENT: never
+      LDAP_TLS_CRT_FILENAME: ldap.crt
+      LDAP_TLS_KEY_FILENAME: ldap.key
+      LDAP_TLS_CA_CRT_FILENAME: ca.crt
+      LDAP_TLS_DH_PARAM_FILENAME: dhparam.pem
+    volumes:
+      - ./ldap-certs/ldap.crt:/container/service/slapd/assets/certs/ldap.crt:ro
+      - ./ldap-certs/ldap.key:/container/service/slapd/assets/certs/ldap.key:ro
+      - ./ldap-certs/ca.crt:/container/service/slapd/assets/certs/ca.crt:ro
+      - ./ldap-certs/dhparam.pem:/container/service/slapd/assets/certs/dhparam.pem:ro
+      - ./ldap/bootstrap.ldif:/container/service/slapd/assets/config/bootstrap/ldif/custom/50-crashtest.ldif:ro
+    healthcheck:
+      test: ["CMD", "ldapsearch", "-x", "-H", "ldap://localhost", "-b", "", "-s", "base"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
   smtp-sink:
     build: {context: ../.., dockerfile: tests/lab/smtp_sink/Dockerfile}
     ports: ["${CRASHTEST_MAIL_PORT:-5125}:8025"]

@@ -11,6 +11,7 @@ ops/dev/.env
 frontend/node_modules/
 frontend/dist/
 tests/crashtest/certs/
+tests/crashtest/ldap-certs/
 tests/e2e/results/
 tests/e2e/node_modules/
 .regression-base/

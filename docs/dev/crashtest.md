@@ -4,7 +4,7 @@ A disposable full stack with fictional data for demos and E2E tests. **Demo pass
 refuses to run unless `TLS_SCAN_CRASHTEST=true`; the login page shows a warning banner.
 
 ```bash
-tests/crashtest/start.sh <vm-host>      # builds, starts (ports 5100 UI, 5110 SSO mock, 5125 mailbox), seeds
+tests/crashtest/start.sh <vm-host>      # builds, starts (ports 5100 UI, 5110 SSO mock, 5125 mailbox, 5130 TLS lab), seeds
 tests/crashtest/reset.sh                # destroys only the tlsscan-crashtest project and its volumes
 ```
 
@@ -12,6 +12,21 @@ Accounts: `admin` / `CrashTest-Admin-2026!`; `operator@`, `user@`, `user2@`, `au
 `CrashTest-Demo-2026!`; SSO mock: any e-mail via `login_hint` (default `alice@sso.example.com`).
 Seed: SI Production (Web, Messaging) / Internal (Infrastructure) / Hosting, tags, five lab targets, two policies,
 two profiles, two definitions, a daily schedule, SMTP → mailbox sink.
+
+The CrashTest also starts a private OpenLDAP lab on the internal Compose network; it is not exposed on a host port.
+To try LDAP sign-in, open Administration → Authentication and select LDAP:
+
+- Server URL: `ldaps://openldap:636`
+- Base DN: `ou=people,dc=crashtest,dc=example,dc=com`
+- Login attribute: `uid`; filter: `(objectClass=inetOrgPerson)`
+- Bind DN: `cn=admin,dc=crashtest,dc=example,dc=com`
+- The bind password is preconfigured in the CrashTest container; the page should report it as set.
+- Paste the CA from `tests/crashtest/ldap-certs/ca.crt` into the custom CA field.
+- Keep auto-provisioning enabled and the default role at `USER` for this fixture.
+
+Then sign in as `ldap-user` with `CrashTest-LDAP-2026!`. The LDAP provider replaces the mock OIDC provider while
+active; local sign-in remains available as the recovery path. Select the generic provider again to restore the OIDC
+mock. The LDAP CA, service password and user credentials are synthetic, disposable CrashTest material only.
 
 Lab scenarios (`tests/lab`): 443 TLS 1.2/1.3 self-signed · 8443 TLS 1.2 CBC/SHA-1 suites · 8444 expired certificate ·
 8445 certificate expiring in 10 days · 8500-8505 private PKI (ACME root/issuing CA: full chain, incomplete chain, wrong SAN, expired, revoked via CRL; Globex: another customer) reachable as `intranet.acme.local`, CA files published on `http://<host>:5130/pki/` · 8446 legacy protocol config · 80 plain HTTP.
