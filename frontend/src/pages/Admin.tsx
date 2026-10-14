@@ -3,6 +3,7 @@ import { api } from "../api/client";
 import type { AccessService, Role, User } from "../api/types";
 import { Empty, ErrorNote, Note, PageHeader, useLoad } from "../components/common";
 import { ExternalAccessSwitches, SERVICES } from "../components/ExternalAccess";
+import { AuthSettings } from "../components/AuthSettings";
 import { TrustStoresTab } from "../components/TrustStores";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -18,6 +19,7 @@ const ROLES: Role[] = ["AUDITOR", "USER", "OPERATOR", "ADMIN"];
 
 function Users() {
   const { t, locale } = useI18n();
+  const tr = t as unknown as (k: string) => string;
   const { data, reload, error } = useLoad(() => api<User[]>("/admin/users"));
   const [form, setForm] = useState({ email: "", display_name: "", role: "USER" as Role });
   const [secret, setSecret] = useState<string | null>(null);
@@ -37,7 +39,7 @@ function Users() {
           <tbody>{data.map((u) => (
             <tr key={u.id}><Td className="font-medium">{u.email}<div className="text-xs font-normal text-muted">{u.display_name}</div></Td>
               <Td><Select aria-label={t("admin.role")} className="compact w-36" value={u.role} onChange={(e) => void run(async () => { await api(`/admin/users/${u.id}`, { method: "PUT", body: { role: e.target.value } }); })}>{ROLES.map((r) => <option key={r}>{r}</option>)}</Select></Td>
-              <Td>{u.local_account ? "local" : "SSO"}</Td><Td>{formatDate(u.last_login_at, locale)}</Td>
+              <Td>{tr(`admin.src.${u.source ?? (u.local_account ? "local" : "sso")}`)}</Td><Td>{formatDate(u.last_login_at, locale)}</Td>
               <Td><Badge tone={u.active ? "success" : "neutral"}>{u.active ? t("sched.active") : t("sched.inactive")}</Badge></Td>
               {SERVICES.map((svc) => <Td key={svc}><div className="flex flex-col gap-1">
                 <label className="flex items-center gap-2 text-sm" title={u[`${svc}_access_enabled` as const] ? t("access.allowed") : t("access.notAllowed")}><input type="checkbox" aria-label={`${t(`access.${svc}Short` as never)} ${u.email}`} checked={!!u[`${svc}_access_enabled` as const]} onChange={(e) => void run(async () => { await api(`/admin/users/${u.id}/access`, { method: "PUT", body: { [`${svc}_access_enabled`]: e.target.checked } }); })} /></label>
@@ -165,7 +167,7 @@ function SettingsTab() {
 
 
 interface Person { external_id: string; email: string; display_name: string; provisioned: boolean }
-interface DirCfg { kind: string; ldap: Record<string, string | boolean>; entra: Record<string, string> }
+interface DirCfg { kind: string; ldap: Record<string, string | boolean>; entra: Record<string, string>; google?: Record<string, string> }
 function Directory() {
   const { t } = useI18n();
   const { data, reload } = useLoad(() => api<DirCfg>("/admin/directory"));
@@ -179,13 +181,14 @@ function Directory() {
   if (!c) return null;
   const setL = (k: string, v: string | boolean) => setCfg({ ...c, ldap: { ...c.ldap, [k]: v } });
   const setE = (k: string, v: string) => setCfg({ ...c, entra: { ...c.entra, [k]: v } });
+  const setG = (k: string, v: string) => setCfg({ ...c, google: { ...(c.google ?? {}), [k]: v } });
   const run = async (fn: () => Promise<void>) => { try { await fn(); setErr(undefined); } catch (e) { setErr(e); } };
   return (
     <div className="grid max-w-3xl gap-6">
       <ErrorNote error={err} />
       <Card><CardHeader><CardTitle>{t("admin.directory")}</CardTitle></CardHeader><CardContent className="space-y-4">
         <p className="text-xs text-muted">{t("admin.directoryHint")}</p>
-        <Field label={t("admin.dirKind")}><Select value={c.kind} onChange={(e) => setCfg({ ...c, kind: e.target.value })}><option value="none">{t("admin.connectorNone")}</option><option value="ldap">LDAP / Active Directory</option><option value="entra">Microsoft Entra ID (Graph)</option></Select></Field>
+        <Field label={t("admin.dirKind")}><Select value={c.kind} onChange={(e) => setCfg({ ...c, kind: e.target.value })}><option value="none">{t("admin.connectorNone")}</option><option value="ldap">LDAP / Active Directory</option><option value="entra">Microsoft Entra ID (Graph)</option><option value="google">{t("admin.googleDirectory")}</option></Select></Field>
         {c.kind === "ldap" && (
           <>
             <p className="text-xs text-muted">{t("admin.ldapPasswordHint")}</p>
@@ -194,8 +197,9 @@ function Directory() {
               <Field label={t("admin.ldapBindDn")}><Input value={String(c.ldap.bind_dn ?? "")} onChange={(e) => setL("bind_dn", e.target.value)} /></Field>
               <Field label={t("admin.ldapBase")}><Input value={String(c.ldap.base_dn ?? "")} onChange={(e) => setL("base_dn", e.target.value)} /></Field>
               <Field label={t("admin.ldapFilter")}><Input value={String(c.ldap.user_filter ?? "(objectClass=person)")} onChange={(e) => setL("user_filter", e.target.value)} /></Field>
+              <Field label={t("admin.ldapCA")}><textarea className="input w-full font-mono text-xs" rows={4} value={String(c.ldap.ca_pem ?? "")} onChange={(e) => setL("ca_pem", e.target.value)} placeholder="-----BEGIN CERTIFICATE-----" /></Field>
             </div>
-            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={c.ldap.tls_verify !== false} onChange={(e) => setL("tls_verify", e.target.checked)} />{t("admin.ldapVerify")}</label>
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={!!c.ldap.starttls} onChange={(e) => setL("starttls", e.target.checked)} />{t("admin.ldapStarttls")}</label>
           </>
         )}
         {c.kind === "entra" && (
@@ -204,6 +208,15 @@ function Directory() {
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label={t("admin.graphTenant")}><Input value={c.entra.tenant_id ?? ""} onChange={(e) => setE("tenant_id", e.target.value)} /></Field>
               <Field label={t("admin.graphClient")}><Input value={c.entra.client_id ?? ""} onChange={(e) => setE("client_id", e.target.value)} /></Field>
+            </div>
+          </>
+        )}
+        {c.kind === "google" && (
+          <>
+            <p className="text-xs text-muted">{t("admin.googleKeyHint")}</p>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label={t("admin.googleDomain")}><Input value={c.google?.domain ?? ""} onChange={(e) => setG("domain", e.target.value)} /></Field>
+              <Field label={t("admin.googleAdmin")}><Input value={c.google?.admin_email ?? ""} onChange={(e) => setG("admin_email", e.target.value)} /></Field>
             </div>
           </>
         )}
@@ -258,11 +271,12 @@ export default function Admin() {
     <>
       <PageHeader title={t("nav.admin")} />
       <Tabs defaultValue="users">
-        <TabsList><TabsTrigger value="users">{t("admin.users")}</TabsTrigger><TabsTrigger value="audit">{t("admin.audit")}</TabsTrigger><TabsTrigger value="settings">{t("admin.settings")}</TabsTrigger><TabsTrigger value="trust">{t("admin.trustStores")}</TabsTrigger><TabsTrigger value="directory">{t("admin.directory")}</TabsTrigger><TabsTrigger value="diag">{t("admin.diagnostics")}</TabsTrigger></TabsList>
+        <TabsList><TabsTrigger value="users">{t("admin.users")}</TabsTrigger><TabsTrigger value="audit">{t("admin.audit")}</TabsTrigger><TabsTrigger value="settings">{t("admin.settings")}</TabsTrigger><TabsTrigger value="trust">{t("admin.trustStores")}</TabsTrigger><TabsTrigger value="auth">{t("admin.authentication")}</TabsTrigger><TabsTrigger value="directory">{t("admin.directory")}</TabsTrigger><TabsTrigger value="diag">{t("admin.diagnostics")}</TabsTrigger></TabsList>
         <TabsContent value="users"><Users /></TabsContent>
         <TabsContent value="audit"><Audit /></TabsContent>
         <TabsContent value="settings"><SettingsTab /></TabsContent>
         <TabsContent value="trust"><TrustStoresTab /></TabsContent>
+        <TabsContent value="auth"><AuthSettings /></TabsContent>
         <TabsContent value="directory"><Directory /></TabsContent>
         <TabsContent value="diag"><Diagnostics /></TabsContent>
       </Tabs>

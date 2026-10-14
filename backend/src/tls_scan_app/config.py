@@ -48,7 +48,15 @@ class Settings(BaseSettings):
     oidc_issuer: str = ""
     oidc_client_id: str = ""
     oidc_client_secret: str = ""  # noqa: S105
+    oidc_client_secret_file: str = ""
     oidc_default_role: Literal["AUDITOR", "USER", "OPERATOR"] = "USER"
+    # Google Workspace sign-in (OIDC). The secret is only ever read from the environment or a protected file.
+    google_client_secret: str = ""  # noqa: S105
+    google_client_secret_file: str = ""
+    google_issuer: str = ""          # overridable only so tests can point at a mock; empty = accounts.google.com
+    google_directory_key_file: str = ""   # service-account key (JSON) for the read-only Admin SDK directory lookup
+    # Create the account of a first-time SSO / LDAP user on the fly (with the default role)? None = not set in the environment.
+    sso_auto_provision: bool | None = None
     crashtest: bool = False
 
     # Where reports and raw results live (hybrid storage: files here, structure in PostgreSQL).
@@ -72,6 +80,10 @@ class Settings(BaseSettings):
                 setattr(self, name, Path(path).read_text(encoding="utf-8").strip())
         if self.graph_client_secret_file:
             self.graph_client_secret = Path(self.graph_client_secret_file).read_text(encoding="utf-8").strip()
+        if self.oidc_client_secret_file:
+            self.oidc_client_secret = Path(self.oidc_client_secret_file).read_text(encoding="utf-8").strip()
+        if self.google_client_secret_file:
+            self.google_client_secret = Path(self.google_client_secret_file).read_text(encoding="utf-8").strip()
         if self.smtp_password_file:
             self.smtp_password = Path(self.smtp_password_file).read_text(encoding="utf-8").strip()
         if self.local_admin_password_file:

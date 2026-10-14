@@ -1,6 +1,6 @@
 import type { TlsCheckResult } from "../lib/tlsChecks";
 export type Role = "AUDITOR" | "USER" | "OPERATOR" | "ADMIN";
-export interface User { id: string; email: string; display_name: string; role: Role; must_change_password: boolean; locale: string | null; theme: string; palette: string; notify_events: string[] | null; local_account: boolean; active?: boolean; last_login_at?: string; api_access_enabled?: boolean; mcp_access_enabled?: boolean; access_keys?: Record<AccessService, AccessKey> }
+export interface User { id: string; email: string; display_name: string; role: Role; must_change_password: boolean; locale: string | null; theme: string; palette: string; notify_events: string[] | null; local_account: boolean; source?: string; active?: boolean; last_login_at?: string; api_access_enabled?: boolean; mcp_access_enabled?: boolean; access_keys?: Record<AccessService, AccessKey> }
 export type AccessService = "api" | "mcp";
 export interface AccessKey { active: boolean; prefix: string | null; created_at: string | null; expires_at: string | null; last_used_at: string | null }
 export type MyAccess = Record<AccessService, { global_enabled: boolean; allowed: boolean; key: AccessKey }>

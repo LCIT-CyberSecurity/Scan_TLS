@@ -2,8 +2,8 @@ from __future__ import annotations
 # Adapted from LCIT-Sign (GPL-3.0).
 
 import time
-from dataclasses import dataclass
-from urllib.parse import urlencode
+from dataclasses import dataclass, field
+from urllib.parse import urlencode, urlsplit
 
 import httpx
 from authlib.common.security import generate_token
@@ -46,6 +46,7 @@ class IdentityClaims:
     given_name: str
     family_name: str
     name: str
+    extra: dict[str, object] = field(default_factory=dict)   # tid / hd / email_verified: what provider-specific rules check
 
 
 _metadata_cache: dict[str, tuple[float, ProviderMetadata]] = {}
@@ -57,6 +58,13 @@ async def discover_provider(issuer: str) -> ProviderMetadata:
     if cached and cached[0] > time.monotonic():
         return cached[1]
 
+    issuer_parts = urlsplit(issuer)
+    local_http_issuer = issuer_parts.scheme == "http" and issuer_parts.hostname in {
+        "localhost", "127.0.0.1", "::1", "mock-oidc",
+    }
+    if (not issuer_parts.hostname or issuer_parts.username or issuer_parts.password or issuer_parts.query or issuer_parts.fragment
+            or (issuer_parts.scheme != "https" and not local_http_issuer)):
+        raise OidcError("The configured issuer URL is invalid or insecure")
     url = issuer.rstrip("/") + "/.well-known/openid-configuration"
     async with httpx.AsyncClient(timeout=10) as client:
         response = await client.get(url)
@@ -73,12 +81,23 @@ async def discover_provider(issuer: str) -> ProviderMetadata:
     except KeyError as exc:
         raise OidcError("OIDC discovery document is missing a required field") from exc
 
+    # OIDC requires the ID token issuer to match the issuer identifier in the
+    # discovery document. Do not silently let the document replace the issuer
+    # the administrator configured.
+    if metadata.issuer != issuer:
+        raise OidcError("OIDC discovery issuer does not match the configured issuer")
+    for endpoint in (metadata.authorization_endpoint, metadata.token_endpoint, metadata.jwks_uri):
+        endpoint_parts = urlsplit(endpoint)
+        if (not endpoint_parts.hostname or endpoint_parts.username or endpoint_parts.password
+                or endpoint_parts.scheme != ("http" if local_http_issuer else "https")):
+            raise OidcError("OIDC discovery contains an invalid or insecure endpoint")
+
     _metadata_cache[issuer] = (time.monotonic() + _METADATA_TTL_SECONDS, metadata)
     return metadata
 
 
 def build_authorization_request(
-    metadata: ProviderMetadata, *, client_id: str, redirect_uri: str
+    metadata: ProviderMetadata, *, client_id: str, redirect_uri: str, extra_params: dict[str, str] | None = None
 ) -> AuthorizationRequest:
     state = generate_token(32)
     nonce = generate_token(32)
@@ -93,6 +112,7 @@ def build_authorization_request(
         "nonce": nonce,
         "code_challenge": code_challenge,
         "code_challenge_method": "S256",
+        **(extra_params or {}),
     }
     url = metadata.authorization_endpoint + "?" + urlencode(params)
     return AuthorizationRequest(url=url, state=state, nonce=nonce, code_verifier=code_verifier)
@@ -202,4 +222,5 @@ def identity_from_claims(claims: dict[str, object], *, default_issuer: str) -> I
         given_name=given,
         family_name=family,
         name=name,
+        extra={k: claims[k] for k in ("tid", "hd", "email_verified") if k in claims},
     )

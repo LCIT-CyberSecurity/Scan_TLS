@@ -11,6 +11,7 @@ from ldap3.core.exceptions import LDAPBindError, LDAPException, LDAPSocketOpenEr
 from ldap3.utils.conv import escape_filter_chars
 
 from tls_scan_app.connectors.base import ConnectorError, DirectoryPerson, Step
+from tls_scan_app.connectors.ldap_auth import LdapAuthError, build_server, require_secure
 
 
 def _first(value: Any) -> str:
@@ -30,6 +31,8 @@ class LdapConnector:
         self.user_filter = cfg.get("user_filter") or "(objectClass=person)"
 
     def _server(self) -> Server:
+        if self.cfg.get("tls_verify", True) and (self.cfg["server_url"].lower().startswith("ldaps") or self.cfg.get("starttls")):
+            return build_server(self.cfg)   # same validated TLS setup as the sign-in
         url = urlparse(self.cfg["server_url"])
         use_ssl = url.scheme == "ldaps"
         tls = None
@@ -39,6 +42,12 @@ class LdapConnector:
         return Server(url.hostname, port=url.port or (636 if use_ssl else 389), use_ssl=use_ssl, tls=tls, get_info=NONE, connect_timeout=8)
 
     def _connect(self) -> Connection:
+        try:
+            require_secure(self.cfg)
+        except LdapAuthError as error:
+            raise ConnectorError(error.message) from error
+        if self.cfg.get("bind_dn") and not self.password:
+            raise ConnectorError("A service bind DN is configured but TLS_SCAN_LDAP_BIND_PASSWORD is not set.")
         conn = Connection(self._server(), user=self.cfg.get("bind_dn") or None, password=self.password or None, receive_timeout=15, auto_bind=False)
         conn.open()
         if self.cfg.get("starttls"):

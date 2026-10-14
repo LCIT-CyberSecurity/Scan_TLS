@@ -20,3 +20,5 @@ tests/e2e/node_modules/
 /data/
 /backups/
 compose.override.yaml
+
+ops/dev/.ldap-certs/

@@ -1,7 +1,9 @@
 """Directory connectors: LDAP (real OpenLDAP container) and Entra ID through Graph (mock server only)."""
 from __future__ import annotations
 
+import os
 import uuid
+from pathlib import Path
 
 import httpx
 import pytest
@@ -11,6 +13,8 @@ from conftest import API, Api, wait_for
 
 LDAP_BASE = "dc=example,dc=org"
 ADMIN_DN, ADMIN_PW = f"cn=admin,{LDAP_BASE}", "ldap-test-admin-pw"
+LDAP_CA_FILE = os.environ.get("TEST_LDAP_CA_FILE", "")
+LDAP_CA = Path(LDAP_CA_FILE).read_text(encoding="utf-8") if LDAP_CA_FILE and Path(LDAP_CA_FILE).exists() else ""
 
 
 @pytest.fixture(scope="module")
@@ -37,11 +41,13 @@ def _try(fn):
 
 
 def ldap_cfg(**over):
-    return {"kind": "ldap", "ldap": {"server_url": "ldap://openldap:389", "bind_dn": ADMIN_DN, "base_dn": f"ou=people,{LDAP_BASE}",
-                                     "user_filter": "(objectClass=inetOrgPerson)", "id_attribute": "uid", **over}}
+    return {"kind": "ldap", "ldap": {"server_url": "ldaps://openldap:636", "bind_dn": ADMIN_DN, "base_dn": f"ou=people,{LDAP_BASE}",
+                                     "user_filter": "(objectClass=inetOrgPerson)", "id_attribute": "uid", "ca_pem": LDAP_CA, **over}}
 
 
 def test_ldap_diagnostics_search_and_errors(admin, ldap_people):
+    refused = admin.put("/api/admin/directory", json=ldap_cfg(server_url="ldap://openldap:389"))
+    assert refused.status_code == 422 and "StartTLS" in refused.text
     assert admin.put("/api/admin/directory", json=ldap_cfg()).status_code == 200
     steps = admin.post("/api/admin/directory/test").json()
     assert [(s["step"], s["status"]) for s in steps] == [("dns", "ok"), ("connect+bind", "ok"), ("search", "ok")]
@@ -57,15 +63,15 @@ def test_ldap_diagnostics_search_and_errors(admin, ldap_people):
     admin.put("/api/admin/directory", json=ldap_cfg(bind_dn=f"cn=nobody,{LDAP_BASE}"))
     steps = admin.post("/api/admin/directory/test").json()
     assert steps[-1]["status"] == "fail" and "bind" in steps[-1]["detail"].lower()
-    admin.put("/api/admin/directory", json=ldap_cfg(server_url="ldap://no-such-host.invalid:389"))
+    admin.put("/api/admin/directory", json=ldap_cfg(server_url="ldaps://no-such-host.invalid:636"))
     assert admin.post("/api/admin/directory/test").json()[0] == {"step": "dns", "status": "fail", "detail": admin.post("/api/admin/directory/test").json()[0]["detail"]}
 
 
 def test_ldaps_untrusted_certificate_is_explained(admin, ldap_people):
-    admin.put("/api/admin/directory", json=ldap_cfg(server_url="ldaps://openldap:636"))
+    admin.put("/api/admin/directory", json=ldap_cfg(server_url="ldaps://openldap:636", ca_pem=""))
     steps = admin.post("/api/admin/directory/test").json()
     assert steps[-1]["status"] == "fail" and "not trusted" in steps[-1]["detail"], steps
-    admin.put("/api/admin/directory", json=ldap_cfg(server_url="ldaps://openldap:636", tls_verify=False))
+    admin.put("/api/admin/directory", json=ldap_cfg(server_url="ldaps://openldap:636", ca_pem="", tls_verify=False))
     steps = admin.post("/api/admin/directory/test").json()
     assert all(s["status"] == "ok" for s in steps), steps
 

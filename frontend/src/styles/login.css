@@ -50,3 +50,7 @@ html:has(.login-page), body:has(.login-page) { background:#081a30; }
   .auth-form-wrap { padding:30px 24px; }
   .auth-company img { width:78px; height:60px; }
 }
+
+.login-card .login-sso--primary { background:#65459b; color:#fff; border-color:#65459b; min-height:52px; }
+.login-card .login-sso--primary:hover { background:#563886; }
+.login-card .login-local-toggle { background:none; border:0; padding:4px 0; color:#65449c; font-size:13px; cursor:pointer; text-decoration:underline; }

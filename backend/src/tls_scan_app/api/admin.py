@@ -19,6 +19,8 @@ from tls_scan_app.deps import get_db, require_role
 from tls_scan_app.models import AuditEvent, Role, ScanRun, Session, SystemSetting, User
 from tls_scan_app.models.scan import ACTIVE_STATUSES
 from tls_scan_app.services import audit, external_access
+from tls_scan_app.services import auth_config
+from tls_scan_app.services.identity import source_of
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 admin_only = require_role(Role.ADMIN)
@@ -45,7 +47,7 @@ class RoleBody(BaseModel):
 
 @router.get("/users")
 def list_users(db: DbSession = Depends(get_db), _: User = Depends(admin_only)) -> list[dict]:
-    return [user_payload(u) | {"active": u.active, "issuer": u.issuer, "last_login_at": u.last_login_at,
+    return [user_payload(u) | {"active": u.active, "issuer": u.issuer, "source": source_of(u.issuer), "last_login_at": u.last_login_at,
                                "access_keys": {s: external_access.token_summary(db, u.id, s) for s in external_access.SERVICES}}
             for u in db.execute(select(User).order_by(User.email)).scalars()]
 
@@ -73,6 +75,11 @@ def update_user(user_id: uuid.UUID, body: RoleBody, db: DbSession = Depends(get_
     demoting = user.role == Role.ADMIN and (body.role != Role.ADMIN or body.active is False)
     if demoting and admins <= 1:
         raise HTTPException(409, "At least one active administrator is required")
+    # The technical administrator signs in with a local password: it must survive a provider outage or a provider change.
+    losing_local = (user.password_hash is not None and user.role == Role.ADMIN and user.active
+                    and (body.role != Role.ADMIN or body.active is False))
+    if losing_local and not db.scalar(select(func.count()).select_from(User).where(User.role == Role.ADMIN, User.active.is_(True), User.password_hash.is_not(None), User.id != user.id)):
+        raise HTTPException(409, "At least one active local administrator (password sign-in) must remain: it is the emergency access when the external provider is down")
     previous = str(user.role)
     user.role = body.role
     if body.active is not None:
@@ -210,7 +217,7 @@ def diagnostics(request: Request, db: DbSession = Depends(get_db), _: User = Dep
         "active_runs": db.scalar(select(func.count()).select_from(ScanRun).where(ScanRun.status.in_(ACTIVE_STATUSES))),
         "limits": {"max_concurrent_scans": settings.max_concurrent_scans, "max_scan_duration_seconds": settings.max_scan_duration_seconds,
                    "max_addresses_per_scan": settings.max_targets_per_scan},
-        "sso_configured": bool(settings.oidc_issuer),
+        "sso_configured": auth_config.effective(db, settings).oidc,
         "environment": settings.environment,
     }
 
@@ -252,21 +259,36 @@ class DirectoryBody(BaseModel):
     kind: str
     ldap: dict = Field(default_factory=dict)
     entra: dict = Field(default_factory=dict)
+    google: dict = Field(default_factory=dict)
 
 
 @router.get("/directory")
 def get_directory(db: DbSession = Depends(get_db), _: User = Depends(admin_only)) -> dict:
     from tls_scan_app.connectors.registry import directory_config
 
-    return {"kind": "none", "ldap": {}, "entra": {}} | directory_config(db)
+    return {"kind": "none", "ldap": {}, "entra": {}, "google": {}} | directory_config(db)
 
 
 @router.put("/directory")
-def put_directory(body: DirectoryBody, db: DbSession = Depends(get_db), actor: User = Depends(admin_only)) -> dict:
+def put_directory(body: DirectoryBody, request: Request, db: DbSession = Depends(get_db), actor: User = Depends(admin_only)) -> dict:
     from tls_scan_app.connectors.registry import KINDS
 
     if body.kind not in KINDS:
         raise HTTPException(422, f"kind must be one of {KINDS}")
+    if body.kind == "ldap":
+        from tls_scan_app.connectors.ldap_auth import LdapAuthError, require_secure
+
+        if "starttls" in body.ldap and not isinstance(body.ldap["starttls"], bool):
+            raise HTTPException(422, "LDAP StartTLS must be a boolean")
+        if "tls_verify" in body.ldap and not isinstance(body.ldap["tls_verify"], bool):
+            raise HTTPException(422, "LDAP certificate validation must be a boolean")
+        if body.ldap.get("server_url"):
+            try:
+                require_secure(body.ldap)
+            except LdapAuthError as error:
+                raise HTTPException(422, error.message) from None
+    if request.app.state.settings.environment == "production" and body.kind == "ldap" and body.ldap.get("tls_verify") is False:
+        raise HTTPException(422, "LDAP server certificate validation cannot be disabled in production")
     row = db.get(SystemSetting, "directory") or SystemSetting(key="directory", value={})
     row.value = body.model_dump()
     db.add(row)

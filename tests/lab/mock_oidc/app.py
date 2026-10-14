@@ -5,6 +5,7 @@ Never deploy outside a test environment. Pick the identity with ?login_hint=<ema
 """
 from __future__ import annotations
 
+import json
 import os
 import time
 import uuid
@@ -35,9 +36,11 @@ def jwks():
 
 @app.get("/authorize")
 def authorize(redirect_uri: str, state: str, nonce: str, code_challenge: str, login_hint: str = "alice@sso.example.com",
-              response_type: str = "", client_id: str = "", scope: str = "", code_challenge_method: str = ""):
+              response_type: str = "", client_id: str = "", scope: str = "", code_challenge_method: str = "",
+              claims: str = "", hd: str = ""):
+    """`claims` (JSON) overrides or adds ID-token claims (tid, hd, email_verified, aud, nonce...): negative tests only."""
     code = uuid.uuid4().hex
-    CODES[code] = {"email": login_hint, "nonce": nonce, "challenge": code_challenge}
+    CODES[code] = {"email": login_hint, "nonce": nonce, "challenge": code_challenge, "overrides": json.loads(claims) if claims else {}}
     return RedirectResponse(redirect_uri + "?" + urlencode({"code": code, "state": state}), status_code=302)
 
 
@@ -49,7 +52,7 @@ def token(code: str = Form(), code_verifier: str = Form(), client_id: str = Form
         return JSONResponse({"error": "invalid_grant", "error_description": "bad code or PKCE verifier"}, status_code=400)
     now = int(time.time())
     claims = {"iss": ISSUER, "sub": "sub-" + entry["email"], "aud": client_id, "exp": now + 300, "iat": now, "nonce": entry["nonce"],
-              "email": entry["email"], "name": entry["email"].split("@")[0].title()}
+              "email": entry["email"], "name": entry["email"].split("@")[0].title(), **entry["overrides"]}
     return {"access_token": "x", "token_type": "Bearer", "id_token": jwt.encode({"alg": "RS256", "kid": "mock-1"}, claims, KEY).decode()}
 
 

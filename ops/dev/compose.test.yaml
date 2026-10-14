@@ -15,7 +15,10 @@ services:
     build: {context: ../.., dockerfile: tests/lab/smtp_sink/Dockerfile}
   openldap:
     image: osixia/openldap:1.5.0
-    environment: {LDAP_ORGANISATION: Example, LDAP_DOMAIN: example.org, LDAP_ADMIN_PASSWORD: ldap-test-admin-pw, LDAP_TLS_VERIFY_CLIENT: never}
+    command: --copy-service
+    environment: {LDAP_ORGANISATION: Example, LDAP_DOMAIN: example.org, LDAP_ADMIN_PASSWORD: ldap-test-admin-pw, LDAP_TLS_VERIFY_CLIENT: never,
+                  LDAP_TLS_CRT_FILENAME: ldap.crt, LDAP_TLS_KEY_FILENAME: ldap.key, LDAP_TLS_CA_CRT_FILENAME: ca.crt, LDAP_TLS_DH_PARAM_FILENAME: dhparam.pem}
+    volumes: [./.ldap-certs:/container/service/slapd/assets/certs:ro]
   mock-graph:
     build: {context: ../.., dockerfile: tests/lab/mock_graph/Dockerfile}
   mock-oidc:
@@ -33,6 +36,9 @@ services:
       TLS_SCAN_OIDC_CLIENT_ID: tls-scan-test
       TLS_SCAN_OIDC_CLIENT_SECRET: crashtest-only
       TLS_SCAN_OIDC_DEFAULT_ROLE: USER
+      TLS_SCAN_SSO_AUTO_PROVISION: "true"
+      TLS_SCAN_GOOGLE_ISSUER: http://mock-oidc:8080
+      TLS_SCAN_GOOGLE_CLIENT_SECRET: crashtest-only
       TLS_SCAN_PUBLIC_BASE_URL: http://api:8000
       TLS_SCAN_GRAPH_LOGIN_URL: http://mock-graph:8080
       TLS_SCAN_GRAPH_BASE_URL: http://mock-graph:8080/v1.0
@@ -65,7 +71,8 @@ services:
       <<: *env
       TEST_API_URL: http://api:8000
       TEST_LAB_HOST: lab-tls
-    volumes: [data:/var/lib/tls-scan, "../../tests:/app/tests:ro"]
+      TEST_LDAP_CA_FILE: /ldap-certs/ca.crt
+    volumes: [data:/var/lib/tls-scan, "../../tests:/app/tests:ro", "./.ldap-certs:/ldap-certs:ro"]
     depends_on: {api: {condition: service_healthy}, worker: {condition: service_started}, lab-tls: {condition: service_started}, lab-dns: {condition: service_started}}
     profiles: [tests]
     command: pytest -x -q tests/backend
