@@ -22,7 +22,7 @@ async function searchAndSelect(page: Page, term: string, result: RegExp) {
   const search = page.getByPlaceholder("Search systems, zones, hosts or IPs");
   await search.fill(term);
   await search.press("Enter");
-  const match = page.getByRole("button", { name: result }).last();
+  const match = page.getByRole("button", { name: result }).first();
   await expect(match).toBeVisible();
   const graph = page.waitForResponse((response) => response.url().includes("/api/map/graph") && response.status() === 200);
   await match.click();
@@ -68,6 +68,8 @@ async function captureMapAtSize(browser: Browser, project: string, size: { width
     const detail = page.getByRole("complementary", { name: "Host exposure" });
     await expect(detail).toBeVisible();
     await expect(detail.getByText("Last scan")).toBeVisible();
+    await expect(detail.locator(".network-map-detail-meta")).toContainText("443");
+    await expect(detail.locator(".network-map-endpoints article").first()).toBeVisible();
     await saveScreenshot(page, project, "host-exposure", size.width, size.height);
   } finally {
     await context.close();

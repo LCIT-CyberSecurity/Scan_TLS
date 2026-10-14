@@ -260,10 +260,10 @@ export function positionMapNodes(nodes: MapNode[], graph: MapGraph, viewportWidt
       const clusterBottom = totalClusterHeight / 2;
       const freeDevices = devices.filter((device) => !deviceIds.has(device.id));
       positions.push(
-        ...placeLane(ordered.filter((item) => item.kind === "si"), clusterTop - 190, viewportWidth),
+        ...placeLane(ordered.filter((item) => item.kind === "si"), clusterTop - 112, viewportWidth),
         ...placeLane(freeDevices, clusterBottom + 170, viewportWidth),
-        ...placeLane(ordered.filter((item) => item.kind === "group" || item.kind === "unassigned"), clusterBottom + 340, viewportWidth),
-        ...placeLane(ordered.filter((item) => item.kind === "host"), clusterBottom + 510, viewportWidth, "host"),
+        ...placeLane(ordered.filter((item) => item.kind === "group" || item.kind === "unassigned"), clusterBottom + 112, viewportWidth),
+        ...placeLane(ordered.filter((item) => item.kind === "host"), clusterBottom + 245, viewportWidth, "host"),
       );
       return positions;
     }
