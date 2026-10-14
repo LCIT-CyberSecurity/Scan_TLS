@@ -247,7 +247,8 @@ function placeLane(nodes: MapNode[], y: number, viewportWidth: number, kind: "ca
     const column = index - rowStart;
     const stagger = row % 2 ? (width + gapX) * 0.22 : 0;
     const x = xOffset + (column - (rowLength - 1) / 2) * (width + gapX) + stagger;
-    const yPosition = y + (row - (rows - 1) / 2) * gapY + (row % 2 ? 12 : -12);
+    const rowOffset = nodes.length === 1 ? 0 : row % 2 ? 12 : -12;
+    const yPosition = y + (row - (rows - 1) / 2) * gapY + rowOffset;
     positions.push({ id: nodes[index].id, x, y: yPosition });
   }
   return positions;
