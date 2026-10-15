@@ -43,7 +43,7 @@
 .network-map-canvas-actions { position: absolute; right: 15px; bottom: 58px; z-index: 2; display: grid; gap: 5px; padding: 5px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface); box-shadow: var(--shadow-sm); }
 .network-map-canvas-actions button { display: grid; place-items: center; width: 30px; height: 30px; border: 0; border-radius: 6px; color: var(--text-secondary); background: transparent; cursor: pointer; }
 .network-map-canvas-actions button:hover { color: var(--text-primary); background: var(--primary-soft); }
-.network-map-legend { position: absolute; bottom: 14px; left: 16px; z-index: 2; display: flex; gap: 14px; color: var(--text-muted); font-size: 10px; }
+.network-map-legend { position: static; display: flex; gap: 14px; color: var(--text-muted); font-size: 10px; }
 .network-map-legend span { display: inline-flex; align-items: center; gap: 5px; }
 .map-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; }
 .map-dot--critical { background: #ee6b79; }.map-dot--high { background: #f0b862; }.map-dot--neutral { border: 1px solid #7897b4; }
@@ -95,14 +95,12 @@
 .network-map-overview svg { color: var(--primary); }
 .network-map-form-note { color: var(--text-muted); font-size: 11px; }
 .network-map-legend {
-  max-width: min(760px, calc(100% - 76px));
+  max-width: none;
   flex-wrap: wrap;
   gap: 7px 13px;
-  padding: 8px 10px;
-  border: 1px solid color-mix(in srgb, var(--border-strong) 70%, transparent);
-  border-radius: 9px;
+  padding: 8px 16px;
+  border-top: 1px solid var(--border);
   background: color-mix(in srgb, var(--surface) 88%, transparent);
-  backdrop-filter: blur(8px);
 }
 .map-dot--critical { background: #dc6b76; }
 .map-dot--high { background: #dfa95a; }

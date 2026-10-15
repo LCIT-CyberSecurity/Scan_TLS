@@ -128,6 +128,7 @@ describe("Network Exposure Map", () => {
   it("never submits stale network links without their matching device nodes", async () => {
     render(<I18nProvider initial="en"><NetworkMap /></I18nProvider>);
     await screen.findByText("Network exposure map");
+    await screen.findByRole("option", { name: "Production" });
     fireEvent.change(screen.getByLabelText("Information systems"), { target: { value: "si-1" } });
     await waitFor(() => expect(graphState.data?.nodes[0]?.id).toBe("zone:zone-1"));
     fireEvent.click(screen.getByRole("button", { name: "Network architecture" }));
@@ -137,6 +138,7 @@ describe("Network Exposure Map", () => {
   it("reveals nested-zone equipment only after entering its parent zone", async () => {
     render(<I18nProvider initial="en"><NetworkMap /></I18nProvider>);
     await screen.findByText("Network exposure map");
+    await screen.findByRole("option", { name: "Production" });
     fireEvent.change(screen.getByLabelText("Information systems"), { target: { value: "si-1" } });
     await waitFor(() => expect(graphState.data?.nodes.some((node) => node.id === "zone:zone-1")).toBe(true));
 

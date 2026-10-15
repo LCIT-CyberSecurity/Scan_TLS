@@ -220,7 +220,7 @@ export default function NetworkMap() {
     void instance.render().then(() => {
       if (!shouldFit) return;
       return instance.fitView({ when: "always", direction: "both" }, reducedMotion() ? false : { duration: 220 })
-        .then(() => instance.zoomBy(0.82, reducedMotion() ? false : { duration: 100 }));
+        .then(() => instance.zoomBy(0.9, reducedMotion() ? false : { duration: 100 }));
     });
   }, [visibleNodes, graphData, t, mode, zones, viewportWidth, focusTargetId, expandUnassigned]);
 
@@ -398,17 +398,7 @@ export default function NetworkMap() {
           <div className="network-map-canvas-actions">
             <button type="button" aria-label={t("map.zoomIn")} onClick={() => void graph.current?.zoomBy(1.2, reducedMotion() ? false : { duration: 180 })}><Plus size={16} /></button>
             <button type="button" aria-label={t("map.zoomOut")} onClick={() => void graph.current?.zoomBy(0.84, reducedMotion() ? false : { duration: 180 })}><Minus size={16} /></button>
-            <button type="button" aria-label={t("map.center")} onClick={() => void graph.current?.fitView({ when: "always" }, reducedMotion() ? false : { duration: 220 })}><Crosshair size={16} /></button>
-          </div>
-          <div className="network-map-legend" aria-label={t("map.linksLegend")}>
-            <span><i className="map-dot map-dot--critical" />{t("map.critical")}</span>
-            <span><i className="map-dot map-dot--high" />{t("map.high")}</span>
-            <span><i className="map-dot map-dot--scanned" />{t("map.scanned")}</span>
-            <span><i className="map-dot map-dot--neutral" />{t("map.unscanned")}</span>
-            <span className="map-legend-divider" />
-            <span><i className="map-link-sample map-link-sample--observed" />{t("map.provenance.OBSERVED")}</span>
-            <span><i className="map-link-sample map-link-sample--declared" />{t("map.provenance.DECLARED")}</span>
-            <span><i className="map-link-sample map-link-sample--inferred" />{t("map.provenance.INFERRED")}</span>
+            <button type="button" aria-label={t("map.center")} onClick={() => void graph.current?.fitView({ when: "always" }, reducedMotion() ? false : { duration: 220 }).then(() => graph.current?.zoomBy(0.9, reducedMotion() ? false : { duration: 100 }))}><Crosshair size={16} /></button>
           </div>
         </div>
 
@@ -435,6 +425,17 @@ export default function NetworkMap() {
           <div className="network-map-device-evidence"><span>{t("map.device.source")}</span><strong>{selectedDevice.source || "—"}</strong><span>{t("map.link.observedAt")}</span><strong>{selectedDevice.observed_at ? new Date(selectedDevice.observed_at).toLocaleString(locale) : "—"}</strong><span>{t("map.confidence")}</span><strong>{selectedDevice.confidence ?? "—"}</strong></div>
           {canEdit && <Button variant="outline" size="sm" onClick={() => openDevice(selectedDevice)}><Pencil size={15} />{t("action.edit")}</Button>}
         </aside>}
+      </div>
+
+      <div className="network-map-legend" aria-label={t("map.linksLegend")}>
+        <span><i className="map-dot map-dot--critical" />{t("map.critical")}</span>
+        <span><i className="map-dot map-dot--high" />{t("map.high")}</span>
+        <span><i className="map-dot map-dot--scanned" />{t("map.scanned")}</span>
+        <span><i className="map-dot map-dot--neutral" />{t("map.unscanned")}</span>
+        <span className="map-legend-divider" />
+        <span><i className="map-link-sample map-link-sample--observed" />{t("map.provenance.OBSERVED")}</span>
+        <span><i className="map-link-sample map-link-sample--declared" />{t("map.provenance.DECLARED")}</span>
+        <span><i className="map-link-sample map-link-sample--inferred" />{t("map.provenance.INFERRED")}</span>
       </div>
 
       <footer className="network-map-footer"><div><span className="network-map-footer-number">{summary?.totals.targets ?? 0}</span> {t("map.targets")} <span className="network-map-footer-divider" /> <span className="network-map-footer-number">{summary?.totals.scanned_targets ?? 0}</span> {t("map.scanned")}</div>

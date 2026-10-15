@@ -98,7 +98,7 @@ class ExposureCardNode extends Rect {
 
     this.upsert("map-accent", "rect", { x: -width / 2, y: top, width: 3, height, radius: 2, fill: accent }, container);
     this.upsert("map-kind", "text", {
-      x: left, y: top + (emphasized ? 27 : 19), text: clipped(String(card.mapKind || ""), 24), fontSize: 10,
+      x: left, y: top + (emphasized ? 27 : 19), text: clipped(String(card.mapKind || ""), 24), fontSize: emphasized ? 12 : 11,
       fontWeight: 650, letterSpacing: 0.7, fill: accent, textAlign: "left", textBaseline: "middle",
     }, container);
     const compact = height < 105;
@@ -113,23 +113,23 @@ class ExposureCardNode extends Rect {
     }, container);
     this.upsert("map-title", "text", {
       x: left + (emphasized ? 51 : 43), y: top + (emphasized ? 60 : compact ? 35 : 42),
-      text: clipped(String(card.mapTitle || ""), 22), fontSize: 14,
+      text: clipped(String(card.mapTitle || ""), emphasized ? 30 : 22), fontSize: emphasized ? 17 : 14,
       fontWeight: 600, fill: mainText, textAlign: "left", textBaseline: "middle",
     }, container);
     this.upsert("map-subtitle", "text", {
       x: left + (emphasized ? 51 : 43), y: top + (emphasized ? 82 : compact ? 51 : 61),
-      text: clipped(String(card.mapSubtitle || ""), 26), fontSize: 11,
+      text: clipped(String(card.mapSubtitle || ""), emphasized ? 24 : 26), fontSize: emphasized ? 12 : 11,
       fill: secondaryText, textAlign: "left", textBaseline: "middle",
     }, container);
     this.upsert("map-divider", "rect", {
       x: left, y: top + (emphasized ? 97 : compact ? 62 : 76), width: width - 31, height: 1, fill: mapCanvasColor("--border", "#294159"),
     }, container);
     this.upsert("map-metrics", "text", {
-      x: left, y: top + (emphasized ? 108 : compact ? 74 : 91), text: clipped(String(card.mapMetrics || ""), 34), fontSize: 10,
+      x: left, y: top + (emphasized ? 108 : compact ? 74 : 91), text: clipped(String(card.mapMetrics || ""), 34), fontSize: emphasized ? 12 : 11,
       fill: faintText, textAlign: "left", textBaseline: "middle",
     }, container);
     this.upsert("map-severity", "text", {
-      x: left, y: top + (emphasized ? 123 : compact ? 85 : 106), text: clipped(String(card.mapSeverity || ""), 34), fontSize: 10,
+      x: left, y: top + (emphasized ? 123 : compact ? 85 : 106), text: clipped(String(card.mapSeverity || ""), 34), fontSize: emphasized ? 11 : 10,
       fontWeight: 600, fill: String(card.mapSeverityColor || secondaryText), textAlign: "left", textBaseline: "middle",
     }, container);
 
@@ -301,18 +301,24 @@ export function positionMapNodes(nodes: MapNode[], graph: MapGraph, viewportWidt
         return { zone, members, innerColumns, rows, height: rows * (CARD_HEIGHT + 26) + 48 };
       });
       const clusterWidth = 2 * (CARD_WIDTH + DEVICE_GAP_X) + 64;
-      const parentColumns = Math.max(1, Math.min(2, Math.floor((Math.max(viewportWidth, 560) - 120) / (clusterWidth + 72))));
+      const parentColumns = clusters.length > 1 && viewportWidth >= 900 ? 2 :
+        Math.max(1, Math.min(2, Math.floor((Math.max(viewportWidth, 560) - 120) / (clusterWidth + 72))));
       const rowCount = Math.ceil(clusters.length / parentColumns);
       const rowHeights = Array.from({ length: rowCount }, (_, row) => Math.max(0, ...clusters.slice(row * parentColumns, (row + 1) * parentColumns).map((cluster) => cluster.height)));
       const totalClusterHeight = rowHeights.reduce((total, value) => total + value, 0) + Math.max(0, rowCount - 1) * 54;
       let cursorY = -totalClusterHeight / 2;
+      const rowCenters = rowHeights.map((height) => {
+        const center = cursorY + height / 2;
+        cursorY += height + 54;
+        return center;
+      });
       const positions: GraphNodePosition[] = [];
       clusters.forEach((cluster, index) => {
         const row = Math.floor(index / parentColumns);
         const column = index % parentColumns;
         const rowLength = Math.min(parentColumns, clusters.length - row * parentColumns);
         const centerX = (column - (rowLength - 1) / 2) * (clusterWidth + 72);
-        const centerY = cursorY + rowHeights[row] / 2;
+        const centerY = rowCenters[row];
         const zoneCombo = cluster.members.length > 1 ? `zone-group:${cluster.zone.zone_id}` : undefined;
         cluster.members.forEach((item, memberIndex) => {
           const itemRow = Math.floor(memberIndex / cluster.innerColumns);
@@ -325,7 +331,6 @@ export function positionMapNodes(nodes: MapNode[], graph: MapGraph, viewportWidt
             combo: zoneCombo,
           });
         });
-        cursorY += rowHeights[row] + 54;
       });
       const clusterTop = -totalClusterHeight / 2;
       const clusterBottom = totalClusterHeight / 2;

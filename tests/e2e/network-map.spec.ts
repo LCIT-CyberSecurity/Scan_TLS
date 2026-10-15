@@ -104,6 +104,16 @@ async function captureMapAtSize(browser: Browser, project: string, size: { width
     const lastFinding = detail.locator(".network-map-findings li").last();
     await lastFinding.evaluate((element) => element.scrollIntoView({ block: "nearest" }));
     await expect(lastFinding).toBeInViewport();
+
+    const systemsGraph = page.waitForResponse((response) => response.url().includes("/api/map/graph") && response.url().includes("mode=si") && response.status() === 200);
+    await page.getByRole("button", { name: "Systems" }).click();
+    await systemsGraph;
+    await searchAndSelect(page, "Internal", /Internal\s+si/i);
+    const denseGraph = page.waitForResponse((response) => response.url().includes("/api/map/graph") && response.url().includes("mode=network") && response.status() === 200);
+    await page.getByRole("button", { name: "Network architecture" }).click();
+    await denseGraph;
+    await saveScreenshot(page, project, "dense-topology", size.width, size.height);
+    await saveCanvasScreenshot(page, project, "dense-topology", size.width, size.height);
   } finally {
     await context.close();
   }

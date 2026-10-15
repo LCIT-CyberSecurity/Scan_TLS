@@ -73,6 +73,24 @@ describe("network map graph presentation", () => {
     expect(positions.every(({ x, y }) => Number.isFinite(x) && Number.isFinite(y))).toBe(true);
   });
 
+  it("uses a wide balanced layout for multiple zones on desktop canvases", () => {
+    const graph = siGraph("network");
+    const nodes: MapNode[] = [
+      { id: "zone:z1", kind: "zone", zone_id: "z1", name: "Production LAN" },
+      { id: "device:d1", kind: "device", zone_id: "z1", name: "Core switch", device_type: "switch" },
+      { id: "zone:z2", kind: "zone", zone_id: "z2", name: "Public DMZ" },
+      { id: "device:d2", kind: "device", zone_id: "z2", name: "Edge firewall", device_type: "firewall" },
+    ];
+    const positions = positionMapNodes(nodes, graph, 1200);
+    const zonePositions = positions.filter((position) => position.id.startsWith("zone:"));
+
+    expect(zonePositions).toHaveLength(2);
+    expect(Math.abs(zonePositions[0].x - zonePositions[1].x)).toBeGreaterThan(400);
+    expect(zonePositions[0].y).toBe(zonePositions[1].y);
+    expect(positions.find((position) => position.id === "device:d1")?.combo).toBe("zone-group:z1");
+    expect(positions.find((position) => position.id === "device:d2")?.combo).toBe("zone-group:z2");
+  });
+
   it("leaves a clear, stable corridor between devices so declared links can be seen", () => {
     const graph = { ...siGraph("network"), scope: { zone: { id: "z1", name: "DMZ", description: "", zone_type: "dmz", parent_zone_id: null, cidr: null, si_ids: [], target_ids: [], primary_target_ids: [] } } };
     const nodes: MapNode[] = [
