@@ -39,10 +39,11 @@ describe("network map graph presentation", () => {
     expect(positions).toEqual([{ id: "target:only", x: 0, y: 0 }]);
   });
 
-  it("gives a lone host a larger, more legible card", () => {
-    const card = mapCardAttributes({ id: "target:only", kind: "host", name: "unassigned.example.test" }, translate, true);
-    expect(card.style.size).toEqual([340, 150]);
-    expect(card.style.mapEmphasized).toBe(true);
+  it("renders a lone host as a clearly labeled circle", () => {
+    const card = mapCardAttributes({ id: "target:only", kind: "host", name: "unassigned.example.test" }, translate);
+    expect(card.type).toBe("circle");
+    expect(card.style.size).toEqual([148, 148]);
+    expect(card.style.labelText).toContain("unassigned.example.");
   });
 
   it("uses a balanced constellation for up to five global systems", () => {
@@ -129,12 +130,11 @@ describe("network map graph presentation", () => {
       id: "target:t1", kind: "host", target_id: "t1", name: "tls.example.test", value: "tls.example.test", ports: "443",
       exposure: { run_id: "run-1", status: "completed", finished_at: "2026-10-14T12:00:00Z", endpoints: [{ endpoint_id: "ep-1", hostname: "tls.example.test", ip_address: "192.0.2.5", port: 443, grade: "F", compliance_status: "non_compliant", highest_severity: "high", tls_versions: ["TLSv1.2"], cipher_suites: [], certificate: null, errors: [], untested_checks: [], tls_checks: [] }], severity: { high: 1 }, compliant: 0, non_compliant: 1, unevaluated: 0 },
     }, translate);
-    expect(card.type).toBe("network-exposure-card");
-    expect(card.style.size).toEqual([216, 96]);
-    expect(card.style.mapSubtitle).toBe("tls.example.test · :443");
-    expect(card.style.mapMetrics).toBe("1 map.endpoints");
-    expect(card.style.mapSeverity).toBe("map.highShort1");
-    expect(card.style.mapIcon).toMatch(/^data:image\/svg\+xml;charset=utf-8,/);
+    expect(card.type).toBe("circle");
+    expect(card.style.size).toEqual([148, 148]);
+    expect(card.style.labelText).toContain("tls.example.test");
+    expect(card.style.labelText).toContain("1 map.endpoints");
+    expect(card.style.labelText).toContain("map.highShort1");
   });
 
   it("uses distinct Lucide SVG symbols for network equipment types", () => {

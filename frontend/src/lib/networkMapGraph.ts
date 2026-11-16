@@ -24,11 +24,8 @@ type CardAttributes = Record<string, unknown> & {
 const CARD_WIDTH = 232;
 const CARD_HEIGHT = 116;
 const HOST_CARD_WIDTH = 216;
-const HOST_CARD_HEIGHT = 96;
 const DEVICE_WIDTH = 208;
 const DEVICE_HEIGHT = 92;
-const SOLO_HOST_WIDTH = 340;
-const SOLO_HOST_HEIGHT = 150;
 const HOST_GAP_X = 46;
 const HOST_GAP_Y = 108;
 const DEVICE_GAP_X = 100;
@@ -212,17 +209,38 @@ function nodeSubtitle(node: MapNode, t: Translate): string {
   return t("map.host");
 }
 
-export function mapCardAttributes(node: MapNode, t: Translate, emphasizeHost = false) {
+export function mapCardAttributes(node: MapNode, t: Translate) {
   const exposure = exposureMetrics(node, t);
   const severity = node.exposure?.severity ?? {};
   const severityColor = severity.critical ? "#dc6b76" : severity.high ? "#dfa95a" : cardAccent(node);
   const title = node.name;
+  if (node.kind === "host") {
+    const subtitle = exposure.subtitle === title ? "" : exposure.subtitle || node.value || "";
+    return {
+      type: "circle" as const,
+      style: {
+        size: [148, 148] as [number, number],
+        fill: mapCanvasColor("--surface", "#14171f"),
+        fillOpacity: 0.98,
+        stroke: cardAccent(node),
+        lineWidth: 2,
+        shadowColor: cardAccent(node),
+        shadowBlur: 16,
+        labelText: [clipped(title, 20), clipped(subtitle, 22), clipped(exposure.metrics, 20), clipped(exposure.severity, 20)].filter(Boolean).join("\n"),
+        labelPlacement: "center" as const,
+        labelFill: mapCanvasColor("--text-primary", "#e9ebf1"),
+        labelFontSize: 11,
+        labelFontWeight: 550,
+        labelTextAlign: "center" as const,
+        labelWordWrap: true,
+        labelMaxWidth: 104,
+      },
+    };
+  }
   return {
     type: "network-exposure-card" as const,
     style: {
-      size: node.kind === "host" && emphasizeHost ? [SOLO_HOST_WIDTH, SOLO_HOST_HEIGHT] as [number, number] :
-        node.kind === "host" ? [HOST_CARD_WIDTH, HOST_CARD_HEIGHT] as [number, number] :
-        node.kind === "device" ? [DEVICE_WIDTH, DEVICE_HEIGHT] as [number, number] : [CARD_WIDTH, CARD_HEIGHT] as [number, number],
+      size: node.kind === "device" ? [DEVICE_WIDTH, DEVICE_HEIGHT] as [number, number] : [CARD_WIDTH, CARD_HEIGHT] as [number, number],
       radius: 10,
       fill: mapCanvasColor("--surface", "#14171f"),
       fillOpacity: 0.98,
@@ -238,7 +256,7 @@ export function mapCardAttributes(node: MapNode, t: Translate, emphasizeHost = f
       mapAccent: cardAccent(node),
       mapSeverityColor: severityColor,
       mapIcon: iconSource(node, cardAccent(node)),
-      mapEmphasized: node.kind === "host" && emphasizeHost,
+      mapEmphasized: false,
     },
   };
 }
