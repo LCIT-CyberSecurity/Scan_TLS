@@ -133,7 +133,9 @@ export default function NetworkMap() {
       zoomRange: [0.4, 2.5],
       behaviors: ["drag-canvas", "zoom-canvas"],
       node: {
-        type: "network-exposure-card",
+        // Let individual nodes select their registered renderer. A fixed graph-level type
+        // takes precedence over `NodeData.type` in G6 and turns host circles into cards.
+        type: (datum: NodeData) => datum.type || "network-exposure-card",
         style: {
           size: [232, 116],
           fill: getComputedStyle(document.documentElement).getPropertyValue("--surface").trim() || "#14171f",

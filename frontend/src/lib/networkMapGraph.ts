@@ -1,4 +1,4 @@
-import { ExtensionCategory, Rect, register } from "@antv/g6";
+import { Circle, ExtensionCategory, Rect, register } from "@antv/g6";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { ArrowLeftRight, Boxes, Cable, CircleHelp, Cloud, Gauge, Globe, Layers3, Network, Router, Server, Shield, Workflow, type LucideIcon } from "lucide-react";
@@ -143,6 +143,39 @@ class ExposureCardNode extends Rect {
 
 register(ExtensionCategory.NODE, "network-exposure-card", ExposureCardNode);
 
+class HostCircleNode extends Circle {
+  override render(attributes: Parameters<Circle["render"]>[0], container: Parameters<Circle["render"]>[1]) {
+    if (!container) return;
+    super.render(attributes, container);
+    const card = attributes as unknown as CardAttributes;
+    const [width, height] = this.getSize(attributes);
+    const mainText = mapCanvasColor("--text-primary", "#e9ebf1");
+    const secondaryText = mapCanvasColor("--text-secondary", "#aeb6c6");
+    const faintText = mapCanvasColor("--text-muted", "#96a0b2");
+    const titleSize = Number(card.mapEmphasized) ? 14 : 12;
+    const radius = Math.min(width, height) / 2;
+    const centerLine = (offset: number) => radius * offset;
+    this.upsert("map-host-title", "text", {
+      x: 0, y: centerLine(-0.34), text: clipped(String(card.mapTitle || ""), 20), fontSize: titleSize,
+      fontWeight: 650, fill: mainText, textAlign: "center", textBaseline: "middle",
+    }, container);
+    this.upsert("map-host-subtitle", "text", {
+      x: 0, y: centerLine(-0.06), text: clipped(String(card.mapSubtitle || ""), 22), fontSize: 10,
+      fill: secondaryText, textAlign: "center", textBaseline: "middle",
+    }, container);
+    this.upsert("map-host-metrics", "text", {
+      x: 0, y: centerLine(0.19), text: clipped(String(card.mapMetrics || ""), 20), fontSize: 10,
+      fill: faintText, textAlign: "center", textBaseline: "middle",
+    }, container);
+    this.upsert("map-host-severity", "text", {
+      x: 0, y: centerLine(0.43), text: clipped(String(card.mapSeverity || ""), 20), fontSize: 10,
+      fontWeight: 600, fill: String(card.mapSeverityColor || secondaryText), textAlign: "center", textBaseline: "middle",
+    }, container);
+  }
+}
+
+register(ExtensionCategory.NODE, "network-exposure-host-circle", HostCircleNode);
+
 function cardAccent(node: MapNode): string {
   const severity = node.exposure?.severity;
   if (severity?.critical) return "#dc6b76";
@@ -217,7 +250,7 @@ export function mapCardAttributes(node: MapNode, t: Translate) {
   if (node.kind === "host") {
     const subtitle = exposure.subtitle === title ? "" : exposure.subtitle || node.value || "";
     return {
-      type: "circle" as const,
+      type: "network-exposure-host-circle" as const,
       style: {
         size: [148, 148] as [number, number],
         fill: mapCanvasColor("--surface", "#14171f"),
@@ -226,14 +259,19 @@ export function mapCardAttributes(node: MapNode, t: Translate) {
         lineWidth: 2,
         shadowColor: cardAccent(node),
         shadowBlur: 16,
-        labelText: [clipped(title, 20), clipped(subtitle, 22), clipped(exposure.metrics, 20), clipped(exposure.severity, 20)].filter(Boolean).join("\n"),
-        labelPlacement: "center" as const,
-        labelFill: mapCanvasColor("--text-primary", "#e9ebf1"),
-        labelFontSize: 11,
-        labelFontWeight: 550,
-        labelTextAlign: "center" as const,
-        labelWordWrap: true,
-        labelMaxWidth: 104,
+        // G6's Circle node enables its built-in icon by default. Hosts use their own text
+        // layout, so disable the built-in image icon (which has no src for these nodes).
+        icon: false,
+        label: false,
+        badge: false,
+        port: false,
+        labelText: "",
+        mapTitle: title,
+        mapSubtitle: subtitle,
+        mapMetrics: exposure.metrics,
+        mapSeverity: exposure.severity,
+        mapSeverityColor: severityColor,
+        mapEmphasized: false,
       },
     };
   }

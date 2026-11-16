@@ -6,18 +6,25 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const graphState = vi.hoisted(() => ({
   handlers: {} as Record<string, (event: { target: { id: string } }) => void>,
   data: undefined as { nodes: { id: string; data?: Record<string, unknown> }[]; edges: { source: string; target: string }[]; combos: unknown[] } | undefined,
+  nodeType: undefined as unknown,
 }));
 
 vi.mock("@antv/g6", () => ({
   NodeEvent: { CLICK: "node:click" },
   ExtensionCategory: { NODE: "node" },
   register: vi.fn(),
+  Circle: class {
+    render() {}
+    getSize(attributes: { size?: [number, number] }) { return attributes.size ?? [148, 148]; }
+    upsert() {}
+  },
   Rect: class {
     render() {}
     getSize(attributes: { size?: [number, number] }) { return attributes.size ?? [232, 116]; }
     upsert() {}
   },
   Graph: class {
+    constructor(options: { node?: { type?: unknown } }) { graphState.nodeType = options.node?.type; }
     on(event: string, handler: (event: { target: { id: string } }) => void) { graphState.handlers[event] = handler; return this; }
     setData(data: typeof graphState.data) {
       if (data?.edges.some((edge) => !data.nodes.some((node) => node.id === edge.source) || !data.nodes.some((node) => node.id === edge.target))) {
@@ -85,6 +92,7 @@ beforeEach(() => {
   calls.length = 0;
   graphState.handlers = {};
   graphState.data = undefined;
+  graphState.nodeType = undefined;
   globalThis.ResizeObserver = class { observe() {} disconnect() {} unobserve() {} } as unknown as typeof ResizeObserver;
 });
 
@@ -92,6 +100,8 @@ describe("Network Exposure Map", () => {
   it("progressively explores real SI, zone and host data without inventing scan results", async () => {
     render(<I18nProvider initial="en"><NetworkMap /></I18nProvider>);
     await screen.findByText("Network exposure map");
+    expect(typeof graphState.nodeType).toBe("function");
+    expect((graphState.nodeType as (datum: { type?: string }) => string)({ type: "network-exposure-host-circle" })).toBe("network-exposure-host-circle");
     await waitFor(() => expect(graphState.data?.nodes[0]?.id).toBe("si:si-1"));
 
     act(() => graphState.handlers["node:click"]?.({ target: { id: "si:si-1" } }));
