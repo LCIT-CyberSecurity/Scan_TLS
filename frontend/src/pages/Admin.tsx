@@ -250,11 +250,11 @@ function Diagnostics() {
 }
 
 interface GbConnection { name: string; host: string; port: number; username: string; timeout: number; password_configured: boolean }
-interface GbJob { id: string; mode: string; source_name: string; status: string; created_at: string; error: string; progress?: { phase?: string }; result?: { objects?: Record<string, number>; applied?: Record<string, number> } }
-interface GbTarget { value: string; name: string; ports: string; group_name: string; action: string; existing_id: string | null; importable: boolean; reason: string }
+interface GbJob { id: string; mode: string; source_name: string; status: string; created_at: string; requested_by?: string | null; error: string; progress?: { phase?: string }; result?: { objects?: Record<string, number>; applied?: Record<string, number> } }
+interface GbTarget { value: string; name: string; ports: string; previous_ports?: string | null; group_name: string; action: string; existing_id: string | null; importable: boolean; reason: string }
 interface GbTask { id: string; name: string; refs: Record<string, string>; missing_target: boolean }
 interface GbOption { id: string; name: string; published: boolean }
-interface GbPreview { summary: Record<string, number>; targets: GbTarget[]; groups: number; tasks: GbTask[]; schedules: { id: string; name: string }[]; scan_configs: { id: string; name: string }[]; port_lists: { id: string; name: string }[]; tags: { id: string; name: string }[]; profiles: GbOption[]; policies: GbOption[]; warnings: string[] }
+interface GbPreview { summary: Record<string, number>; changes: { baseline_import_id: string | null; changed: { type: string; id: string; name: string }[]; absent: { type: string; id: string; name: string }[] }; targets: GbTarget[]; groups: number; tasks: GbTask[]; schedules: { id: string; name: string }[]; scan_configs: { id: string; name: string }[]; port_lists: { id: string; name: string }[]; tags: { id: string; name: string }[]; profiles: GbOption[]; policies: GbOption[]; warnings: string[] }
 function GreenboneImports() {
   const { t, locale } = useI18n();
   const [config, setConfig] = useState<GbConnection | null>(null);
@@ -330,6 +330,11 @@ function GreenboneImports() {
       {preview && <Card><CardHeader><CardTitle>{t("admin.gbPreview")}</CardTitle></CardHeader><CardContent className="space-y-4">
         <div className="flex flex-wrap gap-4 text-sm">{Object.entries(preview.summary).map(([key, value]) => <span key={key}><b>{value}</b> {key}</span>)}<span>{preview.groups} {t("admin.gbGroups")}</span><span>{preview.tasks.length} {t("admin.gbTasks")}</span><span>{preview.schedules.length} {t("nav.schedules")}</span></div>
         {preview.warnings.map((warning) => <Note key={warning}>{warning}</Note>)}
+        {preview.changes.baseline_import_id && <Note tone="info">Comparaison avec la synchronisation précédente : {preview.changes.changed.length} modification(s), {preview.changes.absent.length} objet(s) absent(s) de la source. Les objets absents ne seront pas supprimés ; les associations existantes restent conservées.</Note>}
+        {(preview.changes.changed.length > 0 || preview.changes.absent.length > 0) && <div className="max-h-40 overflow-auto rounded border border-border p-3 text-xs">
+          {preview.changes.changed.map((item) => <p key={`changed:${item.type}:${item.id}`}>Modifié — {item.type} {item.name} ({item.id})</p>)}
+          {preview.changes.absent.map((item) => <p key={`absent:${item.type}:${item.id}`}>Absent de la source — {item.type} {item.name} ({item.id})</p>)}
+        </div>}
         <div className="grid gap-2 sm:grid-cols-2 text-sm">
           <p>Port Lists : {preview.port_lists.map((item) => item.name).join(", ") || "—"}</p>
           <p>{t("admin.gbScanConfigs")} : {preview.scan_configs.map((item) => item.name).join(", ") || "—"}</p>
@@ -341,7 +346,7 @@ function GreenboneImports() {
         <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={addTag} onChange={(e) => setAddTag(e.target.checked)} />{t("admin.gbTag")}</label>
         <div className="max-h-72 overflow-auto rounded border border-border">
           <Table><thead><tr><Th></Th><Th>{t("admin.gbTargets")}</Th><Th>{t("col.name")}</Th><Th>{t("admin.gbTcpPorts")}</Th><Th>{t("admin.gbGroups")}</Th><Th>{t("col.status")}</Th></tr></thead>
-            <tbody>{preview.targets.map((target, index) => <tr key={target.value + ":" + target.ports + ":" + index}><Td><input type="checkbox" aria-label={target.value} disabled={!target.importable} checked={selected.includes(index)} onChange={(e) => setSelected(e.target.checked ? [...selected, index] : selected.filter((item) => item !== index))} /></Td><Td className="font-mono text-xs">{target.value}</Td><Td>{target.name}</Td><Td>{target.ports || "—"}</Td><Td>{target.group_name}</Td><Td>{target.action}{target.reason && <div className="text-xs text-danger">{target.reason}</div>}</Td></tr>)}</tbody>
+            <tbody>{preview.targets.map((target, index) => <tr key={target.value + ":" + target.ports + ":" + index}><Td><input type="checkbox" aria-label={target.value} disabled={!target.importable} checked={selected.includes(index)} onChange={(e) => setSelected(e.target.checked ? [...selected, index] : selected.filter((item) => item !== index))} /></Td><Td className="font-mono text-xs">{target.value}</Td><Td>{target.name}</Td><Td>{target.ports || "—"}{target.action === "changed" && <div className="text-xs text-muted">Précédemment : {target.previous_ports || "—"}</div>}</Td><Td>{target.group_name}</Td><Td>{target.action}{target.reason && <div className="text-xs text-danger">{target.reason}</div>}</Td></tr>)}</tbody>
           </Table>
         </div>
         {preview.tasks.length > 0 && <Card className="p-3"><p className="mb-2 font-medium">{t("admin.gbTaskMapping")}</p>
@@ -362,7 +367,7 @@ function GreenboneImports() {
         {message && <Note tone="success">{message}</Note>}
       </CardContent></Card>}
       <Card><CardHeader><CardTitle>{t("admin.gbHistory")}</CardTitle></CardHeader><CardContent>
-        {jobs.length ? <Table><thead><tr><Th>{t("col.date")}</Th><Th>{t("col.name")}</Th><Th>Source</Th><Th>{t("col.status")}</Th><Th>{t("admin.error")}</Th><Th /></tr></thead><tbody>{jobs.map((job) => <tr key={job.id}><Td>{formatDate(job.created_at, locale)}</Td><Td>{job.mode.toUpperCase()}</Td><Td>{job.source_name}</Td><Td>{job.status}{job.progress?.phase && <div className="text-xs text-muted">{job.progress.phase}</div>}</Td><Td className="text-xs text-danger">{job.error}</Td><Td>{job.status === "done" && <Button size="sm" variant="outline" onClick={() => void run(() => loadPreview(job.id))}>{t("admin.gbPreview")}</Button>}</Td></tr>)}</tbody></Table> : <Empty>—</Empty>}
+        {jobs.length ? <Table><thead><tr><Th>{t("col.date")}</Th><Th>{t("col.name")}</Th><Th>Source</Th><Th>Demandeur</Th><Th>{t("col.status")}</Th><Th>Résultat</Th><Th>{t("admin.error")}</Th><Th /></tr></thead><tbody>{jobs.map((job) => <tr key={job.id}><Td>{formatDate(job.created_at, locale)}</Td><Td>{job.mode.toUpperCase()}</Td><Td>{job.source_name}</Td><Td className="font-mono text-xs">{job.requested_by || "—"}</Td><Td>{job.status}{job.progress?.phase && <div className="text-xs text-muted">{job.progress.phase}</div>}</Td><Td className="text-xs">{job.result?.objects && <div>Targets {job.result.objects.targets ?? 0} · Tasks {job.result.objects.tasks ?? 0}</div>}{job.result?.applied && <div>Créées {job.result.applied.created ?? 0} · Réutilisées {job.result.applied.reused ?? 0} · Définitions {job.result.applied.definitions_created ?? 0}</div>}</Td><Td className="text-xs text-danger">{job.error}</Td><Td>{job.status === "done" && <Button size="sm" variant="outline" onClick={() => void run(() => loadPreview(job.id))}>{t("admin.gbPreview")}</Button>}</Td></tr>)}</tbody></Table> : <Empty>—</Empty>}
       </CardContent></Card>
     </div>
   );
