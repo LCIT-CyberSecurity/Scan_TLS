@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import sys
 import types
+import hashlib
 from types import SimpleNamespace
 from conftest import wait_for
 
@@ -99,6 +100,15 @@ def test_xml_source_identifier_is_repeatable():
     first = normalize_xml([("targets.xml", TARGETS)])
     again = normalize_xml([("renamed.xml", TARGETS)])
     assert first["source_id"] == again["source_id"]
+
+
+def test_target_source_mapping_versions_scope_without_replacing_previous_key():
+    from tls_scan_app.services.greenbone import _target_link_key
+
+    target = {"external_id": "target-a", "value": "192.0.2.45", "ports": "443"}
+    assert _target_link_key(target) == "target-a:192.0.2.45"
+    assert _target_link_key(target, versioned=True) == "target-a:192.0.2.45:ports:" + hashlib.sha256(b"443").hexdigest()[:12]
+    assert len(_target_link_key({"external_id": "a" * 36, "value": "x" * 253, "ports": "443"}, versioned=True)) <= 128
 
 
 def test_gmp_reads_all_collections_with_mocked_python_gvm(monkeypatch):

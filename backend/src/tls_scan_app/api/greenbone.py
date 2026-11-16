@@ -52,6 +52,7 @@ def _out(row: GreenboneImport) -> dict:
     if result and "apply_request" in result:
         result = {"pending": True}
     return {"id": str(row.id), "mode": row.mode, "source_name": row.source_name, "status": row.status,
+            "requested_by": str(row.requested_by) if row.requested_by else None,
             "created_at": row.created_at, "finished_at": row.finished_at, "error": row.error, "result": result, "progress": row.progress}
 
 

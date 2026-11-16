@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import ipaddress
 import logging
 import ssl
@@ -318,32 +319,94 @@ def normalized_targets(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
     return records
 
 
+def _target_link_key(item: dict[str, Any], *, versioned: bool = False) -> str:
+    """Keep the original source/host link stable; add a port version when scope changes."""
+    base = item["external_id"] + ":" + item["value"]
+    if len(base) > 100:
+        base = item["external_id"] + ":host:" + hashlib.sha256(item["value"].encode()).hexdigest()[:24]
+    if not versioned:
+        return base
+    digest = hashlib.sha256(item["ports"].encode()).hexdigest()[:12]
+    return f"{base}:ports:{digest}"[:128]
+
+
+def _legacy_target_link_key(item: dict[str, Any]) -> str:
+    return item["external_id"] + ":" + item["value"]
+
+
+def _snapshot_changes(db: Any, snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Compare this read-only snapshot with the most recent earlier snapshot of its source."""
+    from sqlalchemy import select
+
+    source_id = snapshot.get("source_id")
+    import_id = snapshot.get("import_id")
+    if not source_id or not import_id:
+        return {"baseline_import_id": None, "changed": [], "absent": []}
+    current = db.get(GreenboneImport, import_id)
+    if current is None:
+        return {"baseline_import_id": None, "changed": [], "absent": []}
+    previous = db.execute(select(GreenboneImport).where(
+        GreenboneImport.id != current.id, GreenboneImport.mode == current.mode,
+        GreenboneImport.status == "done").order_by(GreenboneImport.created_at.desc()).limit(20)).scalars()
+    baseline = next((row for row in previous if row.snapshot and row.snapshot.get("source_id") == source_id), None)
+    if baseline is None:
+        return {"baseline_import_id": None, "changed": [], "absent": []}
+
+    changed: list[dict[str, str]] = []
+    absent: list[dict[str, str]] = []
+    descriptors = (
+        ("target", "targets", lambda x: (x.get("id"), x.get("value")), lambda x: {k: x.get(k) for k in ("name", "comment", "ports", "group_name", "exclusions")}, True),
+        ("task", "tasks", lambda x: x.get("id"), lambda x: {k: x.get(k) for k in ("name", "comment", "refs")}, False),
+        ("port_list", "port_lists", lambda x: x.get("id"), lambda x: {k: x.get(k) for k in ("name", "ranges")}, False),
+        ("scan_config", "scan_configs", lambda x: x.get("id"), lambda x: {k: x.get(k) for k in ("name", "comment")}, False),
+        ("schedule", "schedules", lambda x: x.get("id"), lambda x: {k: x.get(k) for k in ("name", "comment", "timezone", "first_time", "period")}, False),
+        ("tag", "tags", lambda x: x.get("id"), lambda x: {k: x.get(k) for k in ("name", "comment", "refs")}, False),
+    )
+    for kind, key, identity, project, is_target in descriptors:
+        def rows(source_snapshot: dict[str, Any]) -> dict[Any, dict[str, Any]]:
+            data = normalized_targets(source_snapshot) if is_target else source_snapshot.get(key, [])
+            return {identity(item): item for item in data if identity(item)}
+        before, after = rows(baseline.snapshot), rows(snapshot)
+        for object_id, old in before.items():
+            label = str(object_id[0] if isinstance(object_id, tuple) else object_id)
+            if object_id not in after:
+                absent.append({"type": kind, "id": label, "name": str(old.get("name", old.get("value", "")))[:160]})
+            elif json.dumps(project(old), sort_keys=True, default=str) != json.dumps(project(after[object_id]), sort_keys=True, default=str):
+                changed.append({"type": kind, "id": label, "name": str(after[object_id].get("name", after[object_id].get("value", "")))[:160]})
+    return {"baseline_import_id": str(baseline.id), "changed": changed, "absent": absent}
+
+
 def preview(db: Any, snapshot: dict[str, Any]) -> dict[str, Any]:
     from sqlalchemy import select, tuple_
     from tls_scan_app.models import GreenboneObjectLink, Policy, PolicyVersion, ScanProfile, ScanProfileVersion, Target
 
     sources = normalized_targets(snapshot)
     target_map = {}
-    link_ids = set()
+    links: dict[str, str] = {}
     identities = list(dict.fromkeys((item["value"], item["ports"]) for item in sources if item["importable"]))
     external_ids = list(dict.fromkeys(item["external_id"] + ":" + item["value"] for item in sources if item["importable"]))
     for offset in range(0, len(identities), 400):
         for target in db.execute(select(Target).where(tuple_(Target.value, Target.ports).in_(identities[offset:offset + 400]))).scalars():
             target_map[(target.value, target.ports)] = target
-    for offset in range(0, len(external_ids), 400):
-        link_ids.update(db.execute(select(GreenboneObjectLink.external_id).where(
-            GreenboneObjectLink.source_id == snapshot["source_id"], GreenboneObjectLink.object_type == "target",
-            GreenboneObjectLink.external_id.in_(external_ids[offset:offset + 400]))).scalars())
+    for link in db.execute(select(GreenboneObjectLink).where(
+        GreenboneObjectLink.source_id == snapshot["source_id"], GreenboneObjectLink.object_type == "target")).scalars():
+        links[link.external_id] = link.tls_id
     items = []
     for source in sources:
         if not source["importable"]:
             items.append({**source, "existing_id": None, "action": "unimportable"})
             continue
         existing = target_map.get((source["value"], source["ports"]))
-        is_linked = source["external_id"] + ":" + source["value"] in link_ids
+        base_key = _target_link_key(source)
+        legacy_key = _legacy_target_link_key(source)
+        source_links = {key: value for key, value in links.items() if key in (base_key, legacy_key) or key.startswith(base_key + ":ports:")}
+        mapped = next((db.get(Target, value) for value in source_links.values() if db.get(Target, value) is not None
+                       and db.get(Target, value).ports == source["ports"]), None)
+        action = "linked" if mapped else "changed" if source_links else "existing" if existing else "new"
         items.append({**source, "existing_id": str(existing.id) if existing else None,
-                      "action": "linked" if is_linked else "existing" if existing else "new"})
-    summary = {key: sum(1 for item in items if item["action"] == key) for key in ("new", "existing", "linked", "unimportable")}
+                      "previous_ports": next((db.get(Target, value).ports for value in source_links.values()
+                                               if db.get(Target, value) is not None), None), "action": action})
+    summary = {key: sum(1 for item in items if item["action"] == key) for key in ("new", "existing", "linked", "changed", "unimportable")}
     target_ids = {target.get("id") for target in snapshot.get("targets", [])}
     tasks = [{**task, "missing_target": not bool(task.get("refs", {}).get("target")) or task["refs"]["target"] not in target_ids}
              for task in snapshot.get("tasks", [])]
@@ -367,7 +430,8 @@ def preview(db: Any, snapshot: dict[str, Any]) -> dict[str, Any]:
         warnings.append(f"{no_tcp} cible(s) sans ports TCP transférables sont exclues pour éviter d’élargir le périmètre.")
     if any(task["missing_target"] for task in tasks):
         warnings.append(f"{sum(task['missing_target'] for task in tasks)} Task(s) référencent une Target absente du jeu importé.")
-    return {"summary": summary, "targets": items, "groups": len({i["group_name"] for i in items}), "tasks": tasks,
+    changes = _snapshot_changes(db, snapshot)
+    return {"summary": summary, "targets": items, "changes": changes, "groups": len({i["group_name"] for i in items}), "tasks": tasks,
             "port_lists": snapshot.get("port_lists", []), "scan_configs": snapshot.get("scan_configs", []),
             "schedules": snapshot.get("schedules", []), "tags": snapshot.get("tags", []),
             "profiles": profile_options, "policies": policy_options, "warnings": warnings, "invalid_hosts": invalid_hosts}
@@ -429,7 +493,13 @@ def apply(db: Any, snapshot: dict[str, Any], selected: list[int], actor: Any, *,
                 db.add(TargetGroupMember(group_id=group.id, target_id=target.id))
         if tag and (not existing):
             db.add(ResourceTag(resource_type="target", resource_id=target.id, tag_id=tag.id))
-        key = item["external_id"] + ":" + item["value"]
+        base_key = _target_link_key(item)
+        link = db.scalar(select(GreenboneObjectLink).where(GreenboneObjectLink.source_id == snapshot["source_id"],
+                           GreenboneObjectLink.object_type == "target", GreenboneObjectLink.external_id == base_key))
+        if link is None and _legacy_target_link_key(item) != base_key:
+            link = db.scalar(select(GreenboneObjectLink).where(GreenboneObjectLink.source_id == snapshot["source_id"],
+                               GreenboneObjectLink.object_type == "target", GreenboneObjectLink.external_id == _legacy_target_link_key(item)))
+        key = _target_link_key(item, versioned=bool(link and link.tls_id != str(target.id)))
         link = db.scalar(select(GreenboneObjectLink).where(GreenboneObjectLink.source_id == snapshot["source_id"],
                            GreenboneObjectLink.object_type == "target", GreenboneObjectLink.external_id == key))
         if link is None:
