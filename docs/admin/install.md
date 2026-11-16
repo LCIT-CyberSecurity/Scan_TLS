@@ -6,7 +6,7 @@ arguments for the interactive menu (French), or give a mode and a command for au
 | | **Standalone** | **WebUI (Docker)** |
 |---|---|---|
 | What | the historical command-line engine | API + PostgreSQL + worker + scheduler + HTTPS web UI |
-| Needs on the host | Python 3 (see `requires-python`), Nmap, `venv` | Docker + Compose plugin, `openssl` — nothing else |
+| Needs on the host | Python 3.12+ (see `requires-python`), Nmap, `venv` | Docker + Compose plugin, `openssl` — nothing else |
 | Installed in | `.venv/` of the repository | Docker Compose project `tls-scan` (images, containers, volumes) |
 | Configuration | YAML files in `config/` | PostgreSQL |
 
