@@ -329,6 +329,11 @@ p {
   -webkit-backdrop-filter: saturate(180%) blur(16px);
 }
 
+/* Keep section links above the endpoint drawer backdrop while it is open. */
+.app-shell.drawer-open {
+  z-index: 30;
+}
+
 .brand-block,
 .cover-brand {
   display: flex;
@@ -1021,6 +1026,12 @@ td .truncate {
 
 .drawer.open {
   transform: translateX(0);
+  padding-top: calc(var(--space-8) + var(--shell-height));
+}
+
+.drawer.open .icon-button {
+  position: relative;
+  top: auto;
 }
 
 .drawer h2 {

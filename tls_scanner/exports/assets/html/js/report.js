@@ -766,6 +766,7 @@
     $('endpointDrawer').classList.add('open');
     $('endpointDrawer').setAttribute('aria-hidden','false');
     $('drawerBackdrop').classList.add('open');
+    document.querySelector('.app-shell')?.classList.add('drawer-open');
   }
 
   function trustedByLabel(cert){ return (cert.trusted_by || []).join(', ') || 'N/A'; }
@@ -932,11 +933,13 @@
     $('endpointDrawer').classList.add('open');
     $('endpointDrawer').setAttribute('aria-hidden','false');
     $('drawerBackdrop').classList.add('open');
+    document.querySelector('.app-shell')?.classList.add('drawer-open');
   }
 
   function initNavigation(){
     const links = Array.from(document.querySelectorAll('.app-shell nav a'));
     const sections = links.map((link) => document.querySelector(link.getAttribute('href'))).filter(Boolean);
+    links.forEach((link) => link.addEventListener('click', closeDrawer));
     const setActive = () => {
       const current = sections.reduce((active, section) => section.getBoundingClientRect().top <= 120 ? section : active, sections[0]);
       links.forEach((link) => link.classList.toggle('active', link.getAttribute('href') === `#${current.id}`));
@@ -954,6 +957,7 @@
     $('endpointDrawer').classList.remove('open');
     $('endpointDrawer').setAttribute('aria-hidden','true');
     $('drawerBackdrop').classList.remove('open');
+    document.querySelector('.app-shell')?.classList.remove('drawer-open');
   }
 
   $('printReport').addEventListener('click', () => window.print());
