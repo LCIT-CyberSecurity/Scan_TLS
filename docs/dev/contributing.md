@@ -3,7 +3,7 @@
 * Branch from `main`; WebUI work lives on `feature/webui-v1`. One coherent commit per increment.
 * **Do not change engine behaviour** (`tls_scanner/`) without a test and a note in `docs/limitations.md → Engine
   changes`. Run `tests/regression/run.sh` after any engine change: all exports must stay identical.
-* Backend: Python 3.12, FastAPI, SQLAlchemy 2, Alembic. New table or column → new Alembic revision
+* Backend: Python 3.12+ (the WebUI image uses Python 3.12 on Debian 13), FastAPI, SQLAlchemy 2, Alembic. New table or column → new Alembic revision
   (`alembic revision --autogenerate` inside the api container). Enforce permissions in the API with
   `require_role` + owner checks; add a case to `test_permissions.py`. Never log secrets (use `services/logs.scrub_text`).
 * Frontend: add every user-visible string to `src/i18n/en.ts`, `fr.ts`, `de.ts` (the type system and
