@@ -30,7 +30,7 @@ Verification run on Debian 13.7 / Python 3.13.5 / Node 20.19.2 / npm 9.2.0:
 - `python -m unittest -q test_tls_scanner`: PASS, 115 tests.
 - `PYTHONPATH=. python -m unittest tests/engine/test_runner.py tests/engine/test_tls_checks.py tests/engine/test_tls_checks_integration.py tests/engine/test_tls_checks_lot2.py`: PASS, 170 tests / 1 skipped.
 - The active Integrations VM API reports Python 3.12.15, OpenSSL 3.5.7, Nmap 7.95 and PostgreSQL 16.15; its Nginx is 1.27.5. Its Debian 13.7 host and running containers were inspected read-only.
-- Docker image build and isolated Compose startup remain to be run before promoting this change. The existing `tls-scan` service must only be updated after a verified backup; its persistent PostgreSQL version and volumes remain untouched by this refactor.
+- Initial isolated Docker build passed. The first Compose startup exposed that the Debian Nginx image lacks the `wget` binary used by the Alpine healthcheck; the runtime image now installs `curl` and Compose probes the same local HTTPS page with curl. An isolated Compose startup must pass after this correction before promoting this change. The existing `tls-scan` service must only be updated after a verified backup; its persistent PostgreSQL version and volumes remain untouched by this refactor.
 
 ## Image sources
 
