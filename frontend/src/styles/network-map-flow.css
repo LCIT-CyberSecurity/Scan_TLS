@@ -1,0 +1,23 @@
+.network-map-flow { position: absolute; inset: 0; min-height: 500px; overflow: hidden; background: var(--surface); }
+.network-map-flow .react-flow { --xy-background-color: var(--surface); --xy-node-background-color-default: var(--surface); --xy-node-border-default: 0; --xy-node-boxshadow-default: none; --xy-controls-button-background-color: var(--surface); --xy-controls-button-color: var(--text-secondary); --xy-controls-button-border-color: var(--border); --xy-minimap-background-color: var(--surface-secondary); --xy-minimap-mask-background-color: color-mix(in srgb, var(--surface) 68%, transparent); --xy-minimap-node-background-color: var(--primary); --xy-minimap-node-stroke-color: var(--border-strong); }
+.network-map-flow .react-flow__attribution { display: none; }
+.network-map-flow .react-flow__controls { left: 14px; bottom: 14px; overflow: hidden; border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow-sm); }
+.network-map-flow .react-flow__controls-button { width: 32px; height: 32px; border-bottom: 1px solid var(--border); fill: var(--text-secondary); }
+.network-map-flow .react-flow__minimap { right: 14px; bottom: 14px; overflow: hidden; border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow-sm); }
+.network-map-flow .react-flow__edge-path { stroke-linecap: round; }
+.nmap-node { display: flex; align-items: center; gap: 11px; width: 100%; min-height: 74px; padding: 13px; color: var(--text-primary); border: 1px solid var(--border); border-radius: 13px; background: var(--surface); box-shadow: 0 8px 24px rgb(9 18 31 / 10%); transition: border-color .15s, box-shadow .15s, transform .15s; }
+.nmap-node:hover, .nmap-node.is-selected { border-color: var(--primary); box-shadow: 0 10px 28px rgb(9 18 31 / 17%); transform: translateY(-1px); }
+.nmap-node--si { border-left: 3px solid #657fe8; }
+.nmap-node--zone, .nmap-node--subnet { border-left: 3px solid #42a6a2; }
+.nmap-node--host { border-radius: 40px; }
+.nmap-node-icon { display: grid; flex: 0 0 36px; width: 36px; height: 36px; place-items: center; color: var(--primary); border-radius: 11px; background: var(--primary-soft); }
+.nmap-node--host .nmap-node-icon { border-radius: 50%; }
+.nmap-node-copy { display: grid; min-width: 0; flex: 1; gap: 4px; }
+.nmap-node-copy strong { overflow: hidden; font-size: 13px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.nmap-node-copy small { overflow: hidden; color: var(--text-secondary); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.nmap-count, .nmap-grade { display: inline-grid; min-width: 25px; height: 25px; place-items: center; padding: 0 7px; color: var(--text-secondary); border: 1px solid var(--border); border-radius: 99px; font-size: 11px; font-weight: 650; }
+.nmap-grade--critical, .nmap-grade--high, .nmap-grade--non-compliant { color: #b33e4b; border-color: color-mix(in srgb, #d75b68 40%, var(--border)); background: color-mix(in srgb, #d75b68 12%, var(--surface)); }
+.nmap-grade--compliant { color: #16845d; border-color: color-mix(in srgb, #2aa77a 42%, var(--border)); background: color-mix(in srgb, #2aa77a 12%, var(--surface)); }
+.nmap-open { display: grid; width: 27px; height: 27px; place-items: center; padding: 0; color: var(--text-secondary); border: 0; border-radius: 7px; background: transparent; cursor: pointer; }
+.nmap-open:hover { color: var(--text-primary); background: var(--primary-soft); }
+@media (max-width: 760px) { .network-map-flow { min-height: 520px; } .network-map-flow .react-flow__minimap { display: none; } }
