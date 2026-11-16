@@ -1,4 +1,4 @@
-import type { ReactElement } from "react";
+import { lazy, Suspense, type ReactElement } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import type { Role } from "./api/types";
 import { useAuth } from "./auth/AuthContext";
@@ -15,6 +15,8 @@ import Scans from "./pages/Scans";
 import Schedules from "./pages/Schedules";
 import Targets from "./pages/Targets";
 
+const NetworkMap = lazy(() => import("./pages/NetworkMap"));
+
 function Guard({ min, children }: { min: Role; children: ReactElement }) {
   const { atLeast } = useAuth();
   return atLeast(min) ? children : <Navigate to="/" replace />;
@@ -29,6 +31,7 @@ export default function App() {
       <Route element={<Shell />}>
         <Route index element={<Dashboard />} />
         <Route path="tasks" element={<Guard min="USER"><MyTasks /></Guard>} />
+        <Route path="scans/map" element={<Suspense fallback={<div className="p-6 text-muted">…</div>}><Guard min="USER"><NetworkMap /></Guard></Suspense>} />
         <Route path="scans" element={<Guard min="USER"><Scans /></Guard>} />
         <Route path="scans/:id" element={<RunDetail />} />
         <Route path="schedules" element={<Guard min="USER"><Schedules /></Guard>} />
