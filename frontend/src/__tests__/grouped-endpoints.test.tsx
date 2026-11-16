@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "../test-utils";
 import { afterEach, describe, expect, it } from "vitest";
 import type { Endpoint } from "../api/types";
 import { GroupedEndpoints } from "../components/GroupedEndpoints";

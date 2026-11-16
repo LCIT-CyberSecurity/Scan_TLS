@@ -88,7 +88,7 @@ function ProfileForm({ value, onChange }: { value: Content; onChange: (c: Conten
 function VersionedTab({ kind, Form, blank }: { kind: "policies" | "profiles"; Form: typeof PolicyForm; blank: Content }) {
   const { t } = useI18n();
   const { atLeast } = useAuth();
-  const { data, reload, error } = useLoad(() => api<Versioned[]>(`/${kind}`));
+  const { data, reload, error } = useLoad(() => api<Versioned[]>(`/${kind}`), [kind]);
   const [edit, setEdit] = useState<{ item?: Versioned; name: string; description: string; content: Content } | null>(null);
   const [yaml, setYaml] = useState<string | null>(null);
   const [err, setErr] = useState<unknown>();
