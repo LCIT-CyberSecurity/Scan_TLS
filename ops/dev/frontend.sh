@@ -4,4 +4,4 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 cmd="${*:-npm install --no-audit --no-fund >/dev/null 2>&1; npx tsc -b && npx vitest run && npm run build}"
-ops/dev/vm.sh "docker run --rm -u \$(id -u):\$(id -g) -e HOME=/tmp -v \$PWD/frontend:/app -w /app node:20-alpine sh -c '$cmd'"
+ops/dev/vm.sh "docker run --rm -u \$(id -u):\$(id -g) -e HOME=/tmp -v \$PWD/frontend:/app -w /app node:24-trixie-slim sh -c '$cmd'"

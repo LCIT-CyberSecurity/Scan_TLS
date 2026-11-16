@@ -417,4 +417,3 @@ export function positionMapNodes(nodes: MapNode[], graph: MapGraph, viewportWidt
   positions.push(...placeLane(hosts, systems.length ? unassigned.length ? 330 : 170 : unassigned.length ? 160 : 0, viewportWidth, "host"));
   return positions;
 }
-
