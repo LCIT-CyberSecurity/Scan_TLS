@@ -113,7 +113,7 @@ function GroupDialog({ initial, targets, systems, onClose, onSaved }: { initial?
 /** Where a target comes from, read from the DNS observations a discovery recorded (not from the tag). */
 function ProvenanceDialog({ target, onClose }: { target: Target; onClose: () => void }) {
   const { t, locale } = useI18n();
-  const data = useLoad(() => api<{ ips: { ip: string }[]; cnames: { name: string }[]; provenance: NonNullable<Target["dns"]> | null }>(`/targets/${target.id}/dns`));
+  const data = useLoad(() => api<{ ips: { ip: string }[]; cnames: { name: string }[]; provenance: NonNullable<Target["dns"]> | null }>(`/targets/${target.id}/dns`), [target.id]);
   const p = data.data?.provenance ?? target.dns;
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()} title={`${t("target.prov.title")} — ${target.value}`}>

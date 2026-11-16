@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "../test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DiscoveriesTab, DnsDiscoveryDialog } from "../components/DnsDiscovery";
 import { I18nProvider } from "../i18n";

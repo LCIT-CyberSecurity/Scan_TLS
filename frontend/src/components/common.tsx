@@ -1,5 +1,6 @@
 import { AlertTriangle, Inbox, Info, Loader2 } from "lucide-react";
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { ApiError } from "../api/client";
 import type { RunStatus } from "../api/types";
@@ -66,13 +67,22 @@ export function Metric({ label, value, hint, icon, tone, to }: { label: string; 
 
 /** Loads data, exposes reload; keeps previous data while refreshing. */
 export function useLoad<T>(loader: () => Promise<T>, deps: unknown[] = [], pollMs?: number) {
-  const [data, setData] = useState<T | undefined>();
-  const [error, setError] = useState<unknown>();
-  const [loading, setLoading] = useState(true);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const reload = useCallback(async () => { try { setData(await loader()); setError(undefined); } catch (e) { setError(e); } finally { setLoading(false); } }, deps);
-  useEffect(() => { void reload(); if (!pollMs) return; const id = setInterval(() => void reload(), pollMs); return () => clearInterval(id); }, [reload, pollMs]);
-  return { data, error, loading, reload };
+  const query = useQuery({
+    queryKey: ["useLoad", loader.toString(), ...deps],
+    queryFn: async (): Promise<{ value: T } | { undefinedValue: true }> => {
+      const value = await loader();
+      return value === undefined ? { undefinedValue: true } : { value };
+    },
+    placeholderData: (previous) => previous,
+    refetchInterval: pollMs,
+    refetchOnMount: "always",
+    retry: false,
+    staleTime: 0,
+    gcTime: 0,
+  });
+  const reload = async () => { await query.refetch(); };
+  const result = query.data && "value" in query.data ? query.data.value : undefined;
+  return { data: result, error: query.error, loading: query.isLoading, reload };
 }
 
 export function ConfirmButton({ label, confirm, onConfirm, variant = "danger", size = "sm" }: { label: ReactNode; confirm: string; onConfirm: () => void | Promise<void>; variant?: "danger" | "outline"; size?: "sm" | "default" }) {

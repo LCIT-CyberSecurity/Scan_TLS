@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "../test-utils";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { TlsChecksPicker } from "../components/TlsChecksPicker";
