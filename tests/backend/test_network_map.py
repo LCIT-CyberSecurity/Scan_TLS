@@ -146,6 +146,16 @@ def test_host_map_uses_the_real_latest_tls_run(operator: Api, catalog: dict) -> 
     assert detail.status_code == 200, detail.text
     assert detail.json()["scan"]["run_id"] == queued.json()["run_id"]
     assert detail.json()["scan"]["endpoints"]
+    si = operator.post("/api/information-systems", json={"name": f"map-preview-{uuid.uuid4().hex[:8]}"})
+    assert si.status_code == 201, si.text
+    zone = operator.post("/api/map/zones", json={"name": f"preview-zone-{uuid.uuid4().hex[:8]}", "zone_type": "dmz",
+        "si_ids": [si.json()["id"]], "target_ids": [target["id"]]})
+    assert zone.status_code == 201, zone.text
+    si_graph = operator.get("/api/map/graph", params={"si_id": si.json()["id"]})
+    assert si_graph.status_code == 200, si_graph.text
+    zone_preview = next(node for node in si_graph.json()["nodes"] if node.get("zone_id") == zone.json()["id"])
+    assert zone_preview["exposure"]["endpoint_count"] == len(detail.json()["scan"]["endpoints"])
+    assert zone_preview["exposure"]["endpoints"]
     other_port = operator.post("/api/targets", json={"name": "same host, different TLS port", "value": "intranet.acme.local", "ports": "8443"})
     assert other_port.status_code == 201, other_port.text
     other_detail = operator.get(f"/api/map/hosts/{other_port.json()['id']}")

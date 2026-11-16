@@ -5,13 +5,13 @@ import {
 } from "@xyflow/react";
 import { ChevronRight, Globe2, Layers3, ShieldCheck } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { MapGraph, MapHostEndpoint, MapNode } from "../../api/types";
+import type { MapEndpointPreview, MapGraph, MapNode } from "../../api/types";
 import { useI18n } from "../../i18n";
 import "@xyflow/react/dist/style.css";
 import "../../styles/network-map-flow.css";
 
 type Props = { nodes: MapNode[]; graph: MapGraph; links: Edge[]; onSelect: (node: MapNode) => void; onFit?: (fit: () => void) => void };
-type FlowData = { label: string; subtitle?: string; kind: string; node?: MapNode; count?: number; status?: string; endpoints?: MapHostEndpoint[]; onOpen?: () => void };
+type FlowData = { label: string; subtitle?: string; kind: string; node?: MapNode; count?: number; status?: string; endpoints?: MapEndpointPreview[]; endpointCount?: number; onOpen?: () => void };
 type FlowNode = Node<FlowData>;
 
 function ipv4Number(value: string) {
@@ -51,13 +51,13 @@ function AssetNode({ data, selected }: { data: FlowData; selected?: boolean }) {
       {data.count !== undefined && <span className="nmap-count">{data.count}</span>}
       {data.onOpen && <button className="nmap-open nodrag" aria-label={`Open ${data.label}`} onClick={(event) => { event.stopPropagation(); data.onOpen?.(); }}><ChevronRight size={16} /></button>}
     </div>
-    {host && data.endpoints && data.endpoints.length > 0 && <div className="nmap-node-services" aria-label={`${data.endpoints.length} TLS endpoints`}>
+    {data.endpoints && data.endpoints.length > 0 && <div className="nmap-node-services" aria-label={`${data.endpointCount ?? data.endpoints.length} TLS endpoints`}>
       {data.endpoints.slice(0, 3).map((endpoint) => {
         const address = endpoint.hostname || endpoint.ip_address || data.subtitle || data.label;
         const state = endpoint.compliance_status || "unknown";
         return <span key={endpoint.endpoint_id} title={`${address}:${endpoint.port ?? "—"} · ${state}`}><i className={`nmap-service-dot nmap-service-dot--${state}`} />{address}:{endpoint.port ?? "—"}</span>;
       })}
-      {data.endpoints.length > 3 && <small>+{data.endpoints.length - 3}</small>}
+      {(data.endpointCount ?? data.endpoints.length) > 3 && <small>+{(data.endpointCount ?? data.endpoints.length) - 3}</small>}
     </div>}
   </div>;
 }
@@ -114,7 +114,8 @@ export default function NetworkMapFlow({ nodes, graph, links, onSelect, onFit }:
       status: node.exposure?.severity?.critical ? "critical" : node.exposure?.severity?.high ? "high" :
         node.kind === "host" && node.exposure && "non_compliant" in node.exposure && node.exposure.non_compliant > 0 ? "non-compliant" :
           node.kind === "host" && node.exposure && "compliant" in node.exposure && node.exposure.compliant > 0 ? "compliant" : undefined,
-      endpoints: node.kind === "host" && node.exposure && "endpoints" in node.exposure ? node.exposure.endpoints : undefined,
+      endpoints: node.exposure && "endpoints" in node.exposure ? node.exposure.endpoints : undefined,
+      endpointCount: node.exposure && "endpoint_count" in node.exposure ? node.exposure.endpoint_count : undefined,
     }, node));
     subnetGroups.forEach((group, key) => {
       const subnetId = `subnet:${key}`;
@@ -126,6 +127,7 @@ export default function NetworkMapFlow({ nodes, graph, links, onSelect, onFit }:
           host.exposure && "non_compliant" in host.exposure && host.exposure.non_compliant > 0 ? "non-compliant" :
             host.exposure && "compliant" in host.exposure && host.exposure.compliant > 0 ? "compliant" : undefined,
         endpoints: host.exposure && "endpoints" in host.exposure ? host.exposure.endpoints : undefined,
+        endpointCount: host.exposure && "endpoint_count" in host.exposure ? host.exposure.endpoint_count : undefined,
       }, host));
     });
     return result;
