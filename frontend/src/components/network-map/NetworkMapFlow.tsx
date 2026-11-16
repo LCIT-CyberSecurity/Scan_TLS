@@ -5,13 +5,13 @@ import {
 } from "@xyflow/react";
 import { ChevronRight, Globe2, Layers3, ShieldCheck } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import type { MapGraph, MapNode } from "../../api/types";
+import type { MapGraph, MapHostEndpoint, MapNode } from "../../api/types";
 import { useI18n } from "../../i18n";
 import "@xyflow/react/dist/style.css";
 import "../../styles/network-map-flow.css";
 
 type Props = { nodes: MapNode[]; graph: MapGraph; links: Edge[]; onSelect: (node: MapNode) => void; onFit?: (fit: () => void) => void };
-type FlowData = { label: string; subtitle?: string; kind: string; node?: MapNode; count?: number; status?: string; onOpen?: () => void };
+type FlowData = { label: string; subtitle?: string; kind: string; node?: MapNode; count?: number; status?: string; endpoints?: MapHostEndpoint[]; onOpen?: () => void };
 type FlowNode = Node<FlowData>;
 
 function ipv4Number(value: string) {
@@ -43,12 +43,22 @@ function AssetNode({ data, selected }: { data: FlowData; selected?: boolean }) {
   const severity = data.status?.toLowerCase() || "unknown";
   const statusText = data.status === "critical" ? t("map.criticalShort") : data.status === "high" ? t("map.highShort") : data.status === "compliant" ? t("map.compliantShort") : data.status === "non-compliant" ? t("map.nonCompliantShort") : data.status;
   const statusTitle = data.status === "compliant" ? t("map.compliant") : data.status === "non-compliant" ? t("map.nonCompliant") : data.status ? t(data.status === "critical" ? "map.critical" : "map.high") : "";
-  return <div className={`nmap-node nmap-node--${data.kind} ${selected ? "is-selected" : ""}`}>
-    <span className="nmap-node-icon">{host ? <Globe2 size={17} /> : data.kind === "si" ? <Layers3 size={17} /> : <ShieldCheck size={17} />}</span>
-    <span className="nmap-node-copy"><strong title={data.label}>{data.label}</strong>{data.subtitle && <small title={data.subtitle}>{data.subtitle}</small>}</span>
-    {data.status && <span className={`nmap-grade nmap-grade--${severity}`} title={`TLS ${statusTitle}`}>{statusText}</span>}
-    {data.count !== undefined && <span className="nmap-count">{data.count}</span>}
-    {data.onOpen && <button className="nmap-open nodrag" aria-label={`Open ${data.label}`} onClick={(event) => { event.stopPropagation(); data.onOpen?.(); }}><ChevronRight size={16} /></button>}
+  return <div className={`nmap-node nmap-node--${data.kind} ${data.endpoints?.length ? "has-endpoints" : ""} ${selected ? "is-selected" : ""}`}>
+    <div className="nmap-node-main">
+      <span className="nmap-node-icon">{host ? <Globe2 size={17} /> : data.kind === "si" ? <Layers3 size={17} /> : <ShieldCheck size={17} />}</span>
+      <span className="nmap-node-copy"><strong title={data.label}>{data.label}</strong>{data.subtitle && <small title={data.subtitle}>{data.subtitle}</small>}</span>
+      {data.status && <span className={`nmap-grade nmap-grade--${severity}`} title={`TLS ${statusTitle}`}>{statusText}</span>}
+      {data.count !== undefined && <span className="nmap-count">{data.count}</span>}
+      {data.onOpen && <button className="nmap-open nodrag" aria-label={`Open ${data.label}`} onClick={(event) => { event.stopPropagation(); data.onOpen?.(); }}><ChevronRight size={16} /></button>}
+    </div>
+    {host && data.endpoints && data.endpoints.length > 0 && <div className="nmap-node-services" aria-label={`${data.endpoints.length} TLS endpoints`}>
+      {data.endpoints.slice(0, 3).map((endpoint) => {
+        const address = endpoint.hostname || endpoint.ip_address || data.subtitle || data.label;
+        const state = endpoint.compliance_status || "unknown";
+        return <span key={endpoint.endpoint_id} title={`${address}:${endpoint.port ?? "—"} · ${state}`}><i className={`nmap-service-dot nmap-service-dot--${state}`} />{address}:{endpoint.port ?? "—"}</span>;
+      })}
+      {data.endpoints.length > 3 && <small>+{data.endpoints.length - 3}</small>}
+    </div>}
   </div>;
 }
 
@@ -93,7 +103,7 @@ export default function NetworkMapFlow({ nodes, graph, links, onSelect, onFit }:
     let index = 0;
     const pushAsset = (id: string, data: FlowData, node?: MapNode) => {
       const current = index++;
-      result.push({ id, type: "asset", position: { x: (current % columns) * 290, y: Math.floor(current / columns) * 118 }, data: { ...data, node }, style: { width: data.kind === "subnet" ? 268 : 260, background: "transparent", border: 0 } });
+      result.push({ id, type: "asset", position: { x: (current % columns) * 350, y: Math.floor(current / columns) * 132 }, data: { ...data, node }, style: { width: data.kind === "subnet" ? 268 : data.kind === "host" ? 320 : 260, background: "transparent", border: 0 } });
     };
     nodes.filter((node) => !groupedHostIds.has(node.id)).forEach((node) => pushAsset(node.id, {
       label: node.name,
@@ -104,6 +114,7 @@ export default function NetworkMapFlow({ nodes, graph, links, onSelect, onFit }:
       status: node.exposure?.severity?.critical ? "critical" : node.exposure?.severity?.high ? "high" :
         node.kind === "host" && node.exposure && "non_compliant" in node.exposure && node.exposure.non_compliant > 0 ? "non-compliant" :
           node.kind === "host" && node.exposure && "compliant" in node.exposure && node.exposure.compliant > 0 ? "compliant" : undefined,
+      endpoints: node.kind === "host" && node.exposure && "endpoints" in node.exposure ? node.exposure.endpoints : undefined,
     }, node));
     subnetGroups.forEach((group, key) => {
       const subnetId = `subnet:${key}`;
@@ -114,6 +125,7 @@ export default function NetworkMapFlow({ nodes, graph, links, onSelect, onFit }:
         status: host.exposure?.severity?.critical ? "critical" : host.exposure?.severity?.high ? "high" :
           host.exposure && "non_compliant" in host.exposure && host.exposure.non_compliant > 0 ? "non-compliant" :
             host.exposure && "compliant" in host.exposure && host.exposure.compliant > 0 ? "compliant" : undefined,
+        endpoints: host.exposure && "endpoints" in host.exposure ? host.exposure.endpoints : undefined,
       }, host));
     });
     return result;

@@ -48,7 +48,7 @@ vi.mock("../api/client", async (original) => ({
           { id: "device:child-device", kind: "device", name: "Application gateway", device_type: "gateway", zone_id: "zone-child" },
         ], links: [], truncated: false,
       };
-      if (options.params?.zone_id) return { scope: { zone: { id: "zone-1", name: "Public DMZ" } }, mode: "si", nodes: [{ id: "target:host-1", kind: "host", name: "web.example.test", target_id: "host-1", value: "web.example.test", exposure: null }], links: [], truncated: false };
+      if (options.params?.zone_id) return { scope: { zone: { id: "zone-1", name: "Public DMZ" } }, mode: "si", nodes: [{ id: "target:host-1", kind: "host", name: "web.example.test", target_id: "host-1", value: "web.example.test", exposure: { run_id: "run-1", status: "completed", finished_at: "2026-01-01T12:00:00Z", endpoints: [{ endpoint_id: "endpoint-1", hostname: "web.example.test", ip_address: "192.0.2.20", port: 443, grade: "A", compliance_status: "compliant", highest_severity: null, tls_versions: ["TLS 1.3"], cipher_suites: [], certificate: null, errors: [], untested_checks: [], tls_checks: [] }], severity: { critical: 0, high: 0, medium: 0, low: 0 }, compliant: 1, non_compliant: 0, unevaluated: 0 } }], links: [], truncated: false };
       if (options.params?.si_id && options.params?.mode === "network") return {
         scope: { si: { id: "si-1", name: "Production", description: "" } }, mode: "network",
         nodes: [
@@ -92,6 +92,7 @@ describe("Network Exposure Map", () => {
     act(() => graphState.handlers["node:click"]?.({ target: { id: "zone:zone-1" } }));
     await waitFor(() => expect(calls.some((item) => item.path === "/map/graph" && item.params?.zone_id === "zone-1")).toBe(true));
     await waitFor(() => expect(graphState.data?.nodes[0]?.id).toBe("target:host-1"));
+    await waitFor(() => expect(graphState.data?.nodes.find((node) => node.id === "target:host-1")?.data?.endpoints).toEqual(expect.arrayContaining([expect.objectContaining({ hostname: "web.example.test", port: 443 })])));
     act(() => graphState.handlers["node:click"]?.({ target: { id: "target:host-1" } }));
     expect(await screen.findByText("No TLS scan result is associated with this target.")).toBeInTheDocument();
   });
