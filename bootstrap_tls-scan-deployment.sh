@@ -6,7 +6,7 @@
 #   ./bootstrap_tls-scan-deployment.sh [--mode MODE] COMMAND [options]
 #
 # Modes
-#   standalone   native command-line engine: Python 3 + Nmap, in a dedicated virtualenv (.venv). No Docker.
+#   standalone   native command-line engine: Python 3.12+ + Nmap, in a dedicated virtualenv (.venv). No Docker.
 #   webui        full application, ONLY through Docker Compose: API + PostgreSQL + worker + scheduler + HTTPS.
 #                Nothing but Docker is needed on the host. This is the default mode of the commands below,
 #                so existing automations keep working.

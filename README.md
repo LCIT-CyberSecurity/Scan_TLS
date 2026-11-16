@@ -11,7 +11,7 @@ or outdated protocols.
 |---|---|---|
 | Source of truth | YAML files in `config/` | PostgreSQL |
 | Run | `python3 tls_scan.py ...`, cron | web interface, worker, built-in scheduler |
-| Needs | Python 3, Nmap | Docker Compose (see [installation](docs/admin/install.md)) |
+| Needs | Python 3.12+, Nmap | Docker Compose (see [installation](docs/admin/install.md)) |
 | Install | `./bootstrap_tls-scan-deployment.sh --mode standalone install` | `./bootstrap_tls-scan-deployment.sh --mode webui install` |
 | Users / roles / SSO | none | AUDITOR, USER, OPERATOR, ADMIN, local admin, OIDC / Entra ID |
 | Results | files (HTML, Markdown, CSV, CBOM) | same files + history, comparison, notifications, audit |
@@ -60,13 +60,13 @@ WebUI documentation: [architecture](docs/architecture/overview.md) ·
 
 ## Requirements
 
-- Python 3
+- Python 3.12 or newer (Python 3.13 supported)
 - Nmap
 - The Python packages listed below
 - OpenSSL 3.5 or later with TLS ML-KEM support, only when using the `pqc`
   profile
 
-Verify that Python 3 is installed:
+Verify the Python 3 version:
 
 ```bash
 python3 --version
