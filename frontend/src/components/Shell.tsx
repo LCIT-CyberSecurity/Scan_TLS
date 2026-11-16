@@ -1,4 +1,4 @@
-import { Activity, BarChart3, CalendarClock, ChevronRight, FileText, ListChecks, Menu, Network, ShieldCheck, SlidersHorizontal } from "lucide-react";
+import { Activity, BarChart3, CalendarClock, ChevronRight, FileText, ListChecks, Map as MapIcon, Menu, Network, ShieldCheck, SlidersHorizontal } from "lucide-react";
 import { Fragment, useState, type ReactNode } from "react";
 import { NavLink, Outlet, useLocation } from "react-router-dom";
 import type { Role } from "../api/types";
@@ -17,6 +17,7 @@ const SECTIONS: Section[] = [
   ] },
   { heading: "nav.section.scanning", items: [
     { to: "/scans", icon: <Activity size={22} />, label: "nav.scans", min: "USER" },
+    { to: "/scans/map", icon: <MapIcon size={22} />, label: "nav.map", min: "USER" },
     { to: "/schedules", icon: <CalendarClock size={22} />, label: "nav.schedules", min: "USER" },
     { to: "/targets", icon: <Network size={22} />, label: "nav.targets", min: "USER" },
     { to: "/policies", icon: <SlidersHorizontal size={22} />, label: "nav.policies", min: "USER" },
@@ -51,7 +52,7 @@ export default function Shell() {
               <div className="nav-group">
                 <div className="nav-heading">{t(section.heading)}</div>
                 {section.items.map((i) => (
-                  <NavLink key={i.to} to={i.to} end={i.to === "/"} onClick={close} className={({ isActive }) => `nav-link${isActive ? " active" : ""}`}>{i.icon}<span>{t(i.label)}</span></NavLink>
+                  <NavLink key={i.to} to={i.to} end={i.to === "/" || i.to === "/scans/map"} onClick={close} className={({ isActive }) => `nav-link${isActive && !(i.to === "/scans" && location.pathname === "/scans/map") ? " active" : ""}`}>{i.icon}<span>{t(i.label)}</span></NavLink>
                 ))}
               </div>
             </Fragment>
