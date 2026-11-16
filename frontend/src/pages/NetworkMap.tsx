@@ -1,5 +1,4 @@
-import { Graph, NodeEvent, type NodeData } from "@antv/g6";
-import { ArrowUpRight, CircleHelp, Crosshair, Layers3, Minus, Pencil, Plus, Search, Settings2, X } from "lucide-react";
+import { ArrowUpRight, CircleHelp, Crosshair, Layers3, Pencil, Plus, Search, Settings2, X } from "lucide-react";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
@@ -10,7 +9,7 @@ import { Button } from "../components/ui/button";
 import { Dialog } from "../components/ui/dialog";
 import { Field, Input, Select, Textarea } from "../components/ui/input";
 import { useI18n } from "../i18n";
-import { mapCardAttributes, positionMapNodes } from "../lib/networkMapGraph";
+import NetworkMapFlow from "../components/network-map/NetworkMapFlow";
 import "../styles/network-map.css";
 
 type SearchItem = { kind: "host" | "si" | "zone" | "device"; id: string; name: string; value?: string; parent_zone_id?: string | null; zone_id?: string | null; si_ids?: string[]; zone_ids?: string[] };
@@ -22,11 +21,7 @@ const deviceTypes = ["router", "firewall", "gateway", "switch", "load_balancer",
 export default function NetworkMap() {
   const { t, locale } = useI18n();
   const { atLeast } = useAuth();
-  const stage = useRef<HTMLDivElement>(null);
-  const graph = useRef<Graph | null>(null);
-  const lastFitScope = useRef("");
-  const selectNode = useRef<(node: MapNode) => void>(() => undefined);
-  const selectCombo = useRef<(comboId: string) => void>(() => undefined);
+  const fitMap = useRef<() => void>(() => undefined);
   const targetLoad = useRef<Promise<Target[]> | null>(null);
   const [summary, setSummary] = useState<MapSummary>();
   const [graphData, setGraphData] = useState<MapGraph>();
@@ -55,7 +50,6 @@ export default function NetworkMap() {
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [revision, setRevision] = useState(0);
-  const [viewportWidth, setViewportWidth] = useState(0);
   const canEdit = atLeast("OPERATOR");
 
   const reload = useCallback(async () => {
@@ -96,7 +90,6 @@ export default function NetworkMap() {
       return true;
     });
   }, [graphData, exposureFilter, mode, siId, focusTargetId]);
-  const nodeById = useMemo(() => new Map(visibleNodes.map((node) => [node.id, node])), [visibleNodes]);
   const si = systems.find((item) => item.id === siId);
   const zone = zones.find((item) => item.id === zoneId);
   const group = graphData?.scope.group;
@@ -107,7 +100,6 @@ export default function NetworkMap() {
     trailItem = trailItem.parent_zone_id ? zones.find((item) => item.id === trailItem?.parent_zone_id) : undefined;
   }
   const chooseNode = useCallback((node: MapNode) => {
-    if (node.id) graph.current?.setElementState(node.id, "selected");
     setSelected(node);
     if (node.kind === "si" && node.si_id) { setSiId(node.si_id); setZoneId(""); setGroupId(""); setFocusTargetId(""); setSelected(undefined); }
     if (node.kind === "zone" && node.zone_id) { setZoneId(node.zone_id); setGroupId(""); setFocusTargetId(""); setSelected(undefined); }
@@ -117,115 +109,6 @@ export default function NetworkMap() {
       void api<MapHostDetail>(`/map/hosts/${node.target_id}`).then(setHost).catch(setError);
     } else setHost(undefined);
   }, []);
-  selectNode.current = chooseNode;
-  selectCombo.current = (comboId) => {
-    if (!comboId.startsWith("zone-group:")) return;
-    const zoneRecord = zones.find((item) => item.id === comboId.slice("zone-group:".length));
-    if (zoneRecord) chooseNode({ id: `zone:${zoneRecord.id}`, kind: "zone", zone_id: zoneRecord.id, name: zoneRecord.name });
-  };
-
-  useEffect(() => {
-    if (!stage.current) return;
-    const element = stage.current;
-    const instance = new Graph({
-      container: element,
-      autoFit: "view",
-      zoomRange: [0.4, 2.5],
-      behaviors: ["drag-canvas", "zoom-canvas"],
-      node: {
-        // Let individual nodes select their registered renderer. A fixed graph-level type
-        // takes precedence over `NodeData.type` in G6 and turns host circles into cards.
-        type: (datum: NodeData) => datum.type || "network-exposure-card",
-        style: {
-          size: [232, 116],
-          fill: getComputedStyle(document.documentElement).getPropertyValue("--surface").trim() || "#14171f",
-          stroke: getComputedStyle(document.documentElement).getPropertyValue("--border-strong").trim() || "#294159",
-          lineWidth: 1,
-          radius: 10,
-        },
-        state: { selected: { lineWidth: 2, stroke: "#42b8cd" }, inactive: { opacity: 0.4 } },
-      },
-      edge: { style: { stroke: "#7891a8", strokeOpacity: 0.56, lineWidth: 1.2, endArrow: false } },
-      combo: { type: "rect", style: { fill: "#14263a", fillOpacity: 0.42, stroke: "#294159", lineWidth: 1, radius: 18, padding: 28 } },
-    });
-    instance.on(NodeEvent.CLICK, (event) => {
-      const elementId = (event as { target: { id: string } }).target.id;
-      const node = instance.getNodeData(elementId);
-      const record = nodeById.get(elementId) ?? (node?.data?.mapNode as MapNode | undefined);
-      if (record) selectNode.current(record);
-    });
-    instance.on("combo:click", (event) => {
-      const comboId = (event as { target: { id: string } }).target.id;
-      selectCombo.current(comboId);
-    });
-    graph.current = instance;
-    const resize = new ResizeObserver(([entry]) => {
-      if (entry && entry.contentRect.width > 0 && entry.contentRect.height > 0) {
-        instance.resize(entry.contentRect.width, entry.contentRect.height);
-        setViewportWidth(Math.round(entry.contentRect.width));
-      }
-    });
-    resize.observe(element);
-    return () => { resize.disconnect(); instance.destroy(); graph.current = null; };
-    // The graph is created once per mounted page; node actions use a ref to keep closures current.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    const observer = new MutationObserver(() => { void graph.current?.render(); });
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-appearance", "data-theme"] });
-    return () => observer.disconnect();
-  }, []);
-
-  useEffect(() => {
-    const instance = graph.current;
-    if (!instance || !graphData) return;
-    const positions = new Map(positionMapNodes(visibleNodes, graphData, viewportWidth || stage.current?.clientWidth || 1200).map((item) => [item.id, item]));
-    const zoneGroups = graphData.scope.si && mode === "network" ? zones.filter((zoneItem) =>
-      visibleNodes.some((node) => node.kind === "zone" && node.zone_id === zoneItem.id) &&
-      visibleNodes.some((node) => node.kind === "device" && node.zone_id === zoneItem.id)) : [];
-    const combos = zoneGroups.map((zoneItem) => ({
-      id: `zone-group:${zoneItem.id}`,
-      style: { fill: "#14263a", fillOpacity: 0.22, stroke: "#36516a", lineWidth: 1, radius: 14, padding: 22 },
-    }));
-    const deviceNodeIds = new Set(visibleNodes.filter((node) => node.kind === "device").map((node) => node.id));
-    // A mode switch can render once with the previous graph response still in state.
-    // Never combine that stale response's links with the new mode's node set.
-    const edges = graphData.mode === mode ? (graphData.links ?? []).filter((link) =>
-      deviceNodeIds.has(`device:${link.source_device_id}`) && deviceNodeIds.has(`device:${link.target_device_id}`)).map((link) => ({
-      id: `link:${link.id}`, source: `device:${link.source_device_id}`, target: `device:${link.target_device_id}`,
-      type: "line", data: { provenance: link.provenance }, style: { zIndex: 2,
-        stroke: link.provenance === "OBSERVED" ? "#56a98f" : link.provenance === "INFERRED" ? "#dfa95a" : "#91a8bd",
-        lineDash: link.provenance === "OBSERVED" ? undefined : link.provenance === "DECLARED" ? [7, 4] : [2, 4],
-        lineWidth: 1.6, strokeOpacity: 0.82 },
-    })) : [];
-    const hasZoneScope = Boolean(graphData.scope.zone);
-    const scopeZoneId = graphData.scope.zone?.id ?? "current";
-    const scopeZoneName = graphData.scope.zone?.name ?? t("map.zone");
-    const scopeKey = graphData.scope.zone?.id ?? graphData.scope.group?.id ?? graphData.scope.si?.id ?? "global";
-    const layoutKey = `${scopeKey}:${mode}:${Math.floor((viewportWidth || 1200) / 320)}:${focusTargetId}:${expandUnassigned ? "expanded" : "summary"}`;
-    const shouldFit = lastFitScope.current !== layoutKey;
-    if (shouldFit) lastFitScope.current = layoutKey;
-    const scopeCombo = hasZoneScope ? [{ id: `zone-scope:${scopeZoneId}`, data: { label: scopeZoneName }, style: {
-      labelText: scopeZoneName, labelPlacement: "top" as const, labelFontSize: 13,
-      labelFill: getComputedStyle(document.documentElement).getPropertyValue("--text-secondary").trim() || "#aeb6c6",
-      labelFontWeight: 600,
-    } }] : [];
-    const nodes: NodeData[] = visibleNodes.map((item) => {
-      const position = positions.get(item.id);
-      const card = mapCardAttributes(item, t);
-      return { id: item.id, type: card.type, combo: hasZoneScope ? `zone-scope:${scopeZoneId}` : position?.combo,
-        data: { label: item.kind === "host" && item.value ? item.value : item.name, kind: item.kind, mapNode: item },
-        style: { ...card.style, x: position?.x ?? 0, y: position?.y ?? 0 } };
-    });
-    instance.setData({ nodes, edges, combos: [...scopeCombo, ...combos] });
-    void instance.render().then(() => {
-      if (!shouldFit) return;
-      return instance.fitView({ when: "always", direction: "both" }, reducedMotion() ? false : { duration: 220 })
-        .then(() => instance.zoomBy(0.9, reducedMotion() ? false : { duration: 100 }));
-    });
-  }, [visibleNodes, graphData, t, mode, zones, viewportWidth, focusTargetId, expandUnassigned]);
-
   useEffect(() => {
     function escape(event: KeyboardEvent) {
       if (event.key === "Escape") { setSelected(undefined); setHost(undefined); }
@@ -351,7 +234,6 @@ export default function NetworkMap() {
   const severityEntries = Object.entries(host?.scan?.severity ?? exposureSummary(selected)).filter(([, value]) => value > 0);
   const selectedLinks = (graphData?.links ?? []).filter((link) => selectedZoneDevices.some((device) => device.id === link.source_device_id || device.id === link.target_device_id));
   const selectedZone = zones.find((item) => item.id === zoneId);
-  const reducedMotion = () => window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
 
   return <div className="network-map-page">
     <PageHeader title={t("map.title")} subtitle={t("map.subtitle")} />
@@ -396,11 +278,9 @@ export default function NetworkMap() {
           {loading && !summary && <div className="network-map-overlay">{t("map.loading")}</div>}
           {!loading && graphData && allNodes.length === 0 && summary?.totals.targets === 0 && <div className="network-map-empty"><MapIconFallback /><h2>{t("map.empty")}</h2></div>}
           {!loading && graphData && summary?.totals.targets !== 0 && allNodes.length === 0 && <div className="network-map-empty"><h2>{t("map.emptyGraph")}</h2></div>}
-          <div className="network-map-canvas" ref={stage} />
+          <NetworkMapFlow nodes={visibleNodes} graph={graphData ?? { mode, scope: {}, nodes: [], links: [], truncated: false }} links={(graphData?.mode === mode ? graphData.links : []).map((link) => ({ id: `link:${link.id}`, source: `device:${link.source_device_id}`, target: `device:${link.target_device_id}`, type: "smoothstep", data: { provenance: link.provenance }, style: { stroke: link.provenance === "OBSERVED" ? "#56a98f" : link.provenance === "INFERRED" ? "#dfa95a" : "#91a8bd", strokeDasharray: link.provenance === "DECLARED" ? "7 4" : link.provenance === "INFERRED" ? "2 4" : undefined, strokeWidth: 1.6 } }))} onSelect={chooseNode} onFit={(fit) => { fitMap.current = fit; }} />
           <div className="network-map-canvas-actions">
-            <button type="button" aria-label={t("map.zoomIn")} onClick={() => void graph.current?.zoomBy(1.2, reducedMotion() ? false : { duration: 180 })}><Plus size={16} /></button>
-            <button type="button" aria-label={t("map.zoomOut")} onClick={() => void graph.current?.zoomBy(0.84, reducedMotion() ? false : { duration: 180 })}><Minus size={16} /></button>
-            <button type="button" aria-label={t("map.center")} onClick={() => void graph.current?.fitView({ when: "always" }, reducedMotion() ? false : { duration: 220 }).then(() => graph.current?.zoomBy(0.9, reducedMotion() ? false : { duration: 100 }))}><Crosshair size={16} /></button>
+            <button type="button" aria-label={t("map.center")} onClick={() => fitMap.current()}><Crosshair size={16} /></button>
           </div>
         </div>
 
