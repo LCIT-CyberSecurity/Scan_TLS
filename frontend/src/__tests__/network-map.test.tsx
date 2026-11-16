@@ -59,7 +59,7 @@ vi.mock("../api/client", async (original) => ({
         ],
         links: [{ id: "link-1", source_device_id: "device-1", target_device_id: "device-2", provenance: "DECLARED" }], truncated: false,
       };
-      if (options.params?.si_id) return { scope: { si: { id: "si-1", name: "Production", description: "" } }, mode: "si", nodes: [{ id: "zone:zone-1", kind: "zone", name: "Public DMZ", zone_id: "zone-1", zone_type: "dmz" }], links: [], truncated: false };
+      if (options.params?.si_id) return { scope: { si: { id: "si-1", name: "Production", description: "" } }, mode: "si", nodes: [{ id: "zone:zone-1", kind: "zone", name: "Public DMZ", zone_id: "zone-1", zone_type: "dmz", exposure: { targets: 1, scanned_targets: 1, unscanned_targets: 0, severity: {}, endpoint_count: 1, endpoints: [{ endpoint_id: "endpoint-1", hostname: "web.example.test", ip_address: "192.0.2.20", port: 443, compliance_status: "compliant" }] } }], links: [], truncated: false };
       return { scope: {}, mode: "si", nodes: [{ id: "si:si-1", kind: "si", name: "Production", si_id: "si-1", exposure: { targets: 1, scanned_targets: 0, unscanned_targets: 1, severity: {} } }], links: [], truncated: false };
     }
     if (path === "/map/hosts/host-1") return { target: { id: "host-1", name: "web.example.test", value: "web.example.test", kind: "fqdn", ports: "443", description: "", owner_id: null, tags: [], si_ids: ["si-1"], zones: [{ id: "zone-1", name: "Public DMZ" }] }, scan: null, findings: [] };
@@ -88,6 +88,7 @@ describe("Network Exposure Map", () => {
     act(() => graphState.handlers["node:click"]?.({ target: { id: "si:si-1" } }));
     await waitFor(() => expect(calls.some((item) => item.path === "/map/graph" && item.params?.si_id === "si-1")).toBe(true));
     await waitFor(() => expect(graphState.data?.nodes[0]?.id).toBe("zone:zone-1"));
+    expect(graphState.data?.nodes[0]?.data?.endpoints).toEqual([expect.objectContaining({ hostname: "web.example.test", port: 443 })]);
 
     act(() => graphState.handlers["node:click"]?.({ target: { id: "zone:zone-1" } }));
     await waitFor(() => expect(calls.some((item) => item.path === "/map/graph" && item.params?.zone_id === "zone-1")).toBe(true));

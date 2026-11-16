@@ -5,7 +5,8 @@ export type AccessService = "api" | "mcp";
 export interface AccessKey { active: boolean; prefix: string | null; created_at: string | null; expires_at: string | null; last_used_at: string | null }
 export type MyAccess = Record<AccessService, { global_enabled: boolean; allowed: boolean; key: AccessKey }>
 export interface SI { id: string; name: string; description: string; parent_id: string | null }
-export interface MapExposure { targets: number; scanned_targets: number; unscanned_targets: number; severity: Record<string, number> }
+export interface MapEndpointPreview { endpoint_id: string; hostname: string | null; ip_address: string | null; port: number | null; compliance_status: string | null }
+export interface MapExposure { targets: number; scanned_targets: number; unscanned_targets: number; severity: Record<string, number>; endpoints?: MapEndpointPreview[]; endpoint_count?: number }
 export interface MapSummary { systems: { id: string; name: string; description: string; children: { id: string; name: string }[]; exposure: MapExposure }[]; totals: { systems: number; targets: number; scanned_targets: number } }
 export interface MapNode { id: string; kind: "si" | "zone" | "group" | "host" | "device" | "unassigned"; name: string; si_id?: string; zone_id?: string; group_id?: string; target_id?: string; value?: string; ports?: string; zone_type?: string; cidr?: string | null; count?: number; child_count?: number; device_type?: string; ip_address?: string | null; provenance?: string; exposure?: MapExposure | MapHostScan | null }
 export interface MapLink { id: string; source_device_id: string; target_device_id: string; link_type: string; provenance: "DECLARED" | "OBSERVED" | "INFERRED"; source: string; observed_at: string | null; confidence: number | null; description: string }

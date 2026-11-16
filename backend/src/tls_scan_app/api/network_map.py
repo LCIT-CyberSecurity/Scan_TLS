@@ -375,6 +375,7 @@ def _target_result(target: Target, latest: dict[str, dict]) -> dict | None:
 def _exposure(items: list[Target], latest: dict[str, dict]) -> dict:
     counts = {"critical": 0, "high": 0, "medium": 0, "low": 0}
     scanned = 0
+    endpoint_preview: dict[str, dict] = {}
     targets = {item.id: item for item in items}
     for target in targets.values():
         result = _target_result(target, latest)
@@ -383,7 +384,17 @@ def _exposure(items: list[Target], latest: dict[str, dict]) -> dict:
         scanned += 1
         for key, count in result["severity"].items():
             counts[key] += count
-    return {"targets": len(targets), "scanned_targets": scanned, "unscanned_targets": len(targets) - scanned, "severity": counts}
+        for endpoint in result["endpoints"]:
+            endpoint_preview.setdefault(str(endpoint["endpoint_id"]), {
+                "endpoint_id": str(endpoint["endpoint_id"]),
+                "hostname": endpoint.get("hostname"),
+                "ip_address": endpoint.get("ip_address"),
+                "port": endpoint.get("port"),
+                "compliance_status": endpoint.get("compliance_status"),
+            })
+    endpoints = list(endpoint_preview.values())
+    return {"targets": len(targets), "scanned_targets": scanned, "unscanned_targets": len(targets) - scanned,
+            "severity": counts, "endpoints": endpoints[:12], "endpoint_count": len(endpoints)}
 
 
 def _targets_for_si(db: DbSession, si_ids: set[uuid.UUID]) -> list[Target]:
