@@ -334,6 +334,11 @@ p {
   z-index: 30;
 }
 
+.contents.drawer-open {
+  position: relative;
+  z-index: 30;
+}
+
 .brand-block,
 .cover-brand {
   display: flex;
