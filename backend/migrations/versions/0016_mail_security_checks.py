@@ -1,14 +1,14 @@
 """Add optional mail-security controls and immutable results to TLS scan definitions/runs.
 
 Revision ID: 0016_mail_security_checks
-Revises: 0015_dns_discovery_schedules
+Revises: 0015
 """
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
 revision = "0016_mail_security_checks"
-down_revision = "0015_dns_discovery_schedules"
+down_revision = "0015"
 branch_labels = None
 depends_on = None
 
