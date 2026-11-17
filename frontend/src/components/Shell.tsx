@@ -1,4 +1,4 @@
-import { Activity, BarChart3, CalendarClock, ChevronDown, ChevronRight, FileText, ListChecks, Map as MapIcon, Menu, Network, PanelLeftClose, PanelLeftOpen, ShieldCheck, SlidersHorizontal } from "lucide-react";
+import { Activity, BarChart3, CalendarClock, ChevronDown, ChevronRight, ListChecks, Map as MapIcon, Menu, Network, PanelLeftClose, PanelLeftOpen, ShieldCheck, SlidersHorizontal } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, Outlet, useLocation } from "react-router-dom";
 import type { Role } from "../api/types";
@@ -16,13 +16,12 @@ const SECTIONS: Section[] = [
     { to: "/tasks", icon: <ListChecks size={22} />, label: "nav.tasks", min: "USER" },
   ] },
   { heading: "nav.section.scanning", items: [
-    { to: "/scans", icon: <Activity size={22} />, label: "nav.scans", min: "USER" },
+    { to: "/scans", icon: <Activity size={22} />, label: "nav.scans", min: "AUDITOR" },
     { to: "/scans/map", icon: <MapIcon size={22} />, label: "nav.map", min: "USER" },
     { to: "/schedules", icon: <CalendarClock size={22} />, label: "nav.schedules", min: "USER" },
     { to: "/targets", icon: <Network size={22} />, label: "nav.targets", min: "USER" },
     { to: "/policies", icon: <SlidersHorizontal size={22} />, label: "nav.policies", min: "USER" },
   ] },
-  { heading: "nav.section.results", items: [{ to: "/reports", icon: <FileText size={22} />, label: "nav.reports", min: "AUDITOR" }] },
   { heading: "nav.section.admin", items: [{ to: "/admin", icon: <ShieldCheck size={22} />, label: "nav.admin", min: "ADMIN" }] },
 ];
 const ALL = SECTIONS.flatMap((s) => s.items).concat([{ to: "/preferences", icon: null, label: "nav.preferences", min: "AUDITOR" }]);

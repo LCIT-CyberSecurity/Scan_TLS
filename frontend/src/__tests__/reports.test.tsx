@@ -6,6 +6,7 @@ import { MemoryRouter } from "react-router-dom";
 import { I18nProvider } from "../i18n";
 import type { Run } from "../api/types";
 import Reports from "../pages/Reports";
+vi.mock("../auth/AuthContext", () => ({ useAuth: () => ({ atLeast: () => true }) }));
 
 const { apiMock } = vi.hoisted(() => ({ apiMock: vi.fn() }));
 vi.mock("../api/client", async (importOriginal) => ({
@@ -36,5 +37,12 @@ describe("Reports page", () => {
     const csv = screen.getByRole("link", { name: "CSV" });
     expect(csv).toHaveAttribute("href", "/api/scan-runs/run-1/reports/csv");
     expect(csv).not.toHaveAttribute("target");
+  });
+
+  it("filters reports by format and preserves legacy single-report links", async () => {
+    apiMock.mockImplementation(async (path: string) => path === "/scan-runs" ? [run] : []);
+    render(<MemoryRouter initialEntries={["/scans?tab=reports&run_id=run-1&format=html"]}><I18nProvider initial="en"><Reports embedded /></I18nProvider></MemoryRouter>);
+    expect(await screen.findByRole("link", { name: "HTML" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "CSV" })).toBeNull();
   });
 });
