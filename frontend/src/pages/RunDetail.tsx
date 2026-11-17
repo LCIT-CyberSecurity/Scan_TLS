@@ -138,8 +138,8 @@ export default function RunDetail() {
       {cmp && run.control_type !== "ipsec" && <div className="mb-6"><ComparisonView runId={id} withRun={withRun} /></div>}
       {run.reports.length > 0 && (
         <Card className="mb-6"><CardHeader><CardTitle>{t("nav.reports")}</CardTitle></CardHeader><CardContent className="flex flex-wrap gap-2">
-          {run.reports.filter((r) => ["html", "md", "csv", "cbom", "findings_csv", "mail_security_csv"].includes(r.format)).map((r) => <Button key={r.format} asChild variant="outline" size="sm"><a href={downloadUrl(id, r.format)}><Download />{r.format === "mail_security_csv" ? "MAIL CSV" : r.format.toUpperCase()}</a></Button>)}
-          {run.reports.some((r) => r.format === "html") && <Button asChild size="sm"><a href={downloadUrl(id, "html", true)} target="_blank" rel="noreferrer">{t("run.openHtml")}</a></Button>}
+          {run.reports.filter((r) => ["html", "md", "csv", "cbom", "findings_csv", "mail_security_csv", "ipsec_html", "ipsec_md", "ipsec_csv", "ssh_html", "ssh_md", "ssh_csv"].includes(r.format)).map((r) => <Button key={r.format} asChild variant="outline" size="sm"><a href={downloadUrl(id, r.format)}><Download />{r.format === "mail_security_csv" ? "MAIL CSV" : r.format.replaceAll("_", " ").toUpperCase()}</a></Button>)}
+          {run.reports.filter((r) => ["html", "ipsec_html", "ssh_html"].includes(r.format)).map((r) => <Button key={`${r.format}-open`} asChild size="sm"><a href={downloadUrl(id, r.format, true)} target="_blank" rel="noreferrer">{t("run.openHtml")} · {r.format.replace("_html", "").toUpperCase()}</a></Button>)}
         </CardContent></Card>
       )}
       {run.control_type !== "ipsec" && <Card className="mb-6">
@@ -183,6 +183,18 @@ export default function RunDetail() {
           { key: "verdict", header: "Policy", values: (r) => [r.verdict], render: (r) => <Badge tone={r.verdict === "compliant" ? "success" : r.verdict === "non_compliant" ? "danger" : "warning"}>{r.verdict}</Badge> },
           { key: "proposal", header: "Observed proposal", values: (r) => [JSON.stringify(r.proposal)], render: (r) => <span className="text-xs">{Object.entries(r.proposal).map(([k, v]) => `${k}: ${v}`).join(" · ") || "Non déterminable"}</span> },
         ]} /> : <Empty>—</Empty>}
+      </Card>}
+      {!!run.ssh_observations?.length && <Card className="mb-6"><CardHeader><CardTitle>SSH audit</CardTitle></CardHeader>
+        <p className="px-5 pb-3 text-xs text-muted">Unauthenticated protocol observations from ssh-audit; authentication and rate tests are not performed.</p>
+        <DataTable rows={run.ssh_observations} rowKey={(r) => `${r.target}:${r.port}`} columns={[
+          { key: "target", header: "Target", values: (r) => [r.target], render: (r) => r.target },
+          { key: "port", header: "TCP", values: (r) => [String(r.port)], render: (r) => r.port },
+          { key: "status", header: "Probe", values: (r) => [r.status], render: (r) => r.status },
+          { key: "verdict", header: "Policy", values: (r) => [r.verdict], render: (r) => <Badge tone={r.verdict === "compliant" ? "success" : r.verdict === "non_compliant" ? "danger" : "warning"}>{r.verdict}</Badge> },
+          { key: "banner", header: "Banner", values: (r) => [r.banner], render: (r) => <code className="text-xs">{r.banner || "—"}</code> },
+          { key: "fingerprints", header: "Host key fingerprints", values: (r) => Object.values(r.fingerprints).map(String), render: (r) => <code className="break-all text-xs">{Object.entries(r.fingerprints).map(([key, value]) => `${key}: ${String(value)}`).join(" · ") || "—"}</code> },
+          { key: "algorithms", header: "Observed algorithms", values: (r) => Object.values(r.algorithms).flat(), render: (r) => <span className="text-xs">{Object.entries(r.algorithms).flatMap(([k, v]) => v.map((x) => `${k}: ${x}`)).join(" · ") || "Indeterminate"}</span> },
+        ]} />
       </Card>}
       {run.control_type !== "ipsec" && <Card><CardHeader><CardTitle>{t("run.findings")}</CardTitle></CardHeader>
         {run.findings.length ? <DataTable rows={run.findings} rowKey={(f) => f.finding_id} columns={findingColumns(t as never, run.endpoints)} /> : <Empty>—</Empty>}

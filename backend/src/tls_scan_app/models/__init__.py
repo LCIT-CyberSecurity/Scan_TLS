@@ -6,7 +6,7 @@ from tls_scan_app.models.policy import (  # noqa: F401
 )
 from tls_scan_app.models.scan import (  # noqa: F401
     DefinitionGroup, DefinitionPolicy, DefinitionTarget, RunEndpoint, RunFinding, RunIpsecObservation, ScanDefinition, ScanRun,
-    ScanRunRequester, ScanSchedule, ScheduleTrigger,
+    RunSshObservation, ScanRunRequester, ScanSchedule, ScheduleTrigger,
 )
 from tls_scan_app.models.system import AuditEvent, Notification, SystemSetting  # noqa: F401
 from tls_scan_app.models.user import AccessToken, Role, Session, User  # noqa: F401

@@ -37,6 +37,7 @@ export function GroupedRuns({ runs, canDelete, canCancel, onRescan, onDelete, on
   const reportButton = (r: Run) => <>
     {r.reports.some((x) => x.format === "html") && <Button asChild size="sm" variant="outline"><a href={downloadUrl(r.id, "html", true)} target="_blank" rel="noreferrer"><FileText />{t("action.report")}</a></Button>}
     {r.reports.some((x) => x.format === "ipsec_html") && <Button asChild size="sm" variant="outline"><a href={downloadUrl(r.id, "ipsec_html", true)} target="_blank" rel="noreferrer"><FileText />IPsec</a></Button>}
+    {r.reports.some((x) => x.format === "ssh_html") && <Button asChild size="sm" variant="outline"><a href={downloadUrl(r.id, "ssh_html", true)} target="_blank" rel="noreferrer"><FileText />SSH</a></Button>}
   </>;
   const runActions = (r: Run): ReactNode => (
     <div className="row-actions">

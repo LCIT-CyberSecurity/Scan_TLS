@@ -21,7 +21,7 @@ from tls_scan_app.api.results_schemas import (
     Comparison, EndpointPage, ErrorBody, FindingPage, ReportFormat, ReportInfo, ReportList, Run, RunDetail, RunPage, RunStatus, Severity,
 )
 from tls_scan_app.deps import get_db, require_role
-from tls_scan_app.models import Role, RunEndpoint, RunFinding, ScanDefinition, ScanProfile, ScanRun, User
+from tls_scan_app.models import Role, RunEndpoint, RunFinding, RunSshObservation, ScanDefinition, ScanProfile, ScanRun, User
 from tls_scan_app.services import comparison, results
 
 router = APIRouter(prefix="/api/results", tags=["Results"])
@@ -69,11 +69,20 @@ def _run_items(db: DbSession, runs_: list[ScanRun]) -> list[dict]:
     items = []
     for r in runs_:
         cls = classes.get(r.definition_id, {"tags": [], "si": []}) if r.definition_id else {"tags": [], "si": []}
+        summary = r.summary
+        tls_summary_fields = {"total_hosts", "total_endpoints", "compliant_endpoints", "non_compliant_endpoints",
+                              "endpoints_with_errors", "endpoints_not_fully_tested", "unique_findings", "finding_occurrences",
+                              "findings_by_severity", "checks_not_tested"}
+        if not isinstance(summary, dict) or not tls_summary_fields.issubset(summary):
+            summary = None
         items.append({
             "id": r.id, "name": r.name, "status": r.status, "phase": r.phase or None,
             "definition": {"id": r.definition_id, "name": names.get(r.definition_id)} if r.definition_id else None,
             "initiated_by": r.initiated_by, "queued_at": r.queued_at, "started_at": r.started_at, "finished_at": r.finished_at,
-            "duration_seconds": r.duration_seconds, "tags": sorted(cls["tags"]), "information_systems": cls["si"], "summary": r.summary,
+            "duration_seconds": r.duration_seconds, "tags": sorted(cls["tags"]), "information_systems": cls["si"],
+            # `summary` is the TLS engine's metric schema. Other engines keep their own statistics and must
+            # not be represented as zero-valued TLS endpoints in the shared results contract.
+            "summary": summary,
         })
     return items
 
@@ -119,6 +128,11 @@ def get_result(run_id: uuid.UUID, request: Request, db: DbSession = Depends(get_
         "policy_versions": r.policy_versions or [], "trust_stores": snap.get("trust_stores") or [], "exclusions": snap.get("exclusions"), "progress": r.progress, "error": r.error or None,
         "skipped_hosts": r.skipped_hosts or [], "reports": _reports(r, Path(request.app.state.settings.storage_root)),
         "mail_security_results": r.mail_security_results or [],
+        "ssh_observations": [
+            {"target": x.target, "port": x.port, "status": x.status, "verdict": x.verdict, "banner": x.banner,
+             "algorithms": x.algorithms, "host_keys": x.host_keys, "fingerprints": x.fingerprints, "evidence": x.evidence}
+            for x in db.execute(select(RunSshObservation).where(RunSshObservation.run_id == r.id).order_by(RunSshObservation.target, RunSshObservation.port)).scalars()
+        ],
     }
     rows = db.execute(select(RunEndpoint.endpoint_id, RunEndpoint.errors, RunEndpoint.untested_checks).where(RunEndpoint.run_id == r.id)
                       .order_by(RunEndpoint.endpoint_id)).all()

@@ -27,8 +27,15 @@ describe("mail security scan options", () => {
     fireEvent.click(await screen.findByRole("button", { name: "New scan" }));
     const tls = screen.getByRole("checkbox", { name: "TLS" });
     const ipsec = screen.getByRole("checkbox", { name: "VPN IPsec / IKE" });
+    const ssh = screen.getByRole("checkbox", { name: "SSH (ssh-audit)" });
     expect(tls).toBeChecked();
     expect(ipsec).toBeChecked();
+    expect(ssh).not.toBeChecked();
+    fireEvent.click(ssh);
+    expect(ssh).toBeChecked();
+    expect(tls).toBeChecked();
+    fireEvent.click(ssh);
+    expect(ssh).not.toBeChecked();
     fireEvent.click(ipsec);
     expect(tls).toBeChecked();
     expect(ipsec).not.toBeChecked();
