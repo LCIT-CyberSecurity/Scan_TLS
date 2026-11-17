@@ -6,6 +6,7 @@ import type { Group, SI, Tag, Target } from "../api/types";
 import { formatDate } from "../lib/utils";
 import { useAuth } from "../auth/AuthContext";
 import { DiscoveriesTab, DnsDiscoveryDialog } from "../components/DnsDiscovery";
+import { NetworkDiscovery } from "../components/NetworkDiscovery";
 import { CheckList, ConfirmButton, Empty, ErrorNote, PageHeader, TagList, TagsInput, useLoad } from "../components/common";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -177,7 +178,7 @@ export default function Targets() {
       <PageHeader title={t("nav.targets")} />
       <ErrorNote error={err} />
       <Tabs value={selectedTab} onValueChange={setSelectedTab}>
-        <TabsList><TabsTrigger value="targets">{t("targets.targets")}</TabsTrigger><TabsTrigger value="groups">{t("targets.groups")}</TabsTrigger><TabsTrigger value="dns">{t("dd.tab")}</TabsTrigger><TabsTrigger value="si">{t("targets.si")}</TabsTrigger><TabsTrigger value="tags">{t("targets.tags")}</TabsTrigger></TabsList>
+        <TabsList><TabsTrigger value="targets">{t("targets.targets")}</TabsTrigger><TabsTrigger value="groups">{t("targets.groups")}</TabsTrigger><TabsTrigger value="dns">{t("dd.tab")}</TabsTrigger>{atLeast("OPERATOR") && <TabsTrigger value="network-discovery">{t("map.snmp.title")}</TabsTrigger>}<TabsTrigger value="si">{t("targets.si")}</TabsTrigger><TabsTrigger value="tags">{t("targets.tags")}</TabsTrigger></TabsList>
         <TabsContent value="targets">
           <div className="mb-3 flex flex-wrap items-center gap-3">
             <Input aria-label={t("action.search")} placeholder={t("action.search")} className="w-56" value={q} onChange={(e) => setQ(e.target.value)} />
@@ -210,6 +211,7 @@ export default function Targets() {
           ) : <Empty>{t("group.none")}</Empty>}</Card>
         </TabsContent>
         <TabsContent value="dns"><DiscoveriesTab reloadKey={discoveries} onNew={() => { setDiscoverId(undefined); setDialog("discover"); }} onOpen={(id) => { setDiscoverId(id); setDialog("discover"); }} /></TabsContent>
+        {atLeast("OPERATOR") && <TabsContent value="network-discovery"><NetworkDiscovery /></TabsContent>}
         <TabsContent value="si">
           <Card className="mb-4 p-4"><div className="flex flex-wrap items-end gap-3">
             <Field label={t("col.name")}><Input value={siForm.name} onChange={(e) => setSiForm({ ...siForm, name: e.target.value })} /></Field>

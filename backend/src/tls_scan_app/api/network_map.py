@@ -3,10 +3,10 @@ from __future__ import annotations
 
 import ipaddress
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
@@ -15,10 +15,11 @@ from sqlalchemy.orm import Session as DbSession
 from tls_scan_app.api.common import get_or_404
 from tls_scan_app.deps import get_db, require_role
 from tls_scan_app.models import (
-    InformationSystem, NetworkDevice, NetworkLink, NetworkZone, NetworkZoneSystem, NetworkZoneTarget,
+    InformationSystem, NetworkDevice, NetworkLink, NetworkZone, NetworkZoneSystem, NetworkZoneTarget, SnmpDiscovery,
     ResourceSI, ResourceTag, Role, RunEndpoint, RunFinding, ScanRun, Tag, Target, TargetGroup, TargetGroupMember, User,
 )
 from tls_scan_app.services import audit
+from tls_scan_app.services.snmp_discovery import MAX_TARGETS
 
 router = APIRouter(prefix="/api/map", tags=["network-map"])
 reader = require_role(Role.USER)
@@ -143,6 +144,18 @@ class LinkBody(BaseModel):
         if self.provenance == "INFERRED" and self.confidence is None:
             raise ValueError("Inferred links require a confidence value")
         return self
+
+
+class SnmpDiscoverBody(BaseModel):
+    target_ids: list[uuid.UUID] = Field(min_length=1, max_length=MAX_TARGETS)
+    authorized: bool = False
+    timeout_seconds: int = Field(default=2, ge=1, le=5)
+    concurrency: int = Field(default=5, ge=1, le=10)
+
+
+class SnmpApplyBody(BaseModel):
+    item_indexes: list[int] = Field(min_length=1, max_length=MAX_TARGETS)
+    confirm: bool = False
 
 
 class ExposureOut(BaseModel):
@@ -825,3 +838,161 @@ def delete_link(link_id: uuid.UUID, db: DbSession = Depends(get_db), user: User 
     db.delete(item)
     audit.record(db, "map.link_delete", actor=user, resource_type="network_link", resource_id=item.id)
     db.commit()
+
+
+@router.get("/snmp/config")
+def snmp_config(request: Request, _: User = Depends(operator)) -> dict:
+    settings = request.app.state.settings
+    configured = bool(settings.snmp_v3_username and settings.snmp_v3_auth_key and settings.snmp_v3_priv_key)
+    return {"enabled": configured, "version": "SNMPv3", "security_level": "authPriv" if configured else None,
+            "max_targets": MAX_TARGETS, "max_timeout_seconds": 5, "max_concurrency": 10,
+            "max_duration_seconds": 90, "credentials_configured": configured}
+
+
+@router.post("/snmp/discover", status_code=202)
+def start_snmp_discovery(body: SnmpDiscoverBody, request: Request, db: DbSession = Depends(get_db), user: User = Depends(operator)) -> dict:
+    """Queue read-only SNMP from the isolated scan worker; this request never edits topology."""
+    if not body.authorized:
+        raise HTTPException(400, "Confirm that these selected devices are authorised for read-only SNMP queries")
+    settings = request.app.state.settings
+    if not (settings.snmp_v3_username and settings.snmp_v3_auth_key and settings.snmp_v3_priv_key):
+        raise HTTPException(503, "SNMPv3 authPriv credentials are not configured by the administrator")
+    ids = list(dict.fromkeys(body.target_ids))
+    targets = db.execute(select(Target).where(Target.id.in_(ids))).scalars().all()
+    if len(targets) != len(ids):
+        raise HTTPException(422, "One or more selected targets are unavailable")
+    for target in targets:
+        try:
+            ipaddress.ip_address(target.value.strip("[]"))
+        except ValueError as error:
+            raise HTTPException(422, f"SNMP discovery requires an explicit IP target: {target.value}") from error
+    busy = db.scalar(select(func.count()).select_from(SnmpDiscovery).where(
+        SnmpDiscovery.requested_by == user.id, SnmpDiscovery.status.in_(("queued", "running"))))
+    if busy:
+        raise HTTPException(409, "An SNMP discovery is already running; wait for it to finish")
+    row = SnmpDiscovery(requested_by=user.id, target_ids=[str(item.id) for item in targets],
+                        options={"timeout_seconds": body.timeout_seconds, "concurrency": body.concurrency,
+                                 "protocol": "SNMPv3", "security_level": "authPriv"})
+    db.add(row)
+    db.flush()
+    audit.record(db, "map.snmp_discover.request", actor=user, resource_type="snmp_discovery", resource_id=row.id,
+                 detail={"targets": len(targets), "version": "SNMPv3", "timeout_seconds": body.timeout_seconds,
+                         "concurrency": body.concurrency})
+    db.commit()
+    return {"id": str(row.id), "status": row.status, "items": [], "created_at": row.created_at}
+
+
+@router.get("/snmp/discover")
+def list_snmp_discoveries(db: DbSession = Depends(get_db), user: User = Depends(operator)) -> list[dict]:
+    stmt = select(SnmpDiscovery).order_by(SnmpDiscovery.created_at.desc()).limit(100)
+    if user.role != Role.ADMIN:
+        stmt = stmt.where(SnmpDiscovery.requested_by == user.id)
+    rows = db.execute(stmt).scalars().all()
+    return [{"id": str(row.id), "status": row.status, "error": row.error, "created_at": row.created_at,
+             "applied_at": row.applied_at, "finished_at": row.finished_at, "targets": len(row.target_ids or []),
+             "observed": sum(1 for item in (row.result or {}).get("items", []) if item.get("status") == "observed")}
+            for row in rows]
+
+
+def _own_snmp_discovery(db: DbSession, discovery_id: uuid.UUID, user: User) -> SnmpDiscovery:
+    row = db.get(SnmpDiscovery, discovery_id)
+    if row is None or (row.requested_by != user.id and user.role != Role.ADMIN):
+        raise HTTPException(404, "SNMP discovery not found")
+    return row
+
+
+@router.get("/snmp/discover/{discovery_id}")
+def get_snmp_discovery(discovery_id: uuid.UUID, db: DbSession = Depends(get_db), user: User = Depends(operator)) -> dict:
+    row = _own_snmp_discovery(db, discovery_id, user)
+    return {"id": str(row.id), "status": row.status, "error": row.error,
+            "items": (row.result or {}).get("items", []) if row.status == "done" else [],
+            "created_at": row.created_at, "finished_at": row.finished_at, "applied_at": row.applied_at}
+
+
+@router.post("/snmp/discover/{discovery_id}/apply")
+def apply_snmp_discovery(discovery_id: uuid.UUID, body: SnmpApplyBody, db: DbSession = Depends(get_db), user: User = Depends(operator)) -> dict:
+    """Apply only previewed rows after explicit confirmation; repeated application is idempotent."""
+    if not body.confirm:
+        raise HTTPException(400, "Explicitly confirm the selected cartography updates")
+    row = _own_snmp_discovery(db, discovery_id, user)
+    items = (row.result or {}).get("items", [])
+    indexes = list(dict.fromkeys(body.item_indexes))
+    if any(index < 0 or index >= len(items) for index in indexes):
+        raise HTTPException(422, "Selection contains an unknown preview row")
+    applied_devices, applied_links = 0, 0
+    applied_at = datetime.now(UTC)
+    for index in indexes:
+        item = items[index]
+        if item.get("status") != "observed":
+            continue
+        try:
+            observed_at = datetime.fromisoformat(item["observed_at"])
+        except (KeyError, TypeError, ValueError):
+            observed_at = applied_at
+        target = db.get(Target, uuid.UUID(item["target_id"]))
+        if target is None:
+            continue
+        local = db.execute(select(NetworkDevice).where(NetworkDevice.target_id == target.id)).scalars().first()
+        zone_id = db.scalar(select(NetworkZoneTarget.zone_id).where(NetworkZoneTarget.target_id == target.id,
+                                                                      NetworkZoneTarget.primary_placement.is_(True)))
+        fields = {"sys_descr": item.get("sys_descr"), "sys_object_id": item.get("sys_object_id"),
+                  "system_name": item.get("system_name"), "interfaces": item.get("interfaces", [])}
+        if local is None:
+            local = NetworkDevice(name=item.get("system_name") or target.name or target.value, device_type="generic",
+                                  zone_id=zone_id, ip_address=item["address"], target_id=target.id,
+                                  provenance="OBSERVED", source="SNMPv3 sysObjectID/sysDescr + IF-MIB",
+                                  observed_at=observed_at, confidence=0.95, metadata_json=fields)
+            db.add(local)
+            db.flush()
+            applied_devices += 1
+        elif local.provenance == "OBSERVED" and local.source.startswith("SNMPv3"):
+            local.name = item.get("system_name") or local.name
+            local.zone_id = local.zone_id or zone_id
+            local.observed_at = observed_at
+            local.metadata_json = fields
+        # LLDP remote rows are observed neighbors. Stable chassis IDs make repeat imports idempotent.
+        all_devices = db.execute(select(NetworkDevice)).scalars().all()
+        for neighbor in item.get("neighbors", []):
+            chassis_id = neighbor.get("chassis_id", "").strip()
+            if not chassis_id:
+                continue
+            chassis_identity = f"{neighbor.get('chassis_id_subtype', '')}:{chassis_id}"
+            remote = next((device for device in all_devices if (device.metadata_json or {}).get("lldp_chassis_identity") == chassis_identity), None)
+            if remote is None:
+                remote = NetworkDevice(name=neighbor.get("system_name") or neighbor.get("port_id") or f"LLDP {chassis_id}",
+                                       device_type="generic", zone_id=zone_id, provenance="OBSERVED",
+                                       source="SNMPv3 LLDP-MIB", observed_at=observed_at, confidence=0.9,
+                                       metadata_json={"lldp_chassis_id": chassis_id, "lldp_chassis_identity": chassis_identity,
+                                                      "lldp_chassis_id_subtype": neighbor.get("chassis_id_subtype"),
+                                                      "lldp_port_id": neighbor.get("port_id"),
+                                                      "lldp_port_id_subtype": neighbor.get("port_id_subtype")})
+                db.add(remote)
+                db.flush()
+                all_devices.append(remote)
+                applied_devices += 1
+            elif remote.provenance == "OBSERVED" and remote.source == "SNMPv3 LLDP-MIB":
+                remote.name = neighbor.get("system_name") or remote.name
+                remote.observed_at = observed_at
+                remote.confidence = 0.9
+                remote.metadata_json = {**(remote.metadata_json or {}), "lldp_chassis_id": chassis_id,
+                                        "lldp_chassis_identity": chassis_identity,
+                                        "lldp_chassis_id_subtype": neighbor.get("chassis_id_subtype"),
+                                        "lldp_port_id": neighbor.get("port_id"),
+                                        "lldp_port_id_subtype": neighbor.get("port_id_subtype")}
+            existing = db.execute(select(NetworkLink).where(NetworkLink.source_device_id == local.id,
+                NetworkLink.target_device_id == remote.id, NetworkLink.link_type == "lldp")).scalar_one_or_none()
+            if existing is None and remote.id != local.id:
+                db.add(NetworkLink(source_device_id=local.id, target_device_id=remote.id, link_type="lldp",
+                                   provenance="OBSERVED", source="SNMPv3 LLDP-MIB", observed_at=observed_at,
+                                   confidence=0.9, description=f"Local port {neighbor.get('local_port') or (neighbor.get('indices', ['?','?'])[1])} → remote port {neighbor.get('port_id', 'unknown')}"))
+                applied_links += 1
+            elif existing and existing.provenance == "OBSERVED" and existing.source == "SNMPv3 LLDP-MIB":
+                existing.observed_at = observed_at
+                existing.confidence = 0.9
+                existing.description = f"Local port {neighbor.get('local_port') or (neighbor.get('indices', ['?','?'])[1])} → remote port {neighbor.get('port_id', 'unknown')}"
+    row.applied_at = applied_at
+    audit.record(db, "map.snmp_apply", actor=user, resource_type="snmp_discovery", resource_id=row.id,
+                 detail={"selected_rows": len(indexes), "devices_created": applied_devices, "links_created": applied_links})
+    db.commit()
+    return {"applied_rows": len(indexes), "devices_created": applied_devices, "links_created": applied_links,
+            "applied_at": applied_at}
