@@ -6,13 +6,11 @@ import { ErrorNote } from "../components/common";
 import { useI18n, LOCALES } from "../i18n";
 import "../styles/login.css";
 
-interface Providers { sso: { enabled: boolean; provider?: string }; ldap: { enabled: boolean; name?: string } }
-const ssoLabel = (provider: string | undefined, t: (k: never) => string) => t((provider === "entra" ? "login.ssoMicrosoft" : provider === "google" ? "login.ssoGoogle" : "login.sso") as never);
-const MicrosoftMark = () => <svg width="18" height="18" viewBox="0 0 21 21" aria-hidden="true" style={{ marginRight: 10 }}><rect width="10" height="10" fill="#f25022" /><rect x="11" width="10" height="10" fill="#7fba00" /><rect y="11" width="10" height="10" fill="#00a4ef" /><rect x="11" y="11" width="10" height="10" fill="#ffb900" /></svg>;
-const GoogleMark = () => <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true" style={{ marginRight: 10 }}><path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.2 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.9 6.1C12.4 13.6 17.7 9.5 24 9.5z" /><path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.3 5.5-4.8 7.2l7.5 5.8c4.4-4.1 7.1-10.1 7.1-17.5z" /><path fill="#FBBC05" d="M10.5 28.7c-.5-1.5-.8-3-.8-4.7s.3-3.2.8-4.7l-7.9-6.1C.9 16.4 0 20.1 0 24s.9 7.6 2.6 10.8l7.9-6.1z" /><path fill="#34A853" d="M24 48c6.2 0 11.4-2 15.2-5.5l-7.5-5.8c-2.1 1.4-4.7 2.3-7.7 2.3-6.3 0-11.6-4.1-13.5-9.8l-7.9 6.1C6.5 42.6 14.6 48 24 48z" /></svg>;
+interface Providers { local?: boolean; sso: { enabled: boolean; provider?: string }; ldap: { enabled: boolean; name?: string } }
+type CredentialMethod = "ldap" | "local";
 
 /** Sign-in, laid out like LCIT Sign: introduction panel on the left, sign-in card on the right.
- *  Also handles the forced password change (e.g. the deployment default password). */
+ * Also handles the forced password change (e.g. the deployment default password). */
 export default function Login() {
   const { user, login, refresh } = useAuth();
   const { t, locale, setLocale } = useI18n();
@@ -20,26 +18,56 @@ export default function Login() {
   const [password, setPassword] = useState("");
   const [next, setNext] = useState("");
   const [error, setError] = useState<unknown>();
-  const [providers, setProviders] = useState<Providers | null>(null);   // null until known: no form flashes then disappears
-  const [showLocal, setShowLocal] = useState(false);
+  const [providers, setProviders] = useState<Providers | null>(null);
+  const [credentialMethod, setCredentialMethod] = useState<CredentialMethod | null>(null);
   const [crashtest, setCrashtest] = useState(false);
   const mustChange = !!user?.must_change_password;
 
-  useEffect(() => { api<Providers & { crashtest?: boolean }>("/auth/providers").then((p) => { setProviders(p); setCrashtest(!!p.crashtest); }).catch(() => setProviders({ sso: { enabled: false }, ldap: { enabled: false } })); }, []);
-  const sso = providers?.sso.enabled ? providers.sso : null;
-  const ldap = providers?.ldap.enabled ? providers.ldap : null;
-  const external = !!(sso || ldap) && !mustChange;
-  const localVisible = !!providers && (!external || showLocal);
-  const ldapVisible = !!ldap && !mustChange && !showLocal;
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).has("auth_error")) {
+      setError(new Error(t("login.ssoError")));
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+    api<Providers & { crashtest?: boolean }>("/auth/providers")
+      .then((p) => { setProviders(p); setCrashtest(!!p.crashtest); })
+      .catch(() => {
+        // Keep the local recovery path available when public provider discovery is unavailable.
+        setProviders({ local: true, sso: { enabled: false }, ldap: { enabled: false } });
+        setError(new Error(t("login.providersError")));
+      });
+  }, [t]);
 
-  async function submit(e: FormEvent) {
+  const ssoEnabled = !!providers?.sso.enabled;
+  const ldapEnabled = !!providers?.ldap.enabled;
+  const localAvailable = !!providers && providers.local !== false;
+  const hasCredentials = ldapEnabled || localAvailable;
+  const primaryMethod: CredentialMethod = ldapEnabled ? "ldap" : "local";
+  const selectedMethod = credentialMethod ?? primaryMethod;
+  const credentialAvailable = selectedMethod === "ldap" ? ldapEnabled : localAvailable;
+
+  async function submit(e: FormEvent, method: CredentialMethod) {
     e.preventDefault();
     setError(undefined);
     try {
-      if (mustChange) { await api("/auth/password", { method: "POST", body: { current_password: password, new_password: next } }); await refresh(); }
-      else if (ldapVisible) { await api("/auth/ldap/login", { method: "POST", body: { username, password } }); await refresh(); }
-      else await login(username, password);
-    } catch (err) { setError(err instanceof ApiError && err.status === 401 ? new Error(t("login.invalid")) : err); }
+      if (mustChange) {
+        await api("/auth/password", { method: "POST", body: { current_password: password, new_password: next } });
+        await refresh();
+      } else if (method === "ldap") {
+        await api("/auth/ldap/login", { method: "POST", body: { username, password } });
+        await refresh();
+      } else await login(username, password);
+    } catch (err) {
+      setError(err instanceof ApiError && err.status === 401 ? new Error(t("login.invalid")) : err);
+    }
+  }
+
+  function credentials(method: CredentialMethod, autofocus = false) {
+    return <form className="login-credentials" onSubmit={(event) => void submit(event, method)}>
+      {method === "ldap" && <p className="hint">{t("login.directory")}</p>}
+      <label>{t("login.username")}<input autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} required autoFocus={autofocus} /></label>
+      <label>{t("login.password")}<input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required /></label>
+      <button type="submit" className="login-submit">{t("login.submit")}</button>
+    </form>;
   }
 
   return (
@@ -61,33 +89,46 @@ export default function Login() {
               <div><strong>LCIT Cybersecurity</strong><span>{t("login.space")}</span></div>
             </div>
 
-            <form className="login-card" onSubmit={submit}>
+            <section className="login-card">
               <span className="auth-eyebrow">{t("login.eyebrow")}</span>
               <h1>{mustChange ? t("login.changeTitle") : t("login.title")}</h1>
               <p>{mustChange ? t("login.mustChange") : t("login.intro")}</p>
               {crashtest && <p className="login-notice">{t("login.crashtest")}</p>}
-              {!providers && <p className="hint" role="status">…</p>}
-              {sso && !mustChange && !showLocal && <button type="button" className="login-sso login-sso--primary" onClick={() => { window.location.href = "/api/auth/sso/login"; }}>{sso.provider === "entra" ? <MicrosoftMark /> : sso.provider === "google" ? <GoogleMark /> : null}{ssoLabel(sso.provider, t)}</button>}
-              {ldapVisible && <p className="hint">{t("login.directory")}</p>}
-              {(localVisible || ldapVisible) && (mustChange ? (
-                <>
-                  <label>{t("login.currentPassword")}<input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required /></label>
-                  <label>{t("login.newPassword")}<input type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} required minLength={12} /></label>
-                  <span className="hint">{t("login.passwordHint")}</span>
-                </>
-              ) : (
-                <>
-                  <label>{t("login.username")}<input autoComplete="username" value={username} onChange={(e) => setUsername(e.target.value)} required autoFocus /></label>
-                  <label>{t("login.password")}<input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required /></label>
-                </>
-              ))}
+              {!providers && <p className="hint" role="status">{t("login.loadingMethods")}</p>}
               <ErrorNote error={error} />
-              {(localVisible || ldapVisible) && <button type="submit" className="login-submit">{mustChange ? t("login.changeAndContinue") : t("login.submit")}</button>}
-              {external && <button type="button" className="login-local-toggle" onClick={() => { setShowLocal((v) => !v); setError(undefined); }}>{showLocal ? t("login.backToExternal") : t("login.local")}</button>}
+
+              {ssoEnabled && !mustChange && <a className="button button--primary login-sso--primary" href="/api/auth/sso/login">{t("login.submit")}</a>}
+
+              {mustChange && <form className="login-credentials" onSubmit={(event) => void submit(event, primaryMethod)}>
+                <label>{t("login.currentPassword")}<input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} required autoFocus /></label>
+                <label>{t("login.newPassword")}<input type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} required minLength={12} /></label>
+                <span className="hint">{t("login.passwordHint")}</span>
+                <button type="submit" className="login-submit">{t("login.changeAndContinue")}</button>
+              </form>}
+
+              {!mustChange && providers && ssoEnabled && hasCredentials && <details className="login-methods">
+                <summary>{t("login.otherMethods")}</summary>
+                {ldapEnabled && localAvailable && <fieldset className="login-method-choice">
+                  <legend>{t("login.chooseMethod")}</legend>
+                  <label><input type="radio" name="credential-method" value="ldap" checked={selectedMethod === "ldap"} onChange={() => setCredentialMethod("ldap")} />{t("login.directorySignIn")}</label>
+                  <label><input type="radio" name="credential-method" value="local" checked={selectedMethod === "local"} onChange={() => setCredentialMethod("local")} />{t("login.localSignIn")}</label>
+                </fieldset>}
+                {credentialAvailable && credentials(selectedMethod)}
+              </details>}
+
+              {!mustChange && providers && !ssoEnabled && hasCredentials && <>
+                {credentials(primaryMethod, true)}
+                {primaryMethod === "ldap" && localAvailable && <details className="login-methods login-methods--fallback">
+                  <summary>{t("login.localSignIn")}</summary>
+                  {credentials("local")}
+                </details>}
+              </>}
+              {!mustChange && providers && !ssoEnabled && !hasCredentials && <p className="login-empty-methods" role="status">{t("login.noMethods")}</p>}
+
               <div className="login-lang">
                 {LOCALES.map((l) => <button type="button" key={l} onClick={() => setLocale(l)} aria-current={l === locale}>{l.toUpperCase()}</button>)}
               </div>
-            </form>
+            </section>
 
             <p className="auth-form-foot"><LockKeyhole size={12} aria-hidden="true" /> {t("login.foot")}</p>
           </div>
