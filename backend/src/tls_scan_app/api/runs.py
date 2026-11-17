@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session as DbSession
 from tls_scan_app.api.common import can_modify, get_or_404, ids_matching_filter
 from tls_scan_app.deps import get_db, require_role
 from tls_scan_app.models import (
-    Role, RunEndpoint, RunFinding, ScanDefinition, ScanRun, ScanRunRequester, ScanSchedule, ScheduleTrigger, User,
+    DnsDiscovery, Role, RunEndpoint, RunFinding, ScanDefinition, ScanRun, ScanRunRequester, ScanSchedule, ScheduleTrigger, User,
 )
 from tls_scan_app.models.scan import ACTIVE_STATUSES, FINAL_STATUSES
 from tls_scan_app.models.user import role_at_least
@@ -66,6 +66,17 @@ def run_out(r: ScanRun, detail: bool = False) -> dict:
     if detail:
         data |= {"config_snapshot": public_snapshot(r.config_snapshot), "scanned_hosts": r.scanned_hosts, "skipped_hosts": r.skipped_hosts, "worker_id": r.worker_id}
     return data
+
+
+def compare_discovery_results(previous: dict, current: dict) -> dict:
+    """Compare observed DNS names only; absence is reported only when both result sets are complete."""
+    before = {o.get("fqdn"): set(o.get("ips", [])) for o in previous.get("observations", []) if o.get("fqdn")}
+    after = {o.get("fqdn"): set(o.get("ips", [])) for o in current.get("observations", []) if o.get("fqdn")}
+    complete = not (previous.get("partial") or current.get("partial"))
+    return {"complete": complete, "new_names": sorted(after.keys() - before.keys()),
+            "not_observed": sorted(before.keys() - after.keys()) if complete else [],
+            "ip_changed": [{"fqdn": name, "previous": sorted(before[name]), "current": sorted(after[name])}
+                           for name in sorted(before.keys() & after.keys()) if before[name] != after[name]]}
 
 
 # ---------- runs ----------
@@ -187,30 +198,84 @@ def compare(run_id: uuid.UUID, with_run: uuid.UUID | None = None, db: DbSession 
 
 # ---------- schedules ----------
 class ScheduleBody(BaseModel):
-    definition_id: uuid.UUID
+    task_type: str = "tls"
+    definition_id: uuid.UUID | None = None
     kind: str
     params: dict
     timezone: str = "UTC"
     active: bool = True
+    domain: str | None = None
+    dns_options: dict | None = None
+    authorized: bool = False
 
 
 def schedule_out(db: DbSession, s: ScanSchedule, history: bool = False) -> dict:
     last = db.execute(select(ScanRun).where(ScanRun.schedule_id == s.id).order_by(ScanRun.queued_at.desc()).limit(1)).scalar_one_or_none()
-    d = {"id": str(s.id), "definition_id": str(s.definition_id), "owner_id": str(s.owner_id) if s.owner_id else None, "kind": s.kind,
+    config = s.task_config or {}
+    public_config = ({"domain": config.get("domain"), "options": config.get("options", {})}
+                     if (s.task_type or "tls") == "dns_discovery" else None)
+    d = {"id": str(s.id), "task_type": s.task_type or "tls", "task_config": public_config,
+         "definition_id": str(s.definition_id) if s.definition_id else None, "owner_id": str(s.owner_id) if s.owner_id else None, "kind": s.kind,
          "params": s.params, "timezone": s.timezone, "active": s.active, "next_run_at": s.next_run_at, "last_run_at": s.last_run_at,
          "last_run": {"id": str(last.id), "status": last.status, "duration_seconds": last.duration_seconds} if last else None}
+    latest_discovery_id = db.scalar(select(ScheduleTrigger.discovery_id).where(
+        ScheduleTrigger.schedule_id == s.id, ScheduleTrigger.discovery_id.is_not(None)).order_by(ScheduleTrigger.due_at.desc()).limit(1))
+    latest_discovery = db.get(DnsDiscovery, latest_discovery_id) if latest_discovery_id else None
+    d["last_discovery"] = {"id": str(latest_discovery.id), "status": latest_discovery.status} if latest_discovery else None
     if history:
-        d["triggers"] = [{"due_at": t.due_at, "outcome": t.outcome, "reason": t.reason, "run_id": str(t.run_id) if t.run_id else None}
-                         for t in db.execute(select(ScheduleTrigger).where(ScheduleTrigger.schedule_id == s.id).order_by(ScheduleTrigger.due_at.desc()).limit(50)).scalars()]
+        triggers = db.execute(select(ScheduleTrigger).where(ScheduleTrigger.schedule_id == s.id).order_by(ScheduleTrigger.due_at.desc()).limit(50)).scalars().all()
+        history_rows = []
+        for trigger in triggers:
+            discovery = db.get(DnsDiscovery, trigger.discovery_id) if trigger.discovery_id else None
+            changes = None
+            if discovery and discovery.status == "done" and discovery.result:
+                previous = None
+                for older in triggers:
+                    if older.due_at >= trigger.due_at or not older.discovery_id:
+                        continue
+                    candidate = db.get(DnsDiscovery, older.discovery_id)
+                    if candidate and candidate.status == "done" and candidate.result:
+                        previous = candidate
+                        break
+                if previous:
+                    changes = {"compared_with": str(previous.id), **compare_discovery_results(previous.result, discovery.result)}
+            trigger_data = {"due_at": trigger.due_at, "outcome": trigger.outcome, "reason": trigger.reason,
+                            "run_id": str(trigger.run_id) if trigger.run_id else None,
+                            "discovery_id": str(trigger.discovery_id) if trigger.discovery_id else None,
+                            "discovery_status": discovery.status if discovery else None, "comparison": changes}
+            history_rows.append(trigger_data)
+        d["triggers"] = history_rows
     return d
 
 
-def _check_schedule(body: ScheduleBody) -> datetime | None:
+def _check_schedule(body: ScheduleBody, db: DbSession, user: User) -> tuple[datetime | None, dict | None]:
     try:
         validate(body.kind, body.params, body.timezone)
-        return next_after(body.kind, body.params, body.timezone, datetime.now(UTC))
+        nxt = next_after(body.kind, body.params, body.timezone, datetime.now(UTC))
     except (ScheduleError, ValueError) as error:
         raise HTTPException(422, str(error)) from error
+    if body.task_type == "tls":
+        if not body.definition_id:
+            raise HTTPException(422, "A TLS schedule needs a scan definition")
+        get_or_404(db, ScanDefinition, body.definition_id, "Scan definition")
+        return nxt, None
+    if body.task_type != "dns_discovery":
+        raise HTTPException(422, "Unknown schedule task type")
+    if not role_at_least(user.role, Role.OPERATOR):
+        raise HTTPException(403, "DNS discovery schedules require the OPERATOR role")
+    if not body.authorized:
+        raise HTTPException(400, "Confirm that you are authorised to query this domain")
+    if not body.domain:
+        raise HTTPException(422, "A domain is required for DNS discovery")
+    try:
+        from tls_scan_app.api.catalog import DiscoverBody, _discovery_options
+        from tls_scan_app.services.dns_discovery.policy import normalize_domain, load_settings
+
+        domain = normalize_domain(body.domain)
+        options = _discovery_options(DiscoverBody(domain=domain, authorized=True, **(body.dns_options or {})), load_settings(db))
+    except (ValueError, TypeError) as error:
+        raise HTTPException(422, str(error)) from error
+    return nxt, {"domain": domain, "options": options, "authorized": True}
 
 
 @router.get("/schedules")
@@ -232,13 +297,13 @@ def get_schedule(schedule_id: uuid.UUID, db: DbSession = Depends(get_db), user: 
 
 @router.post("/schedules", status_code=201)
 def create_schedule(body: ScheduleBody, db: DbSession = Depends(get_db), user: User = Depends(user_only)) -> dict:
-    get_or_404(db, ScanDefinition, body.definition_id, "Scan definition")
-    nxt = _check_schedule(body)
-    s = ScanSchedule(definition_id=body.definition_id, owner_id=user.id, kind=body.kind, params=body.params, timezone=body.timezone,
+    nxt, task_config = _check_schedule(body, db, user)
+    s = ScanSchedule(definition_id=body.definition_id if body.task_type == "tls" else None, task_type=body.task_type,
+                     task_config=task_config, owner_id=user.id, kind=body.kind, params=body.params, timezone=body.timezone,
                      active=body.active and nxt is not None, next_run_at=nxt)
     db.add(s)
     db.flush()
-    audit.record(db, "schedule.create", actor=user, resource_type="schedule", resource_id=s.id, detail={"kind": s.kind})
+    audit.record(db, "schedule.create", actor=user, resource_type="schedule", resource_id=s.id, detail={"kind": s.kind, "task_type": s.task_type})
     db.commit()
     return schedule_out(db, s)
 
@@ -248,7 +313,10 @@ def update_schedule(schedule_id: uuid.UUID, body: ScheduleBody, db: DbSession = 
     s = get_or_404(db, ScanSchedule, schedule_id, "Schedule")
     if not can_modify(user, s.owner_id):
         raise HTTPException(403, "Only the owner or an operator can modify this schedule")
-    nxt = _check_schedule(body)
+    nxt, task_config = _check_schedule(body, db, user)
+    s.task_type = body.task_type
+    s.definition_id = body.definition_id if body.task_type == "tls" else None
+    s.task_config = task_config
     s.kind, s.params, s.timezone, s.active, s.next_run_at = body.kind, body.params, body.timezone, body.active and nxt is not None, nxt
     audit.record(db, "schedule.update", actor=user, resource_type="schedule", resource_id=s.id)
     db.commit()

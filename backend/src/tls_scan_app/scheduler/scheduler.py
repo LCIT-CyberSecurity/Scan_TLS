@@ -20,8 +20,9 @@ from sqlalchemy.orm import Session as DbSession
 
 from tls_scan_app.config import Settings, get_settings
 from tls_scan_app.database import make_engine, make_session_factory
-from tls_scan_app.models import ScanDefinition, ScanRun, ScanSchedule, ScheduleTrigger
+from tls_scan_app.models import DnsDiscovery, Role, ScanDefinition, ScanRun, ScanSchedule, ScheduleTrigger, User
 from tls_scan_app.models.scan import ACTIVE_STATUSES
+from tls_scan_app.models.user import role_at_least
 from tls_scan_app.services import audit, runs
 from tls_scan_app.services.logs import configure_logging
 from tls_scan_app.services.planner import PlanError, build_snapshot, fingerprint
@@ -40,10 +41,11 @@ def tick(db: DbSession, settings: Settings, now: datetime | None = None) -> int:
     ).scalars().all()
     for schedule in due:
         due_at = schedule.next_run_at
-        outcome, reason, run_id = _fire(db, settings, schedule, due_at, now)
+        outcome, reason, run_id, discovery_id = _fire(db, settings, schedule, due_at, now)
         try:
             with db.begin_nested():
-                db.add(ScheduleTrigger(schedule_id=schedule.id, due_at=due_at, outcome=outcome, reason=reason, run_id=run_id))
+                db.add(ScheduleTrigger(schedule_id=schedule.id, due_at=due_at, outcome=outcome, reason=reason,
+                                       run_id=run_id, discovery_id=discovery_id))
                 db.flush()
         except IntegrityError:
             pass  # already handled by another scheduler instance
@@ -63,22 +65,58 @@ def tick(db: DbSession, settings: Settings, now: datetime | None = None) -> int:
 
 def _fire(db, settings, schedule, due_at, now):
     if now - due_at > LATE_GRACE:
-        return "skipped_late", f"missed by {now - due_at} (service down or delayed)", None
+        return "skipped_late", f"missed by {now - due_at} (service down or delayed)", None, None
+    if schedule.task_type == "dns_discovery":
+        return _fire_dns(db, schedule)
     active = db.execute(select(ScanRun.id).where(ScanRun.schedule_id == schedule.id, ScanRun.status.in_(ACTIVE_STATUSES))).first()
     if active:
-        return "skipped_overlap", "previous occurrence still active", None
+        return "skipped_overlap", "previous occurrence still active", None, None
     definition = db.get(ScanDefinition, schedule.definition_id)
+    if definition is None:
+        return "error", "scan definition was deleted", None, None
     try:
         snapshot = build_snapshot(db, definition, settings.max_targets_per_scan)  # latest published versions
     except PlanError as error:
         audit.record(db, "schedule.error", actor_label="scheduler", resource_type="schedule", resource_id=schedule.id,
                      outcome="failure", detail={"error": str(error)})
-        return "error", str(error), None
+        return "error", str(error), None, None
     run, dedup = runs.create_run(db, snapshot, fingerprint(snapshot), definition=definition, user=None, schedule_id=schedule.id)
     owner = schedule.owner_id
     if owner:
         runs.add_requester(db, run.id, owner)
-    return ("skipped_overlap", "merged into an equivalent active run", run.id) if dedup else ("triggered", "", run.id)
+    return ("skipped_overlap", "merged into an equivalent active run", run.id, None) if dedup else ("triggered", "", run.id, None)
+
+
+def _fire_dns(db, schedule):
+    config = schedule.task_config or {}
+    if not config.get("authorized") or not config.get("domain") or not isinstance(config.get("options"), dict):
+        return "error", "scheduled discovery authorization or configuration is missing", None, None
+    owner = db.get(User, schedule.owner_id) if schedule.owner_id else None
+    if owner is None or not owner.active or not role_at_least(owner.role, Role.OPERATOR):
+        return "error", "schedule owner is missing, inactive, or no longer permitted to run discoveries", None, None
+    busy = db.scalar(select(DnsDiscovery.id).where(DnsDiscovery.requested_by == owner.id,
+                                                   DnsDiscovery.status.in_(("queued", "running"))).limit(1))
+    if busy:
+        return "skipped_overlap", "a previous DNS discovery for this owner is still active", None, None
+    try:
+        # Revalidate the saved request against current administrator scope and limits at every run.
+        from tls_scan_app.api.catalog import DiscoverBody, _discovery_options
+        from tls_scan_app.services.dns_discovery.policy import load_settings
+
+        body = DiscoverBody(domain=config["domain"], authorized=True, **config["options"])
+        from tls_scan_app.services.dns_discovery.policy import normalize_domain
+
+        domain = normalize_domain(body.domain)
+        options = _discovery_options(body, load_settings(db))
+    except (TypeError, ValueError) as error:
+        return "error", f"DNS discovery configuration is no longer valid: {error}", None, None
+    discovery = DnsDiscovery(domain=domain, requested_by=owner.id, options=options)
+    db.add(discovery)
+    db.flush()
+    audit.record(db, "target.discover", actor_label="scheduler", resource_type="dns_discovery", resource_id=discovery.id,
+                 detail={"domain": domain, "mode": options["mode"], "methods": options["methods"],
+                         "resolver": options.get("dns_server") or "system", "scheduled": True, "schedule_id": str(schedule.id)})
+    return "triggered", "", None, discovery.id
 
 
 def main() -> None:
