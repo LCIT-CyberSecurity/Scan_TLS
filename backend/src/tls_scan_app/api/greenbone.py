@@ -27,18 +27,9 @@ class ConnectionBody(BaseModel):
     timeout: int = Field(default=15, ge=3, le=60)
 
 
-class DefinitionChoice(BaseModel):
-    task_id: str = Field(min_length=1, max_length=128)
-    profile_id: uuid.UUID
-    policy_ids: list[uuid.UUID] = Field(min_length=1, max_length=100)
-
-
 class ApplyBody(BaseModel):
     dry_run: bool = True
     selected: list[int] = Field(default_factory=list, max_length=5000)
-    import_groups: bool = True
-    add_tag: bool = True
-    definitions: list[DefinitionChoice] = Field(default_factory=list, max_length=500)
 
 
 def _config(db: DbSession) -> dict:
@@ -125,12 +116,11 @@ async def import_xml(request: Request, files: list[UploadFile] = File(...), db: 
     except greenbone.GreenboneError as error:
         raise HTTPException(422, str(error)) from error
     row = GreenboneImport(mode="xml", source_name=snapshot["source_name"][:160], requested_by=actor.id, snapshot=snapshot,
-                          status="done", finished_at=datetime.now(UTC), result={"objects": {key: len(snapshot[key]) for key in
-                          ("targets", "tasks", "port_lists", "scan_configs", "schedules", "tags")}})
+                          status="done", finished_at=datetime.now(UTC), result={"objects": {"targets": len(snapshot["targets"])}})
     db.add(row)
     db.flush()
     audit.record(db, "greenbone.import.xml_analyzed", actor=actor, resource_type="greenbone_import", resource_id=row.id,
-                 detail={"files": len(inputs), "objects": row.result["objects"]})
+                 detail={"files": len(inputs), "targets": row.result["objects"]["targets"]})
     db.commit()
     return _out(row)
 
@@ -174,24 +164,14 @@ def apply_import(import_id: uuid.UUID, body: ApplyBody, response: Response, db: 
     snapshot = dict(row.snapshot)
     snapshot["import_id"] = str(row.id)
     if body.dry_run:
-        if any(index < 0 or index >= len(greenbone.normalized_targets(snapshot)) for index in body.selected):
-            raise HTTPException(422, "Sélection de cible invalide")
-        if any(not greenbone.normalized_targets(snapshot)[index]["importable"] for index in body.selected):
-            raise HTTPException(422, "Une cible sélectionnée n’a pas de ports TCP transférables")
         planned = greenbone.preview(db, snapshot)
-        try:
-            definitions = greenbone.validate_definition_choices(db, snapshot, [choice.model_dump() for choice in body.definitions], body.selected)
-        except greenbone.GreenboneError as error:
-            raise HTTPException(422, str(error)) from error
-        return {"dry_run": True, "selected": [planned["targets"][i] for i in body.selected], "summary": planned["summary"],
-                "definitions": [{"task": choice["task"]["name"], "already_imported": bool(choice["existing_id"])} for choice in definitions]}
+        if any(index < 0 or index >= len(planned["targets"]) for index in body.selected):
+            raise HTTPException(422, "Sélection de cible invalide")
+        return {"dry_run": True, "selected": [planned["targets"][i] for i in body.selected], "summary": planned["summary"]}
     try:
-        targets = greenbone.normalized_targets(snapshot)
+        targets = greenbone.preview(db, snapshot)["targets"]
         if any(index < 0 or index >= len(targets) for index in body.selected):
             raise greenbone.GreenboneError("Sélection de cible invalide")
-        if any(not targets[index]["importable"] for index in body.selected):
-            raise greenbone.GreenboneError("Une cible sélectionnée n’a pas de ports TCP transférables")
-        greenbone.validate_definition_choices(db, snapshot, [choice.model_dump() for choice in body.definitions], body.selected)
     except greenbone.GreenboneError as error:
         raise HTTPException(422, str(error)) from error
     row.status = "apply_queued"
