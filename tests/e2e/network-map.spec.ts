@@ -59,7 +59,7 @@ async function captureMapAtSize(browser: Browser, project: string, size: { width
     await login(page, "admin", ADMIN);
     await selectDarkAppearance(page);
     await page.goto("/scans/map");
-    await expect(page.locator(".network-map-flow .react-flow")).toBeVisible({ timeout: 30_000 });
+    await expect(page.locator(".network-map-canvas canvas").first()).toBeVisible({ timeout: 30_000 });
     await expect(page.getByRole("group", { name: "Map overview" })).toBeVisible();
     await saveScreenshot(page, project, "global", size.width, size.height);
     await saveCanvasScreenshot(page, project, "global", size.width, size.height);
@@ -142,7 +142,7 @@ test("zone graph includes both endpoints of a declared in-zone link", async ({ p
   await waitForApplication(page);
   await login(page, "admin", ADMIN);
   await page.goto("/scans/map");
-  await expect(page.locator(".network-map-flow .react-flow")).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator(".network-map-canvas canvas").first()).toBeVisible({ timeout: 30_000 });
   await searchAndSelect(page, "Production", /Production\s+si/i);
   const networkResponse = page.waitForResponse((response) => response.url().includes("/api/map/graph") && response.url().includes("mode=network") && response.status() === 200);
   await page.getByRole("button", { name: "Network architecture" }).click();
