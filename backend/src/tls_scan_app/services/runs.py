@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -15,6 +16,7 @@ from sqlalchemy.orm import Session as DbSession
 from tls_scan_app.models import RunEndpoint, RunFinding, RunIpsecObservation, ScanDefinition, ScanRun, ScanRunRequester, User
 from tls_scan_app.models.scan import ACTIVE_STATUSES, CANCELLED, COMPLETED, EXPIRED, FAILED, PARTIAL, QUEUED, RUNNING
 from tls_scan_app.services import audit, report_addendum, report_branding
+from tls_scan_app.services.mail_security import attach_smtp_observations
 
 STALE_HEARTBEAT_SECONDS = 120
 CLAIM_LOCK_KEY = 727301  # pg advisory lock serialising queue claims (global concurrency cap)
@@ -173,6 +175,9 @@ def persist_results(db: DbSession, run: ScanRun, outcome: dict[str, Any], status
     branding = run.config_snapshot.get("branding")
     # what the previous scans bring to this report (evolution, renewals, trend, scope): needs this run's rows and end state
     run.scanned_hosts, run.skipped_hosts = outcome.get("scanned_hosts", []), outcome.get("skipped_hosts", [])
+    run.mail_security_results = outcome.get("mail_security_results") or None
+    if run.mail_security_results:
+        attach_smtp_observations(run.mail_security_results, model.get("endpoints", []))
     run.summary, run.status, run.finished_at = model.get("statistics"), status, datetime.now(UTC)
     db.flush()
     if (run.config_snapshot or {}).get("control_type") == "ipsec":
@@ -193,6 +198,26 @@ def persist_results(db: DbSession, run: ScanRun, outcome: dict[str, Any], status
         if path.is_file():
             files.append({"format": _format_of(path), "path": str(path.relative_to(storage_root)),
                           "sha256": hashlib.sha256(path.read_bytes()).hexdigest(), "size": path.stat().st_size})
+    if run.mail_security_results and "csv" in (run.config_snapshot.get("export_formats") or []):
+        import csv
+        import io
+        stream = io.StringIO(newline="")
+        writer = csv.DictWriter(stream, fieldnames=("domain", "check", "status", "message", "records", "details", "provenance"))
+        writer.writeheader()
+        for domain in run.mail_security_results:
+            for check in domain.get("checks", []):
+                writer.writerow({"domain": domain.get("domain", ""), **check,
+                                 "records": " | ".join(check.get("records") or []),
+                                 "details": json.dumps(check.get("details") or {}, sort_keys=True)})
+            for observation in domain.get("smtp_starttls", []):
+                writer.writerow({"domain": domain.get("domain", ""), "check": "smtp_starttls", "status": observation.get("status"),
+                                 "message": observation.get("message", ""), "records": "", "details": json.dumps(observation, sort_keys=True),
+                                 "provenance": "existing scan endpoint observation"})
+        csv_path = storage_root / "reports" / str(run.id) / "mail-security.csv"
+        csv_path.parent.mkdir(parents=True, exist_ok=True)
+        csv_path.write_text(stream.getvalue(), encoding="utf-8")
+        files.append({"format": "mail_security_csv", "path": str(csv_path.relative_to(storage_root)),
+                      "sha256": hashlib.sha256(csv_path.read_bytes()).hexdigest(), "size": csv_path.stat().st_size})
     run.report_files = files
     run.summary = model.get("statistics")
     run.scanned_hosts = outcome.get("scanned_hosts", [])
@@ -210,6 +235,8 @@ def _format_of(path: Path) -> str:
         return "cbom"
     if name.endswith("_findings.csv"):
         return "findings_csv"
+    if name == "mail-security.csv":
+        return "mail_security_csv"
     if name.endswith(".metadata.json"):
         return "metadata"
     return {".html": "html", ".md": "md", ".csv": "csv"}.get(path.suffix, path.suffix.lstrip("."))

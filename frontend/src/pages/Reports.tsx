@@ -25,9 +25,9 @@ export default function Reports() {
     { key: "status", header: t("col.status"), values: (r) => [r.status], render: (r) => <StatusBadge status={r.status} /> },
     { key: "nc", header: t("col.nonCompliant"), sort: (r) => r.summary?.non_compliant_endpoints ?? -1, values: (r) => [String(r.summary?.non_compliant_endpoints ?? "—")], render: (r) => r.summary?.non_compliant_endpoints ?? "—" },
     { key: "pol", header: t("pol.policies"), values: (r) => r.policy_versions.map((p) => `${p.name} v${p.version}`), render: (r) => <span className="text-xs">{r.policy_versions.map((p) => `${p.name} v${p.version}`).join(", ")}</span> },
-    { key: "reports", header: t("nav.reports"), render: (r) => <div className="flex flex-wrap gap-1">{r.reports.filter((x) => ["html", "md", "csv", "cbom"].includes(x.format)).map((x) => {
+    { key: "reports", header: t("nav.reports"), render: (r) => <div className="flex flex-wrap gap-1">{r.reports.filter((x) => ["html", "md", "csv", "cbom", "mail_security_csv"].includes(x.format)).map((x) => {
       const html = x.format === "html";
-      return <Button key={x.format} size="sm" variant="outline" asChild><a href={downloadUrl(r.id, x.format, html)} target={html ? "_blank" : undefined} rel={html ? "noreferrer" : undefined}><Download />{x.format.toUpperCase()}</a></Button>;
+      return <Button key={x.format} size="sm" variant="outline" asChild><a href={downloadUrl(r.id, x.format, html)} target={html ? "_blank" : undefined} rel={html ? "noreferrer" : undefined}><Download />{x.format === "mail_security_csv" ? "MAIL CSV" : x.format.toUpperCase()}</a></Button>;
     })}</div> },
   ];
   return (
