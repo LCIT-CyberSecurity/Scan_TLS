@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session as DbSession
 
 from tls_scan_app.models import (
     SystemSetting, DefinitionGroup, DefinitionPolicy, DefinitionTarget, PolicyVersion, ReportTemplate, ScanDefinition,
-    ScanProfileVersion, Target, TargetGroupMember,
+    ScanProfile, ScanProfileVersion, Target, TargetGroupMember,
 )
 from tls_scan_app.models.policy import PUBLISHED
 from tls_scan_app.services.targets import address_count
@@ -53,6 +53,17 @@ def validate_profile_content(content: dict[str, Any]) -> None:
         build_job_from_sections(content.get("scan", {}), {}, {}, ["192.0.2.1"], None, engine_checks)
     except ConfigError as error:
         raise PlanError(str(error)) from error
+
+
+def validate_generic_profile_content(content: dict[str, Any]) -> None:
+    """Validate independent, versioned sections for the currently available engines."""
+    if not isinstance(content, dict) or not content or set(content) - {"tls", "ipsec"}:
+        raise PlanError("generic profiles may contain tls and/or ipsec sections")
+    if "tls" in content:
+        validate_profile_content(content["tls"])
+    if "ipsec" in content:
+        from tls_scan_app.services.ipsec import validate_ipsec_profile
+        validate_ipsec_profile(content["ipsec"])
 
 
 def validate_policy_content(content: dict[str, Any]) -> None:
@@ -93,7 +104,24 @@ def build_snapshot(db: DbSession, definition: ScanDefinition, max_addresses: int
     profile_version = latest_published(db, ScanProfileVersion, ScanProfileVersion.profile_id, definition.profile_id)
     if profile_version is None:
         raise PlanError("the scan profile has no published version")
-    scan_cfg = copy.deepcopy(profile_version.content.get("scan", {}))
+    profile_content = profile_version.content
+    is_generic = db.get(ScanProfile, definition.profile_id).technology == "generic"
+    selected = list(definition.enabled_controls or [])
+    if not selected:
+        selected = [definition.control_type]
+    if set(selected) - {"tls", "ipsec"} or not selected:
+        raise PlanError("this profile contains controls that are not yet available")
+    if is_generic:
+        if set(selected) - set(profile_content):
+            raise PlanError("the selected profile does not configure every enabled technology")
+        tls_profile = profile_content.get("tls", {})
+        ipsec_profile = profile_content.get("ipsec", {})
+    else:
+        if definition.enabled_controls:
+            raise PlanError("multiple controls require a generic scan profile")
+        tls_profile = profile_content if definition.control_type == "tls" else {}
+        ipsec_profile = profile_content if definition.control_type == "ipsec" else {}
+    scan_cfg = copy.deepcopy(tls_profile.get("scan", {}))
     default_ports = scan_cfg.get("ports", "fast")
 
     targets = resolve_targets(db, definition)
@@ -141,12 +169,19 @@ def build_snapshot(db: DbSession, definition: ScanDefinition, max_addresses: int
                          "version": version.version, "content": version.content})
     if not policies:
         raise PlanError("at least one policy is required")
+    from tls_scan_app.models import Policy
+    technologies = {db.get(Policy, p["policy_id"]).technology for p in policies}
+    missing = set(selected) - technologies
+    if missing:
+        raise PlanError(f"a published encryption policy is required for each enabled technology: {sorted(missing)}")
+    policy_bundles = {technology: [p for p in policies if db.get(Policy, p["policy_id"]).technology == technology]
+                      for technology in ("tls", "ipsec")}
     policies.sort(key=lambda p: p["name"])
     template = db.get(ReportTemplate, definition.report_template_id) if definition.report_template_id else None
     formats = [f for f in (template.export_formats if template else DEFAULT_FORMATS) if f in ALLOWED_EXPORT_FORMATS]
 
-    if definition.control_type == "ipsec":
-        ike = copy.deepcopy(profile_version.content["ike"])
+    if "ipsec" in selected and "tls" not in selected:
+        ike = copy.deepcopy(ipsec_profile["ike"])
         probe_targets = []
         for target in targets:
             if target.kind == "cidr":
@@ -157,10 +192,11 @@ def build_snapshot(db: DbSession, definition: ScanDefinition, max_addresses: int
             probe_targets, _, _ = exclusions.filter_targets(probe_targets)
         if not probe_targets:
             raise PlanError("every target address is excluded: nothing to probe")
+        # Legacy IPsec-only snapshots keep the historical shape below.
         return {
             "control_type": "ipsec", "definition": {"id": str(definition.id), "name": definition.name},
             "profile": {"id": str(definition.profile_id), "version_id": str(profile_version.id), "version": profile_version.version},
-            "ike": ike, "passes": [{"targets": sorted(set(probe_targets))}], "policies": policies,
+            "ike": ike, "passes": [{"targets": sorted(set(probe_targets))}], "policies": policy_bundles["ipsec"],
             "policy_mode": definition.policy_mode, "export_formats": [f for f in formats if f in {"html", "md", "csv"}], "branding": (template.branding if template else None) or {},
             "limitations": ["Unauthenticated IKE exchange only", "ESP/Child SA, authentication, PFS and tunnel operation are not evaluated"],
         }
@@ -185,20 +221,29 @@ def build_snapshot(db: DbSession, definition: ScanDefinition, max_addresses: int
         mail_security = {"enabled": False, "checks": {}, "dkim_selectors": []}
 
     try:
-        checks, trust_stores = resolve_for_snapshot(db, profile_version.content.get("checks", {}))
+        checks, trust_stores = resolve_for_snapshot(db, tls_profile.get("checks", {})) if "tls" in selected else ({}, [])
     except TrustStoreError as error:
         raise PlanError(str(error)) from error
     return {
+        "control_type": "multi" if len(selected) > 1 else selected[0],
         "definition": {"id": str(definition.id), "name": definition.name},
         "profile": {"id": str(definition.profile_id), "version_id": str(profile_version.id), "version": profile_version.version},
         "scan": scan_cfg,
         "exclusions": {"entries": [{"value": v, "scope": s} for v, s in sources.items()], "removed_targets": sorted(set(removed)), "partial_targets": sorted(set(partial))},
         "checks": checks,
         "mail_security": mail_security,
+        "enabled_controls": selected,
+        "ipsec": ({"ike": copy.deepcopy(ipsec_profile["ike"]), "policies": policy_bundles["ipsec"],
+                    "targets": sorted({str(address) for target in targets
+                                        for address in (ipaddress.ip_network(target.value, strict=False)
+                                                        if target.kind == "cidr" else [target.value])
+                                        if exclusions.classify_target(str(address)) != "excluded"})}
+                   if "ipsec" in selected else None),
         "trust_stores": trust_stores,
         "passes": passes,
         "policy_mode": definition.policy_mode,
-        "policies": policies,
+        "policies": policy_bundles["tls"],
+        "tls_policies": policy_bundles["tls"],
         "export_formats": formats,
         "branding": (template.branding if template else None) or {},
     }
@@ -209,12 +254,14 @@ def fingerprint(snapshot: dict[str, Any]) -> str:
     scan = {k: v for k, v in snapshot.get("scan", {}).items() if k != "workers"}
     material = {
         "control_type": snapshot.get("control_type", "tls"),
+        "enabled_controls": snapshot.get("enabled_controls", [snapshot.get("control_type", "tls")]),
         "passes": snapshot["passes"],
         "scan": scan,
         "checks": snapshot.get("checks", {}),
-        "policies": [(p["name"], p["version_id"]) for p in snapshot["policies"]],
+        "policies": [(p["name"], p["version_id"]) for p in
+                     [*snapshot.get("policies", []), *((snapshot.get("ipsec") or {}).get("policies", []))]],
         "mode": snapshot["policy_mode"],
-        "ike": snapshot.get("ike"),
+        "ike": snapshot.get("ike", (snapshot.get("ipsec") or {}).get("ike")),
     }
     mail_security = snapshot.get("mail_security") or {}
     if mail_security.get("enabled"):
@@ -247,7 +294,7 @@ def job_from_snapshot(snapshot: dict[str, Any], run_id: str, export_dir: str, lo
             allowed_signature_hashes=tuple(p["content"]["allowed_signature_hashes"]),
             minimum_rsa_bits=int(p["content"]["minimum_rsa_bits"]),
         )
-        for p in snapshot["policies"]
+        for p in snapshot.get("tls_policies", snapshot["policies"])
     )
     job.policy_mode = snapshot["policy_mode"]
     job.scan_run_id = run_id

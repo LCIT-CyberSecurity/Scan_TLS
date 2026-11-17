@@ -25,6 +25,64 @@ def emit(name: str, data: dict) -> None:
     print(json.dumps({"event": name, **data}), flush=True)
 
 
+def scan_ipsec(config: dict, targets: list[str], export_dir: Path, run_id: str, formats: list[str], cancel, emit):
+    """Run bounded IKE probes and keep the observations separate from TLS grades."""
+    ike = config["ike"]
+    policies = config.get("policies", [])
+    observations = []
+    total = len(targets) * len(ike["versions"]) * len(ike["ports"])
+    done = 0
+    for target in targets:
+        for version in ike["versions"]:
+            for port in ike["ports"]:
+                if cancel.is_set():
+                    break
+                emit("phase", {"phase": "ipsec_probe", "hosts": targets})
+                observation = probe(target, version, port, ike.get("timeout_ms", 1000), ike.get("retries", 0),
+                                    ike.get("nat_t", True), ike.get("ikev1_transforms", []))
+                verdicts = {p["name"]: evaluate_policy(observation, p["content"]) for p in policies}
+                values = set(verdicts.values())
+                observation["verdict"] = ("non_compliant" if "non_compliant" in values else
+                                           "compliant" if values == {"compliant"} else "indeterminate")
+                observation["evidence"]["policy_verdicts"] = verdicts
+                observation["target"] = target
+                observations.append(observation)
+                done += 1
+                emit("host_done", {"target": target, "hosts_done": done, "hosts_total": total})
+            if cancel.is_set():
+                break
+        if cancel.is_set():
+            break
+
+    root = export_dir / run_id
+    root.mkdir(parents=True, exist_ok=True)
+    rows = [{"target": x["target"], "port": x["port"], "status": x["status"], "ike_version": x["ike_version"],
+             "exchange": x["exchange"], "verdict": x["verdict"],
+             "policy_verdicts": json.dumps(x.get("evidence", {}).get("policy_verdicts", {}), sort_keys=True),
+             **(x["proposal"] or {})} for x in observations]
+    fields = ("target", "port", "status", "ike_version", "exchange", "verdict", "policy_verdicts", "encryption", "key_length_bits", "integrity", "prf", "dh_group")
+    written = []
+    for fmt in formats:
+        path = root / f"ipsec-results.{fmt}"
+        if fmt == "csv":
+            stream = io.StringIO(newline="")
+            writer = csv.DictWriter(stream, fieldnames=fields, extrasaction="ignore")
+            writer.writeheader(); writer.writerows(rows)
+            path.write_text(stream.getvalue(), encoding="utf-8")
+        elif fmt == "md":
+            lines = ["# IPsec / IKE scan results", "", "> Unauthenticated discovery only; tunnel operation was not evaluated.", "",
+                     "| " + " | ".join(fields) + " |", "|" + "|".join(["---"] * len(fields)) + "|"]
+            lines.extend("| " + " | ".join(str(row.get(key, "")) for key in fields) + " |" for row in rows)
+            path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        elif fmt == "html":
+            cells = "".join("<tr>" + "".join(f"<td>{html.escape(str(row.get(key, '')))}</td>" for key in fields) + "</tr>" for row in rows)
+            path.write_text("<!doctype html><meta charset='utf-8'><title>IPsec scan</title><h1>IPsec / IKE results</h1><p>Unauthenticated discovery only; tunnel operation was not evaluated.</p><table><thead><tr>" + "".join(f"<th>{html.escape(key)}</th>" for key in fields) + f"</tr></thead><tbody>{cells}</tbody></table>", encoding="utf-8")
+        else:
+            continue
+        written.append(str(path))
+    return observations, written
+
+
 def main(argv: list[str]) -> int:
     snapshot_path, outcome_path = Path(argv[1]), Path(argv[2])
     payload = json.loads(snapshot_path.read_text())
@@ -95,6 +153,14 @@ def main(argv: list[str]) -> int:
         payload["snapshot"], payload["run_id"], payload["export_dir"], payload.get("log_file"), payload["max_workers"]
     )
     outcome = execute_scan(job, cancel_event=cancel, on_event=emit, passes=passes)
+    ipsec_config = payload["snapshot"].get("ipsec")
+    if ipsec_config and "ipsec" in payload["snapshot"].get("enabled_controls", []):
+        targets = ipsec_config.get("targets") or sorted({target for item in payload["snapshot"]["passes"] for target in item["targets"]})
+        observations, ipsec_files = scan_ipsec(ipsec_config, targets, Path(payload["export_dir"]), payload["run_id"],
+                                               payload["snapshot"]["export_formats"], cancel, emit)
+        outcome.report_model["statistics"]["ipsec_observations"] = len(observations)
+        outcome.written_files.extend(ipsec_files)
+        outcome.ipsec_observations = observations
     mail_security_results = []
     mail_cfg = payload["snapshot"].get("mail_security") or {}
     if mail_cfg.get("enabled") and not cancel.is_set():
@@ -109,6 +175,7 @@ def main(argv: list[str]) -> int:
         "skipped_hosts": outcome.skipped_hosts,
         "duration_seconds": outcome.duration_seconds,
         "mail_security_results": mail_security_results,
+        "ipsec_observations": getattr(outcome, "ipsec_observations", []),
     }, default=str))
     return 0
 

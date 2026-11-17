@@ -27,7 +27,7 @@ from tls_scan_app.services.trust_stores import public_snapshot
 router = APIRouter(prefix="/api", tags=["runs"])
 auditor = require_role(Role.AUDITOR)
 user_only = require_role(Role.USER)
-MEDIA = {"html": "text/html", "md": "text/markdown", "csv": "text/csv", "findings_csv": "text/csv", "mail_security_csv": "text/csv", "cbom": "application/json", "metadata": "application/json"}
+MEDIA = {"html": "text/html", "md": "text/markdown", "csv": "text/csv", "findings_csv": "text/csv", "mail_security_csv": "text/csv", "ipsec_html": "text/html", "ipsec_md": "text/markdown", "ipsec_csv": "text/csv", "cbom": "application/json", "metadata": "application/json"}
 
 
 def run_plan(snapshot: dict | None) -> dict | None:
@@ -48,7 +48,8 @@ def run_plan(snapshot: dict | None) -> dict | None:
         "public_store": (trust.get("public_store") or {}).get("enabled", True) is not False,
         "private_stores": [s.get("name") for s in (snapshot.get("trust_stores") or [])],
         "revocation": bool(revocation.get("enabled")), "tls_checks": len(enabled_tls),
-        "policies": [p.get("name") for p in snapshot.get("policies", [])], "formats": snapshot.get("export_formats", []),
+        "controls": snapshot.get("enabled_controls", [snapshot.get("control_type", "tls")]),
+        "policies": [p.get("name") for p in [*snapshot.get("policies", []), *((snapshot.get("ipsec") or {}).get("policies", []))]], "formats": snapshot.get("export_formats", []),
         "mail_security": {"domains": (snapshot.get("mail_security") or {}).get("domains", []),
                           "checks": [key for key, enabled in ((snapshot.get("mail_security") or {}).get("checks") or {}).items() if enabled]},
     }

@@ -29,6 +29,8 @@ class ScanDefinition(Base):
     policy_mode: Mapped[str] = mapped_column(String(20), default="strict_all")
     exclusions: Mapped[list | None] = mapped_column(JsonType)  # hosts, networks and names this scan never touches (IP, CIDR, FQDN, *.domain)
     mail_security: Mapped[dict | None] = mapped_column(JsonType)  # optional per-definition mail posture checks; defaults to disabled
+    # Optional technology switches. NULL preserves the pre-multiprotocol control_type semantics.
+    enabled_controls: Mapped[list | None] = mapped_column(JsonType)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     updated_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))

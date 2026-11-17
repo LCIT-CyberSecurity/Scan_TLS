@@ -1,5 +1,5 @@
 import { Archive, Copy, FileDown, Plus, Send } from "lucide-react";
-import { useState } from "react";
+import { useState, type ComponentType } from "react";
 import { api } from "../api/client";
 import type { Template, TrustStoreSummary, Version, Versioned } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
@@ -106,7 +106,14 @@ function ProfileForm({ value, onChange }: { value: Content; onChange: (c: Conten
   );
 }
 
-function VersionedTab({ kind, technology, Form, blank }: { kind: "policies" | "profiles"; technology: "tls" | "ipsec"; Form: typeof PolicyForm; blank: Content }) {
+function GenericProfileForm({ value, onChange }: { value: Content; onChange: (c: Content) => void }) {
+  return <div className="space-y-6">
+    <section className="space-y-3"><h3 className="text-sm font-semibold">TLS</h3><ProfileForm value={value.tls ?? {}} onChange={(tls) => onChange({ ...value, tls })} /></section>
+    <section className="space-y-3"><h3 className="text-sm font-semibold">VPN IPsec / IKE</h3><IpsecProfileForm value={value.ipsec ?? { ike: { versions: ["IKEv1", "IKEv2"], ports: [500, 4500], timeout_ms: 1000, retries: 0, nat_t: true, aggressive_mode: false } }} onChange={(ipsec) => onChange({ ...value, ipsec })} /></section>
+  </div>;
+}
+
+function VersionedTab({ kind, technology, Form, blank }: { kind: "policies" | "profiles"; technology: "tls" | "ipsec" | "generic"; Form: ComponentType<{ value: Content; onChange: (c: Content) => void }>; blank: Content }) {
   const { t } = useI18n();
   const { atLeast } = useAuth();
   const { data, reload, error } = useLoad(() => api<Versioned[]>(technology === "tls" ? `/${kind}` : `/${kind}?technology=ipsec`), [kind, technology]);
@@ -214,7 +221,10 @@ export default function Policies() {
       <Tabs defaultValue="policies">
         <TabsList><TabsTrigger value="policies">{t("pol.policies")}</TabsTrigger><TabsTrigger value="profiles">{t("pol.profiles")}</TabsTrigger><TabsTrigger value="templates">{t("pol.templates")}</TabsTrigger></TabsList>
         <TabsContent value="policies"><VersionedTab kind="policies" technology={technology} Form={technology === "tls" ? PolicyForm : IpsecPolicyForm} blank={technology === "tls" ? { allowed_versions: ["TLSv1.2", "TLSv1.3"], allowed_cipher_algorithms: ["AES-GCM", "CHACHA20-POLY1305"], allowed_signature_hashes: ["SHA-256", "SHA-384", "SHA-512"], minimum_rsa_bits: 2048 } : { allowed_versions: ["IKEv1", "IKEv2"], allowed_encryption: ["AES-GCM"], allowed_integrity: ["SHA-256"], allowed_prf: ["PRF-HMAC-SHA2-256"], allowed_dh_groups: ["MODP-2048"] }} /></TabsContent>
-        <TabsContent value="profiles"><VersionedTab kind="profiles" technology={technology} Form={technology === "tls" ? ProfileForm : IpsecProfileForm} blank={technology === "tls" ? { scan: { ports: "fast", crypto: "standard", resolve_dns: true, workers: 4 }, checks: { certificate: { enabled: true, expires_within_days: 30, trust: { enabled: true }, revocation: { enabled: false } }, ...tlsDefaults } } : { ike: { versions: ["IKEv1", "IKEv2"], ports: [500, 4500], timeout_ms: 1000, retries: 0, nat_t: true, aggressive_mode: false } }} /></TabsContent>
+        <TabsContent value="profiles"><VersionedTab kind="profiles" technology="generic" Form={GenericProfileForm} blank={{
+          tls: { scan: { ports: "fast", crypto: "standard", resolve_dns: true, workers: 4 }, checks: { certificate: { enabled: true, expires_within_days: 30, trust: { enabled: true }, revocation: { enabled: false } }, ...tlsDefaults } },
+          ipsec: { ike: { versions: ["IKEv1", "IKEv2"], ports: [500, 4500], timeout_ms: 1000, retries: 0, nat_t: true, aggressive_mode: false } },
+        }} /></TabsContent>
         <TabsContent value="templates"><TemplatesTab /></TabsContent>
       </Tabs>
     </>
