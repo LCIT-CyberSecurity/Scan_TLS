@@ -22,6 +22,7 @@ class ScanDefinition(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(160))
     description: Mapped[str] = mapped_column(Text, default="")
+    control_type: Mapped[str] = mapped_column(String(12), default="tls", server_default="tls")
     owner_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     profile_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("scan_profiles.id"))
     report_template_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("report_templates.id", ondelete="SET NULL"))
@@ -176,3 +177,19 @@ class RunFinding(Base):
     evidence: Mapped[str] = mapped_column(Text, default="")
     remediation: Mapped[str] = mapped_column(Text, default="")
     affected_endpoint_ids: Mapped[list] = mapped_column(JsonType, default=list)
+
+
+class RunIpsecObservation(Base):
+    """IKE-only evidence, stored separately from TLS endpoint grades and findings."""
+    __tablename__ = "run_ipsec_observations"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    run_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("scan_runs.id", ondelete="CASCADE"), index=True)
+    target: Mapped[str] = mapped_column(String(255))
+    port: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(20))  # observed | indeterminate | timeout | filtered | error
+    ike_version: Mapped[str] = mapped_column(String(8), default="")
+    exchange: Mapped[str] = mapped_column(String(32), default="")
+    proposal: Mapped[dict] = mapped_column(JsonType, default=dict)
+    verdict: Mapped[str] = mapped_column(String(20), default="indeterminate")
+    evidence: Mapped[dict] = mapped_column(JsonType, default=dict)

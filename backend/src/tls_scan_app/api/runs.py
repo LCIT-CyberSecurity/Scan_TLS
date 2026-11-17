@@ -15,7 +15,8 @@ from sqlalchemy.orm import Session as DbSession
 from tls_scan_app.api.common import can_modify, get_or_404, ids_matching_filter
 from tls_scan_app.deps import get_db, require_role
 from tls_scan_app.models import (
-    DnsDiscovery, Role, RunEndpoint, RunFinding, ScanDefinition, ScanRun, ScanRunRequester, ScanSchedule, ScheduleTrigger, User,
+    DnsDiscovery, Role, RunEndpoint, RunFinding, RunIpsecObservation, ScanDefinition, ScanRun, ScanRunRequester, ScanSchedule,
+    ScheduleTrigger, User,
 )
 from tls_scan_app.models.scan import ACTIVE_STATUSES, FINAL_STATUSES
 from tls_scan_app.models.user import role_at_least
@@ -59,6 +60,7 @@ def run_out(r: ScanRun, detail: bool = False) -> dict:
         "duration_seconds": r.duration_seconds, "cancel_requested": r.cancel_requested, "error": r.error,
         "progress": r.progress, "summary": r.summary, "policy_versions": r.policy_versions,
         "trust_stores": (r.config_snapshot or {}).get("trust_stores") or [],
+        "control_type": (r.config_snapshot or {}).get("control_type", "tls"),
         "plan": run_plan(r.config_snapshot) if r.status in ACTIVE_STATUSES else None,
         "exclusions": (r.config_snapshot or {}).get("exclusions"),
         "reports": [{"format": f["format"], "size": f["size"], "sha256": f["sha256"]} for f in (r.report_files or [])],
@@ -96,6 +98,11 @@ def get_run(run_id: uuid.UUID, db: DbSession = Depends(get_db), user: User = Dep
     by_value = results.endpoint_tags(db, endpoints)
     out["endpoints"] = [results.endpoint_out(e, by_value) for e in endpoints]
     out["findings"] = [results.finding_out(f) for f in db.execute(select(RunFinding).where(RunFinding.run_id == r.id)).scalars()]
+    out["ipsec_observations"] = [
+        {"target": x.target, "port": x.port, "status": x.status, "ike_version": x.ike_version,
+         "exchange": x.exchange, "proposal": x.proposal, "verdict": x.verdict, "evidence": x.evidence}
+        for x in db.execute(select(RunIpsecObservation).where(RunIpsecObservation.run_id == r.id).order_by(RunIpsecObservation.target, RunIpsecObservation.port)).scalars()
+    ]
     return out
 
 

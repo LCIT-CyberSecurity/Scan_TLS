@@ -16,7 +16,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { useI18n } from "../i18n";
 import { formatDate, formatDuration } from "../lib/utils";
 
-const blank = { name: "", description: "", target_ids: [] as string[], group_ids: [] as string[], policy_ids: [] as string[], profile_id: "", report_template_id: "", policy_mode: "strict_all", tags: [] as string[], si_ids: [] as string[] };
+const blank = { name: "", description: "", control_type: "tls" as "tls" | "ipsec", target_ids: [] as string[], group_ids: [] as string[], policy_ids: [] as string[], profile_id: "", report_template_id: "", policy_mode: "strict_all", tags: [] as string[], si_ids: [] as string[] };
 
 function DefinitionDialog({ initial, onClose, onSaved }: { initial?: Definition; onClose: () => void; onSaved: () => void }) {
   const { t } = useI18n();
@@ -25,8 +25,10 @@ function DefinitionDialog({ initial, onClose, onSaved }: { initial?: Definition;
   const { data: targets, reload: reloadTargets } = useLoad(() => api<Target[]>("/targets"));
   const [newTarget, setNewTarget] = useState(false);
   const { data: groups } = useLoad(() => api<Group[]>("/target-groups"));
-  const { data: policies } = useLoad(() => api<Versioned[]>("/policies"));
-  const { data: profiles } = useLoad(() => api<Versioned[]>("/profiles"));
+  const policyPath = form.control_type === "tls" ? "/policies" : "/policies?technology=ipsec";
+  const profilePath = form.control_type === "tls" ? "/profiles" : "/profiles?technology=ipsec";
+  const { data: policies } = useLoad(() => api<Versioned[]>(policyPath), [policyPath]);
+  const { data: profiles } = useLoad(() => api<Versioned[]>(profilePath), [profilePath]);
   const { data: templates } = useLoad(() => api<Template[]>("/report-templates"));
   const { data: systems } = useLoad(() => api<SI[]>("/information-systems"));
   const publishedPolicies = policies?.filter((p) => !p.archived && p.versions.some((v) => v.status === "published")) ?? [];
@@ -45,6 +47,7 @@ function DefinitionDialog({ initial, onClose, onSaved }: { initial?: Definition;
     <Dialog open onOpenChange={(o) => !o && onClose()} title={initial ? t("def.edit") : t("def.new")} wide>
       <div className="space-y-4">
         <Field label={t("col.name")}><Input value={form.name} onChange={(e) => set("name", e.target.value)} /></Field>
+        <Field label={t("scan.controlType")}><Select value={form.control_type} onChange={(e) => { const type = e.target.value as "tls" | "ipsec"; setForm((f) => ({ ...f, control_type: type, profile_id: "", policy_ids: [] })); }}><option value="tls">TLS</option><option value="ipsec">VPN IPsec</option></Select></Field>
         <Field label={t("col.description")}><Textarea value={form.description} onChange={(e) => set("description", e.target.value)} /></Field>
         <Field label={t("def.targets")}><CheckList items={(targets ?? []).map((x) => ({ id: x.id, label: x.name || x.value, sub: [x.name ? x.value : "", x.ports].filter(Boolean).join(" · ") }))} selected={form.target_ids} onChange={(v) => set("target_ids", v)} empty={t("def.noTargets")} /></Field>
         <div><Button type="button" variant="outline" size="sm" onClick={() => setNewTarget(true)}><Plus />{t("target.new")}</Button></div>
