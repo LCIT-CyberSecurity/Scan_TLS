@@ -114,7 +114,7 @@ export default function RunDetail() {
         <>
           <StatusBadge status={run.status} />
           {active && (run.initiated_by === user?.id || atLeast("OPERATOR")) && <ConfirmButton label={<><XCircle className="size-4" />{t("action.cancelScan")}</>} confirm={t("confirm.cancelScan")} onConfirm={async () => { try { await api(`/scan-runs/${id}/cancel`, { method: "POST" }); void reload(); } catch (e) { setError(e); } }} />}
-          {atLeast("USER") && !active && <Button variant="outline" onClick={() => setCmp(!cmp)}><GitCompare />{t("cmp.title")}</Button>}
+          {atLeast("USER") && !active && run.control_type !== "ipsec" && <Button variant="outline" onClick={() => setCmp(!cmp)}><GitCompare />{t("cmp.title")}</Button>}
           {atLeast("OPERATOR") && !active && <ConfirmButton label={<><Trash2 className="size-4" />{t("action.delete")}</>} confirm={t("confirm.deleteScan")} onConfirm={async () => { try { await api(`/scan-runs/${id}`, { method: "DELETE" }); navigate("/scans"); } catch (e) { setError(e); } }} />}
         </>
       } />
@@ -126,23 +126,23 @@ export default function RunDetail() {
           {run.exclusions.partial_targets.length > 0 && <p className="mt-2 text-xs text-muted">{t("excl.partial", { list: run.exclusions.partial_targets.join(", ") })}</p>}</details>
       )}
       {run.error && <ErrorNote error={new Error(run.error)} />}
-      {run.status === "completed" && run.endpoints.length === 0 && <Note tone="info" className="mb-4">{t("run.noTls")}</Note>}
+      {run.status === "completed" && run.control_type === "tls" && run.endpoints.length === 0 && <Note tone="info" className="mb-4">{t("run.noTls")}</Note>}
       {run.status === "partial" || run.skipped_hosts?.length ? <Note tone="warning" className="mb-4">{t("run.partial")} {run.skipped_hosts?.length ? `(${t("run.skipped")}: ${run.skipped_hosts.join(", ")})` : ""}</Note> : null}
-      {s && (
+      {s && run.control_type !== "ipsec" && (
         <div className="metrics">
           {([[t("run.endpoints"), s.total_endpoints, ""], [t("run.compliant"), s.compliant_endpoints, "green"], [t("run.nonCompliant"), s.non_compliant_endpoints, s.non_compliant_endpoints ? "red" : ""], [t("run.critical"), s.critical_findings, s.critical_findings ? "red" : ""], [t("run.grade"), s.overall_grade, ""], [t("run.errors"), s.endpoints_with_errors, s.endpoints_with_errors ? "amber" : ""], [t("run.notTested"), s.checks_not_tested, ""]] as [string, unknown, string][]).map(([l, v, tone]) => (
             <Metric key={l} label={l} value={String(v ?? "—")} tone={tone === "red" || tone === "green" || tone === "amber" ? tone : undefined} />
           ))}
         </div>
       )}
-      {cmp && <div className="mb-6"><ComparisonView runId={id} withRun={withRun} /></div>}
+      {cmp && run.control_type !== "ipsec" && <div className="mb-6"><ComparisonView runId={id} withRun={withRun} /></div>}
       {run.reports.length > 0 && (
         <Card className="mb-6"><CardHeader><CardTitle>{t("nav.reports")}</CardTitle></CardHeader><CardContent className="flex flex-wrap gap-2">
           {run.reports.filter((r) => ["html", "md", "csv", "cbom", "findings_csv"].includes(r.format)).map((r) => <Button key={r.format} asChild variant="outline" size="sm"><a href={downloadUrl(id, r.format)}><Download />{r.format.toUpperCase()}</a></Button>)}
           {run.reports.some((r) => r.format === "html") && <Button asChild size="sm"><a href={downloadUrl(id, "html", true)} target="_blank" rel="noreferrer">{t("run.openHtml")}</a></Button>}
         </CardContent></Card>
       )}
-      <Card className="mb-6">
+      {run.control_type !== "ipsec" && <Card className="mb-6">
         <CardHeader><CardTitle>{t("run.endpointsTitle")}</CardTitle>
           <div className="segmented" role="group" aria-label={t("run.endpointsTitle")}>
             <button type="button" aria-pressed={byHost} className={byHost ? "active" : ""} onClick={() => setByHost(true)}>{t("run.byHost")}</button>
@@ -150,17 +150,28 @@ export default function RunDetail() {
           </div>
         </CardHeader>
         {run.endpoints.length ? (byHost ? <GroupedEndpoints rows={run.endpoints} columns={endpointColumns(t as never)} /> : <DataTable rows={run.endpoints} rowKey={(e) => e.endpoint_id} columns={endpointColumns(t as never)} />) : <Empty>—</Empty>}
-      </Card>
-      <PkiTrust endpoints={run.endpoints} stores={run.trust_stores ?? []} />
-      {tlsCheckRows.length > 0 && (
+      </Card>}
+      {run.control_type !== "ipsec" && <PkiTrust endpoints={run.endpoints} stores={run.trust_stores ?? []} />}
+      {run.control_type !== "ipsec" && tlsCheckRows.length > 0 && (
         <Card className="mb-6"><CardHeader><CardTitle>{t("run.tlsChecks")}</CardTitle></CardHeader>
           <p className="px-5 pb-2 text-xs text-muted">{t("run.tlsChecksHint")}</p>
           <DataTable rows={tlsCheckRows} rowKey={(r) => `${r.endpoint}/${r.check.check_id}`} columns={tlsCheckColumns(t as never)} />
         </Card>
       )}
-      <Card><CardHeader><CardTitle>{t("run.findings")}</CardTitle></CardHeader>
+      {run.control_type === "ipsec" && <Card className="mb-6"><CardHeader><CardTitle>{t("ipsec.results" as never)}</CardTitle></CardHeader>
+        <p className="px-5 pb-3 text-xs text-muted">{t("ipsec.notice" as never)}</p>
+        {run.ipsec_observations?.length ? <DataTable rows={run.ipsec_observations} rowKey={(r) => `${r.target}:${r.port}:${r.ike_version}`} columns={[
+          { key: "target", header: "Target", values: (r) => [r.target], render: (r) => r.target },
+          { key: "port", header: "UDP", values: (r) => [String(r.port)], render: (r) => r.port },
+          { key: "version", header: "IKE", values: (r) => [r.ike_version], render: (r) => r.ike_version || "—" },
+          { key: "status", header: "Probe", values: (r) => [r.status], render: (r) => r.status },
+          { key: "verdict", header: "Policy", values: (r) => [r.verdict], render: (r) => <Badge tone={r.verdict === "compliant" ? "success" : r.verdict === "non_compliant" ? "danger" : "warning"}>{r.verdict}</Badge> },
+          { key: "proposal", header: "Observed proposal", values: (r) => [JSON.stringify(r.proposal)], render: (r) => <span className="text-xs">{Object.entries(r.proposal).map(([k, v]) => `${k}: ${v}`).join(" · ") || "Non déterminable"}</span> },
+        ]} /> : <Empty>—</Empty>}
+      </Card>}
+      {run.control_type !== "ipsec" && <Card><CardHeader><CardTitle>{t("run.findings")}</CardTitle></CardHeader>
         {run.findings.length ? <DataTable rows={run.findings} rowKey={(f) => f.finding_id} columns={findingColumns(t as never, run.endpoints)} /> : <Empty>—</Empty>}
-      </Card>
+      </Card>}
     </>
   );
 }

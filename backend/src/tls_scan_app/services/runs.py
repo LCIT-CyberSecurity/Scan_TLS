@@ -12,7 +12,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DbSession
 
-from tls_scan_app.models import RunEndpoint, RunFinding, ScanDefinition, ScanRun, ScanRunRequester, User
+from tls_scan_app.models import RunEndpoint, RunFinding, RunIpsecObservation, ScanDefinition, ScanRun, ScanRunRequester, User
 from tls_scan_app.models.scan import ACTIVE_STATUSES, CANCELLED, COMPLETED, EXPIRED, FAILED, PARTIAL, QUEUED, RUNNING
 from tls_scan_app.services import audit, report_addendum, report_branding
 
@@ -140,6 +140,13 @@ def final_status(outcome: dict[str, Any], cancelled: bool, timed_out: bool) -> s
 
 def persist_results(db: DbSession, run: ScanRun, outcome: dict[str, Any], status: str, storage_root: Path) -> None:
     model = outcome.get("report_model") or {}
+    for observation in outcome.get("ipsec_observations", []):
+        db.add(RunIpsecObservation(
+            run_id=run.id, target=observation["target"], port=int(observation["port"]), status=observation["status"],
+            ike_version=observation.get("ike_version", ""), exchange=observation.get("exchange", ""),
+            proposal=observation.get("proposal") or {}, verdict=observation.get("verdict", "indeterminate"),
+            evidence=observation.get("evidence") or {},
+        ))
     for endpoint in model.get("endpoints", []):
         cert = endpoint.get("certificate") or {}
         db.add(RunEndpoint(
@@ -168,10 +175,13 @@ def persist_results(db: DbSession, run: ScanRun, outcome: dict[str, Any], status
     run.scanned_hosts, run.skipped_hosts = outcome.get("scanned_hosts", []), outcome.get("skipped_hosts", [])
     run.summary, run.status, run.finished_at = model.get("statistics"), status, datetime.now(UTC)
     db.flush()
-    try:
-        addendum = report_addendum.build(db, run)
-    except Exception:  # a report extra must never make a finished scan fail
-        addendum = None
+    if (run.config_snapshot or {}).get("control_type") == "ipsec":
+        addendum = None  # TLS-only evolution/finding addenda must not be mixed into IKE reports.
+    else:
+        try:
+            addendum = report_addendum.build(db, run)
+        except Exception:  # a report extra must never make a finished scan fail
+            addendum = None
     for path_str in outcome.get("written_files", []):
         path = Path(path_str)
         if path.suffix == ".html":

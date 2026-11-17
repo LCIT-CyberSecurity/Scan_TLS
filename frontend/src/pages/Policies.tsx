@@ -31,6 +31,27 @@ function PolicyForm({ value, onChange }: { value: Content; onChange: (c: Content
   );
 }
 
+function IpsecPolicyForm({ value, onChange }: { value: Content; onChange: (c: Content) => void }) {
+  const fields = [["allowed_versions", "IKE versions"], ["allowed_encryption", "Encryption"], ["allowed_integrity", "Integrity"], ["allowed_prf", "PRF"], ["allowed_dh_groups", "Diffie-Hellman groups"]] as const;
+  return <div className="space-y-4">{fields.map(([key, label]) => <Field key={key} label={label} hint="Comma-separated values"><Input value={list(value[key])} onChange={(e) => onChange({ ...value, [key]: split(e.target.value) })} placeholder={key === "allowed_versions" ? "IKEv1, IKEv2" : "AES-GCM, SHA-256, MODP-2048"} /></Field>)}</div>;
+}
+
+function IpsecProfileForm({ value, onChange }: { value: Content; onChange: (c: Content) => void }) {
+  const ike = value.ike ?? {};
+  const patch = (key: string, v: unknown) => onChange({ ike: { ...ike, [key]: v } });
+  return <div className="space-y-4">
+    <Field label="IKE versions"><Input value={list(ike.versions ?? ["IKEv1", "IKEv2"])} onChange={(e) => patch("versions", split(e.target.value))} placeholder="IKEv1, IKEv2" /></Field>
+    <Field label="UDP ports"><Input value={list(ike.ports ?? [500, 4500])} onChange={(e) => patch("ports", split(e.target.value).map(Number))} placeholder="500, 4500" /></Field>
+    <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={ike.nat_t ?? true} onChange={(e) => patch("nat_t", e.target.checked)} />NAT-T encapsulation for UDP 4500</label>
+    <div className="grid gap-4 sm:grid-cols-2">
+      <Field label="Timeout (ms)"><Input type="number" min={100} max={5000} value={ike.timeout_ms ?? 1000} onChange={(e) => patch("timeout_ms", Number(e.target.value))} /></Field>
+      <Field label="Retransmissions (0–2)"><Input type="number" min={0} max={2} value={ike.retries ?? 0} onChange={(e) => patch("retries", Number(e.target.value))} /></Field>
+    </div>
+    <Field label="IKEv1 transforms (optional)" hint="Separate transforms with semicolons; each transform uses comma-separated ike-scan IDs. Example: 7/256,4,1,14"><Input value={(ike.ikev1_transforms ?? []).join("; ")} onChange={(e) => patch("ikev1_transforms", e.target.value.split(";").map((x: string) => x.trim()).filter(Boolean))} placeholder="7/256,4,1,14" /></Field>
+    <p className="text-sm text-muted">Only unauthenticated Main Mode / IKE_SA_INIT discovery is enabled. Aggressive Mode is unavailable. IKEv2 support depends on ike-scan’s experimental default proposal.</p>
+  </div>;
+}
+
 /** Which authorities verify the chain: the built-in public ones and, explicitly, the private stores (never implicit). */
 export function TrustAuthorities({ cert, setCert }: { cert: Content; setCert: (patch: Content) => void }) {
   const { t } = useI18n();
@@ -85,10 +106,10 @@ function ProfileForm({ value, onChange }: { value: Content; onChange: (c: Conten
   );
 }
 
-function VersionedTab({ kind, Form, blank }: { kind: "policies" | "profiles"; Form: typeof PolicyForm; blank: Content }) {
+function VersionedTab({ kind, technology, Form, blank }: { kind: "policies" | "profiles"; technology: "tls" | "ipsec"; Form: typeof PolicyForm; blank: Content }) {
   const { t } = useI18n();
   const { atLeast } = useAuth();
-  const { data, reload, error } = useLoad(() => api<Versioned[]>(`/${kind}`), [kind]);
+  const { data, reload, error } = useLoad(() => api<Versioned[]>(technology === "tls" ? `/${kind}` : `/${kind}?technology=ipsec`), [kind, technology]);
   const [edit, setEdit] = useState<{ item?: Versioned; name: string; description: string; content: Content } | null>(null);
   const [yaml, setYaml] = useState<string | null>(null);
   const [err, setErr] = useState<unknown>();
@@ -99,15 +120,15 @@ function VersionedTab({ kind, Form, blank }: { kind: "policies" | "profiles"; Fo
   async function save() {
     if (!edit) return;
     await act(async () => {
-      if (edit.item) await api(`/${kind}/${edit.item.id}/versions`, { method: "POST", body: { name: edit.name, description: edit.description, content: edit.content } });
-      else await api(`/${kind}`, { method: "POST", body: { name: edit.name, description: edit.description, content: edit.content } });
+      if (edit.item) await api(`/${kind}/${edit.item.id}/versions`, { method: "POST", body: { name: edit.name, description: edit.description, content: edit.content, technology } });
+      else await api(`/${kind}`, { method: "POST", body: { name: edit.name, description: edit.description, content: edit.content, technology } });
       setEdit(null);
     });
   }
   return (
     <>
       <div className="mb-3 flex justify-end gap-2">
-        {manage && kind === "policies" && <Button variant="outline" onClick={() => setYaml("")}><FileDown />{t("pol.importYaml")}</Button>}
+        {manage && kind === "policies" && technology === "tls" && <Button variant="outline" onClick={() => setYaml("")}><FileDown />{t("pol.importYaml")}</Button>}
         {manage && <Button onClick={() => setEdit({ name: "", description: "", content: blank })}><Plus />{t("action.new")}</Button>}
       </div>
       <ErrorNote error={error ?? err} />
@@ -124,7 +145,7 @@ function VersionedTab({ kind, Form, blank }: { kind: "policies" | "profiles"; Fo
                   <Button size="sm" variant="outline" onClick={() => setEdit({ item: i, name: i.name, description: i.description, content: last.content })}>{t("action.edit")}</Button>
                   {last.status === "draft" && <Button size="sm" onClick={() => void act(() => api(`/${kind}/${i.id}/publish`, { method: "POST" }))}><Send />{t("pol.publish")}</Button>}
                   <Button size="sm" variant="outline" aria-label={t("pol.duplicate")} onClick={() => void act(() => api(`/${kind}/${i.id}/duplicate`, { method: "POST" }))}><Copy /></Button>
-                  {kind === "policies" && <Button size="sm" variant="outline" onClick={async () => setYaml(await fetch(`/api/policies/${i.id}/export-yaml`).then((r) => r.text()))}>YAML</Button>}
+                  {kind === "policies" && technology === "tls" && <Button size="sm" variant="outline" onClick={async () => setYaml(await fetch(`/api/policies/${i.id}/export-yaml`).then((r) => r.text()))}>YAML</Button>}
                   <Button size="sm" variant="outline" aria-label={t("pol.archive")} onClick={() => void act(() => api(`/${kind}/${i.id}/archive`, { method: "POST" }))}><Archive /></Button>
                 </div>}</Td></tr>
             );
@@ -179,16 +200,21 @@ function TemplatesTab() {
 
 export default function Policies() {
   const { t } = useI18n();
+  const [technology, setTechnology] = useState<"tls" | "ipsec">("tls");
   const { data: tlsCatalog } = useLoad(() => api<TlsCheckSpec[]>("/tls-checks"));
   // New profiles start with the recommended complementary checks; existing profiles are never modified.
   const tlsDefaults = tlsCatalog?.length ? { tls: recommendedSection(tlsCatalog) } : {};
   return (
     <>
       <PageHeader title={t("nav.policies")} subtitle={t("pol.subtitle")} />
+      <div className="mb-4 flex gap-2" role="group" aria-label={t("scan.controlType")}>
+        <Button variant={technology === "tls" ? "default" : "outline"} onClick={() => setTechnology("tls")}>TLS</Button>
+        <Button variant={technology === "ipsec" ? "default" : "outline"} onClick={() => setTechnology("ipsec")}>VPN IPsec</Button>
+      </div>
       <Tabs defaultValue="policies">
         <TabsList><TabsTrigger value="policies">{t("pol.policies")}</TabsTrigger><TabsTrigger value="profiles">{t("pol.profiles")}</TabsTrigger><TabsTrigger value="templates">{t("pol.templates")}</TabsTrigger></TabsList>
-        <TabsContent value="policies"><VersionedTab kind="policies" Form={PolicyForm} blank={{ allowed_versions: ["TLSv1.2", "TLSv1.3"], allowed_cipher_algorithms: ["AES-GCM", "CHACHA20-POLY1305"], allowed_signature_hashes: ["SHA-256", "SHA-384", "SHA-512"], minimum_rsa_bits: 2048 }} /></TabsContent>
-        <TabsContent value="profiles"><VersionedTab kind="profiles" Form={ProfileForm} blank={{ scan: { ports: "fast", crypto: "standard", resolve_dns: true, workers: 4 }, checks: { certificate: { enabled: true, expires_within_days: 30, trust: { enabled: true }, revocation: { enabled: false } }, ...tlsDefaults } }} /></TabsContent>
+        <TabsContent value="policies"><VersionedTab kind="policies" technology={technology} Form={technology === "tls" ? PolicyForm : IpsecPolicyForm} blank={technology === "tls" ? { allowed_versions: ["TLSv1.2", "TLSv1.3"], allowed_cipher_algorithms: ["AES-GCM", "CHACHA20-POLY1305"], allowed_signature_hashes: ["SHA-256", "SHA-384", "SHA-512"], minimum_rsa_bits: 2048 } : { allowed_versions: ["IKEv1", "IKEv2"], allowed_encryption: ["AES-GCM"], allowed_integrity: ["SHA-256"], allowed_prf: ["PRF-HMAC-SHA2-256"], allowed_dh_groups: ["MODP-2048"] }} /></TabsContent>
+        <TabsContent value="profiles"><VersionedTab kind="profiles" technology={technology} Form={technology === "tls" ? ProfileForm : IpsecProfileForm} blank={technology === "tls" ? { scan: { ports: "fast", crypto: "standard", resolve_dns: true, workers: 4 }, checks: { certificate: { enabled: true, expires_within_days: 30, trust: { enabled: true }, revocation: { enabled: false } }, ...tlsDefaults } } : { ike: { versions: ["IKEv1", "IKEv2"], ports: [500, 4500], timeout_ms: 1000, retries: 0, nat_t: true, aggressive_mode: false } }} /></TabsContent>
         <TabsContent value="templates"><TemplatesTab /></TabsContent>
       </Tabs>
     </>

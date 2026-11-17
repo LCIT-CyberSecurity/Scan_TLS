@@ -14,7 +14,8 @@ export function ScanProgress({ run }: { run: Run }) {
   const plan = run.plan;
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => { const id = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(id); }, []);
-  const steps: string[] = plan?.crypto === "pqc" ? ["starting", "pqc_preflight", ...BASE_STEPS.slice(1)] : [...BASE_STEPS];
+  const steps: string[] = run.control_type === "ipsec" ? ["starting", "ipsec_probe", "reporting"]
+    : plan?.crypto === "pqc" ? ["starting", "pqc_preflight", ...BASE_STEPS.slice(1)] : [...BASE_STEPS];
   const queued = run.status === "queued";
   const current = queued ? -1 : Math.max(0, steps.indexOf(run.phase));
   const elapsed = run.started_at ? Math.max(0, Math.round((now - new Date(run.started_at).getTime()) / 1000)) : 0;
@@ -33,6 +34,7 @@ export function ScanProgress({ run }: { run: Run }) {
         if (plan.tls_checks > 0) parts.push(t("prog.what.tlsChecks", { n: plan.tls_checks }));
         return parts.join(" · ");
       }
+      case "ipsec_probe": return t("prog.what.ipsec_probe" as never);
       case "grading": return t("prog.what.grading", { policies: plan.policies.join(", ") });
       default: return t("prog.what.reporting", { formats: plan.formats.map((f) => f.toUpperCase()).join(", ") });
     }
