@@ -1,5 +1,12 @@
 # Reports
 
+In the WebUI, open **Scans → Reports** to browse generated reports. The **Scans** page groups scan definitions,
+execution history, and consolidated reports under the **Scans**, **History**, and **Reports** tabs. Reports can be
+filtered by scan definition, date, state, format, information system, and tag. The former `/reports` address redirects
+to the Reports tab and keeps its query filters; older links identifying a run and format open a filtered report list.
+HTML files open in a separate tab using the existing inline report endpoint. Report templates remain in their existing
+configuration screen.
+
 The existing generators produce the reports unchanged; the WebUI stores them on the `data` volume
 (`reports/<definition>_<timestamp>/{html,markdown,csv,cbom,metadata}`) and serves them through the API (role check,
 SHA-256 verified, CSP `sandbox`, audit event `report.download`).

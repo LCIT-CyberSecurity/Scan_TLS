@@ -14,15 +14,16 @@ Everyone signed in can read shared results; only an object's owner (or an operat
 1. **Targets** → *New target*: FQDN, IP or CIDR, optional ports (`443,8443,9000-9010`), description,
    tags, SI/sub-SI. Importing: one `value;ports;description` per line. A target exists once and can be used by any
    number of definitions and groups. SI, sub-SI and tags only help you organise and filter.
-2. **Scans → Definitions → New scan**: pick targets/groups, a *technical profile* (how to scan), one or more
+2. **Scans → Scans → New scan**: pick targets/groups, a *technical profile* (how to scan), one or more
    *policies* (what is acceptable; the latest published version is used), a report template, tags and SI. Optional
    mail-security checks are disabled by default; details and limits are described in [Mail security checks](mail-security.md).
 3. **Run**. The run page shows the current phase (*port discovery*, *TLS analysis*, *evaluating compliance*,
    *generating reports*), elapsed time and — only when reliable — hosts processed. No fake percentage.
 4. **Cancel** your own scan any time: unstarted hosts are skipped and listed, results gathered so far are kept
    (*cancelled*, never counted as compliant).
-5. **Results**: endpoints with grade/compliance/TLS versions/certificate, findings with evidence and
-   remediation, errors, and *checks not performed* (never shown as compliant). Download HTML / Markdown / CSV / CBOM.
+5. **Scans → History**: open an execution to review endpoints with grade/compliance/TLS versions/certificate,
+   findings with evidence and remediation, errors, and *checks not performed* (never shown as compliant).
+   **Scans → Reports** lists generated reports; open HTML or download the available formats (HTML / Markdown / CSV / CBOM).
 6. **Compare with previous**: new / fixed / persistent findings, TLS version, cipher suite and certificate changes.
    A target that was not re-tested is listed as *not re-tested*, **never as fixed**. Warnings tell you when the
    scope, profile or policy versions differ.

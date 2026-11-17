@@ -1,6 +1,6 @@
 import { FileText, Play, Plus, RotateCcw, Trash2, Pencil } from "lucide-react";
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api, downloadUrl } from "../api/client";
 import type { Definition, Group, MailSecurityConfig, Run, SI, Target, Template, Versioned } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
@@ -16,6 +16,7 @@ import { GroupedRuns } from "../components/GroupedRuns";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { useI18n } from "../i18n";
 import { formatDate, formatDuration } from "../lib/utils";
+import Reports from "./Reports";
 
 const DEFAULT_MAIL_SECURITY: MailSecurityConfig = { enabled: false, checks: { spf: true, dmarc: true, dkim: false, mta_sts: true, tls_rpt: true, dane: false }, dkim_selectors: [] };
 const MAIL_CHECKS = ["spf", "dmarc", "dkim", "mta_sts", "tls_rpt", "dane"] as const;
@@ -97,10 +98,17 @@ export default function Scans() {
   const { t, locale } = useI18n();
   const { user, atLeast } = useAuth();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [mine, setMine] = useState(!atLeast("OPERATOR"));
   const [status, setStatus] = useState("");
   const [grouped, setGrouped] = useState(true);
-  const [tab, setTab] = useState("runs");
+  const requestedTab = searchParams.get("tab");
+  const tab = requestedTab === "scans" || requestedTab === "reports" ? requestedTab : "history";
+  const setTab = (value: string) => {
+    const next = new URLSearchParams(searchParams);
+    next.set("tab", value);
+    setSearchParams(next);
+  };
   const [editing, setEditing] = useState<Definition | "new" | null>(null);
   const [error, setError] = useState<unknown>();
   const { data: runs, reload } = useLoad(() => api<Run[]>("/scan-runs", { params: { mine, status } }), [mine, status], 5000);
@@ -154,8 +162,8 @@ export default function Scans() {
       <PageHeader title={t("nav.scans")} actions={<Button onClick={() => setEditing("new")}><Plus />{t("def.new")}</Button>} />
       <ErrorNote error={error} />
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList><TabsTrigger value="runs">{t("scans.runs")}</TabsTrigger><TabsTrigger value="defs">{t("scans.definitions")}</TabsTrigger></TabsList>
-        <TabsContent value="runs">
+        <TabsList><TabsTrigger value="scans">{t("nav.scans")}</TabsTrigger><TabsTrigger value="history">{t("scans.history")}</TabsTrigger><TabsTrigger value="reports">{t("nav.reports")}</TabsTrigger></TabsList>
+        <TabsContent value="history">
           <div className="mb-3 flex flex-wrap items-center gap-3">
             {atLeast("OPERATOR") && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} />{t("scans.onlyMine")}</label>}
             <Select aria-label={t("col.status")} className="w-44" value={status} onChange={(e) => setStatus(e.target.value)}><option value="">{t("filter.allStatuses")}</option>{["queued", "running", "completed", "partial", "failed", "cancelled", "expired"].map((s) => <option key={s} value={s}>{t(`status.${s}` as never)}</option>)}</Select>
@@ -170,11 +178,12 @@ export default function Scans() {
                 onDelete={async (id) => { try { await api(`/scan-runs/${id}`, { method: "DELETE" }); void reload(); } catch (e) { setError(e); } }} /></div>
             : <DataTable rows={runs} rowKey={(r) => r.id} columns={runColumns} defaultSort={{ key: "date", dir: "desc" }} />) : <Empty>{t("scans.none")}</Empty>}</Card>
         </TabsContent>
-        <TabsContent value="defs">
+        <TabsContent value="scans">
           <Card>{defs?.length ? <DataTable rows={defs} rowKey={(d) => d.id} columns={defColumns} /> : <Empty>{t("def.none")}</Empty>}</Card>
         </TabsContent>
+        <TabsContent value="reports"><Reports embedded /></TabsContent>
       </Tabs>
-      {editing && <DefinitionDialog initial={editing === "new" ? undefined : editing} onClose={() => setEditing(null)} onSaved={() => { void reloadDefs(); setTab("defs"); }} />}
+      {editing && <DefinitionDialog initial={editing === "new" ? undefined : editing} onClose={() => setEditing(null)} onSaved={() => { void reloadDefs(); setTab("scans"); }} />}
     </>
   );
 }

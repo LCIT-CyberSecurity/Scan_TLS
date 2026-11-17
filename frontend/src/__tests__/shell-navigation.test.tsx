@@ -66,14 +66,14 @@ describe("application shell navigation", () => {
     expect(menu).toHaveFocus();
   });
 
-  it("preserves role filtering of navigation entries", () => {
+  it("keeps report access under Scans for auditors without a separate Reports entry", () => {
     auth.role = "AUDITOR";
     openShell("/");
     const navigation = screen.getByRole("navigation", { name: "Main" });
     expect(within(navigation).getByRole("link", { name: "Dashboard" })).toBeInTheDocument();
-    const results = within(navigation).getByRole("button", { name: "Results" });
-    fireEvent.click(results);
-    expect(within(navigation).getByRole("link", { name: "Reports" })).toBeInTheDocument();
+    fireEvent.click(within(navigation).getByRole("button", { name: "Scanning" }));
+    expect(within(navigation).getByRole("link", { name: "Scans" })).toBeInTheDocument();
+    expect(within(navigation).queryByRole("link", { name: "Reports" })).toBeNull();
     expect(within(navigation).queryByRole("button", { name: "Administration" })).toBeNull();
   });
 });
