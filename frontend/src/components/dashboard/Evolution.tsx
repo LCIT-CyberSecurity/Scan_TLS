@@ -1,4 +1,5 @@
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { Evolution as Data, EvolutionRun } from "../../api/types";
 import { useI18n } from "../../i18n";
 import { Badge } from "../ui/badge";
@@ -7,34 +8,39 @@ import { Input } from "../ui/input";
 
 const LEVELS = ["critical", "high", "medium", "low"] as const;
 const TONE = { critical: "danger", high: "danger", medium: "warning", low: "neutral" } as const;
-const W = 640, H = 170, PAD = { l: 36, r: 12, t: 10, b: 28 };
-
 function Series({ runs }: { runs: EvolutionRun[] }) {
   const { t, locale } = useI18n();
+  const navigate = useNavigate();
   const tr = t as unknown as (k: string, v?: Record<string, string | number>) => string;
-  const max = Math.max(1, ...runs.map((r) => LEVELS.reduce((n, lv) => n + r.findings[lv], 0)));
-  const slot = (W - PAD.l - PAD.r) / runs.length;
-  const bar = Math.min(48, slot * 0.7);
-  const scale = (n: number) => (n * (H - PAD.t - PAD.b)) / max;
+  const data = runs.map((run) => ({ ...run, label: new Date(run.finished_at).toLocaleDateString(locale, { day: "2-digit", month: "short" }), fullDate: new Date(run.finished_at).toLocaleString(locale, { dateStyle: "medium", timeStyle: "short" }) }));
+  const openRun = (index: number) => { const run = runs[index]; if (run) void navigate(`/scans/${run.run_id}`); };
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="evo-chart" role="img" aria-label={t("evo.series")}>
-      <line x1={PAD.l} x2={W - PAD.r} y1={H - PAD.b} y2={H - PAD.b} className="trend-grid" />
-      <text x={PAD.l - 6} y={PAD.t + 8} textAnchor="end" className="trend-axis">{max}</text>
-      <text x={PAD.l - 6} y={H - PAD.b} textAnchor="end" className="trend-axis">0</text>
-      {runs.map((r, i) => {
-        let y = H - PAD.b;
-        const cx = PAD.l + slot * i + slot / 2;
-        const total = LEVELS.reduce((n, lv) => n + r.findings[lv], 0);
-        return (
-          <g key={r.run_id}>
-            <title>{`${r.name} · ${new Date(r.finished_at).toLocaleDateString(locale)} · ${LEVELS.map((lv) => `${tr(`evo.sev.${lv}`)} ${r.findings[lv]}`).join(" · ")}`}</title>
-            {LEVELS.map((lv) => { const h = scale(r.findings[lv]); y -= h; return h > 0 ? <rect key={lv} x={cx - bar / 2} y={y} width={bar} height={h} className={`evo-bar evo-bar--${lv}`} /> : null; })}
-            <text x={cx} y={H - PAD.b - scale(total) - 4} textAnchor="middle" className="trend-axis">{total}</text>
-            {(runs.length <= 8 || i % Math.ceil(runs.length / 8) === 0) && <text x={cx} y={H - 10} textAnchor="middle" className="trend-axis">{new Date(r.finished_at).toLocaleDateString(locale, { day: "2-digit", month: "short" })}</text>}
-          </g>
-        );
-      })}
-    </svg>
+    <>
+      <div className="rechart-frame rechart-frame--evolution" role="group" aria-label={t("evo.series")}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={data} margin={{ top: 12, right: 14, bottom: 4, left: 0 }} barCategoryGap="28%">
+            <CartesianGrid vertical={false} stroke="var(--hairline)" strokeDasharray="3 5" />
+            <XAxis dataKey="label" tick={{ fill: "var(--text-faint)", fontSize: 11 }} tickLine={false} axisLine={false} minTickGap={18} />
+            <YAxis allowDecimals={false} width={38} tick={{ fill: "var(--text-faint)", fontSize: 11 }} tickLine={false} axisLine={false} />
+            <Tooltip contentStyle={{ background: "var(--surface)", borderColor: "var(--border-strong)", borderRadius: 10, color: "var(--text-primary)", boxShadow: "var(--shadow-lg)" }} labelFormatter={(_label, payload) => {
+              const run = payload?.[0]?.payload as (typeof data)[number] | undefined;
+              return run ? `${run.name} · ${run.fullDate}` : "";
+            }} formatter={(value, name) => [Number(value).toLocaleString(locale), String(name)]} />
+            {LEVELS.map((level) => <Bar key={level} dataKey={`findings.${level}`} name={tr(`evo.sev.${level}`)} stackId="findings" fill={`var(--evo-${level})`} radius={level === "low" ? [3, 3, 0, 0] : undefined} isAnimationActive={false} cursor="pointer" onClick={(_entry, index) => openRun(index)} />)}
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+      <div className="evo-chart-legend" aria-label={t("evo.severity")}>
+        {LEVELS.map((level) => <span key={level}><i className={`evo-chart-legend__swatch evo-chart-legend__swatch--${level}`} />{tr(`evo.sev.${level}`)}</span>)}
+      </div>
+      <details className="chart-data">
+        <summary>{t("dash.chartData")}</summary>
+        <div className="table-scroll"><table className="simple-table">
+          <thead><tr><th>{t("col.name")}</th><th>{t("col.date")}</th>{LEVELS.map((level) => <th key={level}>{tr(`evo.sev.${level}`)}</th>)}</tr></thead>
+          <tbody>{data.map((run) => <tr key={run.run_id}><td><Link to={`/scans/${run.run_id}`}>{run.name}</Link></td><td>{run.fullDate}</td>{LEVELS.map((level) => <td key={level}>{run.findings[level]}</td>)}</tr>)}</tbody>
+        </table></div>
+      </details>
+    </>
   );
 }
 
@@ -89,8 +95,7 @@ export function Evolution({ data, from, to, onRange }: { data: Data | undefined;
             ))}
           </>
         )}
-        {data && data.series.length > 0 && <div><h3 className="text-sm font-semibold">{t("evo.series")}</h3><Series runs={data.series} />
-          <p className="dash-note">{LEVELS.map((lv) => <span key={lv} className="evo-legend"><i className={`evo-bar evo-bar--${lv}`} />{tr(`evo.sev.${lv}`)}</span>)}</p></div>}
+        {data && data.series.length > 0 && <div className="evo-series"><h3 className="text-sm font-semibold">{t("evo.series")}</h3><Series runs={data.series} /></div>}
       </CardContent>
     </Card>
   );

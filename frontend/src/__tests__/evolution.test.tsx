@@ -36,7 +36,9 @@ describe("dashboard evolution between two dates", () => {
     expect(screen.getByText(/Endpoints: \+2 \/ -1/)).toBeInTheDocument();
     expect(screen.getByText(/1 improved, 0 degraded/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Open the detailed comparison" })).toHaveAttribute("href", "/scans/r2?compare=r1");
-    expect(screen.getByRole("img", { name: "Findings per scan (occurrences by severity)" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Findings per scan (occurrences by severity)" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "r1" })).toHaveAttribute("href", "/scans/r1");
+    expect(screen.getByRole("link", { name: "r2" })).toHaveAttribute("href", "/scans/r2");
   });
 
   it("lets the dates be changed and explains the empty cases", () => {

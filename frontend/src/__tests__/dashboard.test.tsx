@@ -77,14 +77,14 @@ const trend: Trend = {
   ],
 };
 describe("ComplianceTrend", () => {
-  it("plots rates between 0 and 100 %, links the points to their runs and leaves a gap for an unevaluated run", () => {
-    const { container } = wrap(<ComplianceTrend trend={trend} onDefinition={() => {}} />);
-    expect(container.querySelectorAll("circle")).toHaveLength(2);  // run b has no rate: no point
-    expect(container.querySelectorAll("line.trend-line")).toHaveLength(0);  // and no line across the gap
-    expect(screen.getByText("100 %", { selector: "text" })).toBeInTheDocument();
-    const link = screen.getByRole("link", { name: /Prod run 3.*100 % · 5 compliant of 5 evaluated/ });
-    expect(link).toHaveAttribute("href", "/scans/c");
-    expect(container.querySelector("circle.trend-point--changed")).not.toBeNull();
+  it("plots rates between 0 and 100 %, links every run and keeps a gap for an unevaluated run", () => {
+    wrap(<ComplianceTrend trend={trend} onDefinition={() => {}} />);
+    expect(screen.getByRole("group", { name: "Compliance over time" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Prod run 1" })).toHaveAttribute("href", "/scans/a");
+    expect(screen.getByRole("link", { name: "Prod run 2" })).toHaveAttribute("href", "/scans/b");
+    expect(screen.getByRole("link", { name: "Prod run 3" })).toHaveAttribute("href", "/scans/c");
+    fireEvent.click(screen.getByText("Show scan data"));
+    expect(document.querySelector(".chart-data")?.textContent).toContain("No endpoint evaluated");
     expect(screen.getByText("Hollow point: conditions changed since the previous run", { exact: false })).toBeInTheDocument();
   });
   it("shows the details of the hovered run and lets the user pick another scan", () => {
