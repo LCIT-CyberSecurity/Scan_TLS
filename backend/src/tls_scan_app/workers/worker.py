@@ -16,7 +16,7 @@ from pathlib import Path
 from tls_scan_app.config import Settings, get_settings
 from tls_scan_app.database import make_engine, make_session_factory
 from tls_scan_app.models import ScanRun
-from tls_scan_app.services import dns_discovery, greenbone, mail, retention, runs
+from tls_scan_app.services import dns_discovery, greenbone, mail, retention, runs, snmp_discovery
 from tls_scan_app.services.logs import configure_logging, scrub_text
 from tls_scan_app.services.notifications import notify_run_finished
 
@@ -162,6 +162,7 @@ def _discover_once(session_factory) -> None:
     try:
         with session_factory() as db:
             dns_discovery.process_next(db)
+            snmp_discovery.process_next(db, get_settings())
             greenbone.process_apply_next(db)
             greenbone.process_next(db, get_settings())
     except Exception:  # noqa: BLE001

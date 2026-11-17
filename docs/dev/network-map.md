@@ -5,6 +5,10 @@ les zones, les hôtes, les équipements et les liens fournis par les API `/map`.
 Les données de scan TLS et les détails d'endpoints restent chargés depuis les
 API existantes lors de la sélection d'un hôte.
 
+La découverte SNMPv3/LLDP est un complément séparé et optionnel. Elle ne s'exécute
+pas pendant un scan TLS : seuls des targets IP explicitement sélectionnés sont
+interrogés, et les résultats passent par une prévisualisation avant toute écriture.
+
 Les tests unitaires de présentation et de navigation se trouvent dans
 `frontend/src/__tests__/network-map-graph.test.ts` et
 `frontend/src/__tests__/network-map.test.tsx`. Le parcours navigateur et ses

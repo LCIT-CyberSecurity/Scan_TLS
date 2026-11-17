@@ -11,6 +11,12 @@ services:
     networks: {default: {aliases: [intranet.acme.local]}}  # the private-PKI scenarios are scanned under their real name
   lab-dns:
     build: {context: ../.., dockerfile: tests/lab/dns/Dockerfile}
+  lab-snmp:
+    build: {context: ../.., dockerfile: tests/lab/snmp/Dockerfile}
+    healthcheck:
+      test: ["CMD-SHELL", "snmpget -v3 -l authPriv -u snmp-ro-test -a SHA-256 -A 'TestAuthPass123!' -x AES -X 'TestPrivacyPass123!' -t 1 -r 0 localhost .1.3.6.1.2.1.1.1.0 >/dev/null"]
+      interval: 2s
+      retries: 20
   smtp-sink:
     build: {context: ../.., dockerfile: tests/lab/smtp_sink/Dockerfile}
   openldap:
@@ -44,6 +50,9 @@ services:
       TLS_SCAN_GRAPH_BASE_URL: http://mock-graph:8080/v1.0
       TLS_SCAN_GRAPH_CLIENT_SECRET: graph-test-secret
       TLS_SCAN_DIRECTORY_CLIENT_SECRET: graph-test-secret
+      TLS_SCAN_SNMP_V3_USERNAME: snmp-ro-test
+      TLS_SCAN_SNMP_V3_AUTH_KEY: TestAuthPass123!
+      TLS_SCAN_SNMP_V3_PRIV_KEY: TestPrivacyPass123!
       TLS_SCAN_LDAP_BIND_PASSWORD: ldap-test-admin-pw
       TLS_SCAN_RATE_LIMIT_ENABLED: "false"
       TLS_SCAN_SCHEDULER_POLL_SECONDS: "2"
@@ -71,9 +80,10 @@ services:
       <<: *env
       TEST_API_URL: http://api:8000
       TEST_LAB_HOST: lab-tls
+      TEST_SNMP_HOST: lab-snmp
       TEST_LDAP_CA_FILE: /ldap-certs/ca.crt
     volumes: [data:/var/lib/tls-scan, "../../tests:/app/tests:ro", "./.ldap-certs:/ldap-certs:ro"]
-    depends_on: {api: {condition: service_healthy}, worker: {condition: service_started}, lab-tls: {condition: service_started}, lab-dns: {condition: service_started}}
+    depends_on: {api: {condition: service_healthy}, worker: {condition: service_started}, lab-tls: {condition: service_started}, lab-dns: {condition: service_started}, lab-snmp: {condition: service_healthy}}
     profiles: [tests]
     command: pytest -x -q tests/backend
 volumes:

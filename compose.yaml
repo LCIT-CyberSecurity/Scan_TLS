@@ -26,7 +26,7 @@ services:
   api:
     <<: *backend
     command: sh -c "cd backend && alembic upgrade head && cd .. && uvicorn --factory tls_scan_app.app:create_app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips='*'"
-    volumes: [data:/var/lib/tls-scan]
+    volumes: [data:/var/lib/tls-scan, "${TLS_SCAN_SNMP_SECRETS_DIR:-./data/secrets}:/run/secrets:ro"]
     depends_on: {postgres: {condition: service_healthy}}
     read_only: true
     tmpfs: [/tmp]
@@ -38,7 +38,7 @@ services:
   worker:
     <<: *backend
     command: python -m tls_scan_app.workers.worker
-    volumes: [data:/var/lib/tls-scan]
+    volumes: [data:/var/lib/tls-scan, "${TLS_SCAN_SNMP_SECRETS_DIR:-./data/secrets}:/run/secrets:ro"]
     depends_on: {api: {condition: service_healthy}}
     networks: [backend, scan]
     read_only: true

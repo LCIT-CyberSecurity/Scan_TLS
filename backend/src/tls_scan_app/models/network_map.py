@@ -90,3 +90,22 @@ class NetworkLink(Base):
     confidence: Mapped[float | None]
     description: Mapped[str] = mapped_column(Text, default="")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class SnmpDiscovery(Base):
+    """Read-only SNMP preview; topology is only changed by an explicit apply action."""
+
+    __tablename__ = "snmp_discoveries"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    requested_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    target_ids: Mapped[list] = mapped_column(JsonType, default=list)
+    options: Mapped[dict] = mapped_column(JsonType, default=dict)
+    result: Mapped[dict | None] = mapped_column(JsonType)
+    status: Mapped[str] = mapped_column(String(12), default="queued", index=True)
+    error: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

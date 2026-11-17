@@ -50,6 +50,12 @@ class Settings(BaseSettings):
     graph_login_url: str = "https://login.microsoftonline.com"
     graph_base_url: str = "https://graph.microsoft.com/v1.0"
     smtp_password_file: str = ""
+    # Optional read-only SNMPv3 authPriv credentials, provisioned through server environment/files only.
+    snmp_v3_username: str = ""
+    snmp_v3_auth_key: str = ""  # noqa: S105
+    snmp_v3_auth_key_file: str = ""
+    snmp_v3_priv_key: str = ""  # noqa: S105
+    snmp_v3_priv_key_file: str = ""
 
     # OIDC (Entra ID or generic). Empty issuer = SSO disabled.
     oidc_provider: Literal["", "entra", "generic"] = ""
@@ -96,6 +102,10 @@ class Settings(BaseSettings):
             self.smtp_password = Path(self.smtp_password_file).read_text(encoding="utf-8").strip()
         if self.local_admin_password_file:
             self.local_admin_password = Path(self.local_admin_password_file).read_text(encoding="utf-8").strip()
+        for name in ("snmp_v3_auth_key", "snmp_v3_priv_key"):
+            path = getattr(self, f"{name}_file")
+            if path:
+                setattr(self, name, Path(path).read_text(encoding="utf-8").strip())
         return self
 
     @model_validator(mode="after")

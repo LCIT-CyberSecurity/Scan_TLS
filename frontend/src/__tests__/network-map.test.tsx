@@ -42,19 +42,22 @@ vi.mock("@antv/g6", () => ({
   },
 }));
 
-const calls: { path: string; params?: Record<string, string | boolean | undefined> }[] = [];
+const calls: { path: string; params?: Record<string, string | boolean | undefined>; body?: unknown }[] = [];
 vi.mock("../auth/AuthContext", () => ({ useAuth: () => ({ atLeast: () => true }) }));
 vi.mock("../api/client", async (original) => ({
   ...(await original<typeof import("../api/client")>()),
-  api: vi.fn(async (path: string, options: { params?: Record<string, string | boolean | undefined> } = {}) => {
-    calls.push({ path, params: options.params });
+  api: vi.fn(async (path: string, options: { params?: Record<string, string | boolean | undefined>; body?: unknown } = {}) => {
+    calls.push({ path, params: options.params, body: options.body });
     if (path === "/map/summary") return { systems: [{ id: "si-1", name: "Production", description: "", children: [], exposure: { targets: 1, scanned_targets: 0, unscanned_targets: 1, severity: {} } }], totals: { systems: 1, targets: 1, scanned_targets: 0 } };
     if (path === "/map/zones") return [
       { id: "zone-1", name: "Public DMZ", description: "", zone_type: "dmz", parent_zone_id: null, cidr: "192.0.2.0/24", si_ids: ["si-1"], target_ids: ["host-1"], primary_target_ids: ["host-1"] },
       { id: "zone-child", name: "Application segment", description: "", zone_type: "vlan", parent_zone_id: "zone-1", cidr: "192.0.2.64/26", si_ids: ["si-1"], target_ids: [], primary_target_ids: [] },
     ];
     if (path === "/map/devices") return [];
-    if (path === "/targets") return [{ id: "host-1", name: "web.example.test", value: "web.example.test", kind: "fqdn", ports: "443", description: "", owner_id: null, tags: [], si_ids: ["si-1"] }];
+    if (path === "/targets") return [
+      { id: "host-1", name: "web.example.test", value: "web.example.test", kind: "fqdn", ports: "443", description: "", owner_id: null, tags: [], si_ids: ["si-1"] },
+      { id: "ip-1", name: "switch IP", value: "192.0.2.10", kind: "ip", ports: "", description: "", owner_id: null, tags: [], si_ids: ["si-1"] },
+    ];
     if (path === "/information-systems") return [{ id: "si-1", name: "Production", description: "", parent_id: null }];
     if (path === "/map/graph") {
       if (options.params?.zone_id && options.params?.mode === "network") return {
@@ -160,4 +163,5 @@ describe("Network Exposure Map", () => {
     act(() => graphState.handlers["node:click"]?.({ target: { id: "zone:zone-1" } }));
     await waitFor(() => expect(graphState.data?.nodes.some((node) => node.id === "device:child-device")).toBe(true));
   });
+
 });
