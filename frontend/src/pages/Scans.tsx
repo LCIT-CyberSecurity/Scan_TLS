@@ -2,7 +2,7 @@ import { FileText, Play, Plus, RotateCcw, Trash2, Pencil } from "lucide-react";
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { api, downloadUrl } from "../api/client";
-import type { Definition, Group, Run, SI, Target, Template, Versioned } from "../api/types";
+import type { Definition, Group, MailSecurityConfig, Run, SI, Target, Template, Versioned } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { CheckList, ConfirmButton, Empty, ErrorNote, PageHeader, StatusBadge, TagList, TagsInput, useLoad } from "../components/common";
 import { Button } from "../components/ui/button";
@@ -16,7 +16,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { useI18n } from "../i18n";
 import { formatDate, formatDuration } from "../lib/utils";
 
-const blank = { name: "", description: "", control_type: "tls" as "tls" | "ipsec", target_ids: [] as string[], group_ids: [] as string[], policy_ids: [] as string[], profile_id: "", report_template_id: "", policy_mode: "strict_all", tags: [] as string[], si_ids: [] as string[] };
+const DEFAULT_MAIL_SECURITY: MailSecurityConfig = { enabled: false, checks: { spf: true, dmarc: true, dkim: false, mta_sts: true, tls_rpt: true, dane: false }, dkim_selectors: [] };
+const blank = { name: "", description: "", control_type: "tls" as "tls" | "ipsec", target_ids: [] as string[], group_ids: [] as string[], policy_ids: [] as string[], profile_id: "", report_template_id: "", policy_mode: "strict_all", tags: [] as string[], si_ids: [] as string[], mail_security: DEFAULT_MAIL_SECURITY };
 
 function DefinitionDialog({ initial, onClose, onSaved }: { initial?: Definition; onClose: () => void; onSaved: () => void }) {
   const { t } = useI18n();
@@ -35,6 +36,11 @@ function DefinitionDialog({ initial, onClose, onSaved }: { initial?: Definition;
   const publishedProfiles = profiles?.filter((p) => !p.archived && p.versions.some((v) => v.status === "published")) ?? [];
   const [exclText, setExclText] = useState((initial?.exclusions ?? []).join("\n"));
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v }));
+  const mail = form.mail_security ?? DEFAULT_MAIL_SECURITY;
+  const setMail = (patch: Partial<MailSecurityConfig>) => setForm((f) => {
+    const current = f.mail_security ?? DEFAULT_MAIL_SECURITY;
+    return { ...f, mail_security: { ...current, ...patch } };
+  });
 
   async function save() {
     try {
@@ -47,12 +53,27 @@ function DefinitionDialog({ initial, onClose, onSaved }: { initial?: Definition;
     <Dialog open onOpenChange={(o) => !o && onClose()} title={initial ? t("def.edit") : t("def.new")} wide>
       <div className="space-y-4">
         <Field label={t("col.name")}><Input value={form.name} onChange={(e) => set("name", e.target.value)} /></Field>
-        <Field label={t("scan.controlType")}><Select value={form.control_type} onChange={(e) => { const type = e.target.value as "tls" | "ipsec"; setForm((f) => ({ ...f, control_type: type, profile_id: "", policy_ids: [] })); }}><option value="tls">TLS</option><option value="ipsec">VPN IPsec</option></Select></Field>
+        <Field label={t("scan.controlType")}><Select value={form.control_type} onChange={(e) => { const type = e.target.value as "tls" | "ipsec"; setForm((f) => ({ ...f, control_type: type, profile_id: "", policy_ids: [], mail_security: type === "ipsec" ? { ...f.mail_security, enabled: false } : f.mail_security })); }}><option value="tls">TLS</option><option value="ipsec">VPN IPsec</option></Select></Field>
         <Field label={t("col.description")}><Textarea value={form.description} onChange={(e) => set("description", e.target.value)} /></Field>
         <Field label={t("def.targets")}><CheckList items={(targets ?? []).map((x) => ({ id: x.id, label: x.name || x.value, sub: [x.name ? x.value : "", x.ports].filter(Boolean).join(" · ") }))} selected={form.target_ids} onChange={(v) => set("target_ids", v)} empty={t("def.noTargets")} /></Field>
         <div><Button type="button" variant="outline" size="sm" onClick={() => setNewTarget(true)}><Plus />{t("target.new")}</Button></div>
         <Field label={t("def.groups")}><CheckList items={(groups ?? []).map((x) => ({ id: x.id, label: x.name, sub: `${x.target_ids.length}` }))} selected={form.group_ids} onChange={(v) => set("group_ids", v)} empty={t("def.noGroups")} /></Field>
         <Field label={t("excl.label")} hint={t("excl.hint")}><Textarea rows={3} value={exclText} onChange={(e) => setExclText(e.target.value)} placeholder={"10.20.0.0/24\nlegacy.example.org\n*.test.example.org"} className="font-mono text-xs" /></Field>
+        {form.control_type === "tls" && <details className="rounded-sm border border-hairline p-3">
+          <summary className="cursor-pointer text-sm font-medium">{t("mail.title")}</summary>
+          <div className="mt-3 space-y-3">
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={mail.enabled} onChange={(e) => setMail({ enabled: e.target.checked })} />{t("mail.enable")}</label>
+            {mail.enabled && <>
+              <p className="text-xs text-muted">{t("mail.scope")}</p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {(["spf", "dmarc", "dkim", "mta_sts", "tls_rpt", "dane"] as const).map((check) => <label key={check} className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={!!mail.checks[check]} onChange={(e) => setMail({ checks: { ...mail.checks, [check]: e.target.checked } })} />{t(`mail.${check}` as never)}
+                </label>)}
+              </div>
+              {mail.checks.dkim && <Field label={t("mail.dkimSelectors")} hint={t("mail.dkimHint")}><Input value={mail.dkim_selectors.join(", ")} onChange={(e) => setMail({ dkim_selectors: [...new Set(e.target.value.split(/[\s,;]+/).map((x) => x.trim()).filter(Boolean))].slice(0, 20) })} placeholder="selector1, selector2" /></Field>}
+            </>}
+          </div>
+        </details>}
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label={t("def.profile")}><Select value={form.profile_id} onChange={(e) => set("profile_id", e.target.value)}><option value="">—</option>{publishedProfiles.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></Field>
           <Field label={t("def.template")}><Select value={form.report_template_id} onChange={(e) => set("report_template_id", e.target.value)}><option value="">{t("def.defaultTemplate")}</option>{templates?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></Field>

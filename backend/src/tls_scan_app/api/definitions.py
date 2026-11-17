@@ -1,6 +1,7 @@
 """Scan definitions: reusable configuration (targets/groups, profile, policies, template, classification)."""
 from __future__ import annotations
 
+import re
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -36,6 +37,7 @@ class DefinitionBody(BaseModel):
     tags: list[str] | None = None
     si_ids: list[uuid.UUID] | None = None
     exclusions: list[str] = Field(default_factory=list, max_length=500)  # IP, CIDR, FQDN or *.domain that this scan never touches
+    mail_security: dict | None = None
 
 
 def out(db: DbSession, d: ScanDefinition) -> dict:
@@ -44,6 +46,7 @@ def out(db: DbSession, d: ScanDefinition) -> dict:
         "id": str(d.id), "name": d.name, "description": d.description, "owner_id": str(d.owner_id) if d.owner_id else None,
         "profile_id": str(d.profile_id), "control_type": d.control_type, "report_template_id": str(d.report_template_id) if d.report_template_id else None,
         "policy_mode": d.policy_mode, "exclusions": d.exclusions or [], "tags": cls["tags"], "si_ids": cls["si"],
+        "mail_security": d.mail_security or {"enabled": False, "checks": {}, "dkim_selectors": []},
         "target_ids": [str(x) for x in db.execute(select(DefinitionTarget.target_id).where(DefinitionTarget.definition_id == d.id)).scalars()],
         "group_ids": [str(x) for x in db.execute(select(DefinitionGroup.group_id).where(DefinitionGroup.definition_id == d.id)).scalars()],
         "policy_ids": [str(x) for x in db.execute(select(DefinitionPolicy.policy_id).where(DefinitionPolicy.definition_id == d.id)).scalars()],
@@ -59,6 +62,27 @@ def _apply(db: DbSession, d: ScanDefinition, body: DefinitionBody) -> None:
         raise HTTPException(422, "Select at least one policy")
     if body.control_type not in {"tls", "ipsec"}:
         raise HTTPException(422, "control_type must be tls or ipsec")
+    mail_security = body.mail_security if body.mail_security is not None else (d.mail_security or {"enabled": False, "checks": {}, "dkim_selectors": []})
+    allowed_mail_checks = {"spf", "dmarc", "dkim", "mta_sts", "tls_rpt", "dane"}
+    if not isinstance(mail_security, dict) or set(mail_security) - {"enabled", "checks", "dkim_selectors"}:
+        raise HTTPException(422, "mail_security contains unsupported fields")
+    enabled = mail_security.get("enabled", False)
+    selected_checks = mail_security.get("checks", {})
+    selectors = mail_security.get("dkim_selectors", [])
+    selected_checks = {} if selected_checks is None else selected_checks
+    selectors = [] if selectors is None else selectors
+    if not isinstance(enabled, bool) or not isinstance(selected_checks, dict) or set(selected_checks) - allowed_mail_checks:
+        raise HTTPException(422, "Invalid mail_security options")
+    if any(not isinstance(value, bool) for value in selected_checks.values()):
+        raise HTTPException(422, "mail_security check options must be booleans")
+    if not isinstance(selectors, list) or len(selectors) > 20 or any(not isinstance(item, str) or not item.strip() or len(item) > 63 for item in selectors):
+        raise HTTPException(422, "DKIM selectors must contain at most 20 non-empty values of 63 characters or fewer")
+    if enabled and body.control_type != "tls":
+        raise HTTPException(422, "Mail security checks are available only for TLS scan definitions")
+    if enabled and not any(selected_checks.values()):
+        raise HTTPException(422, "Enable at least one mail security check")
+    if any(not re.fullmatch(r"[A-Za-z0-9_-]{1,63}", item.strip()) for item in selectors):
+        raise HTTPException(422, "DKIM selectors may contain only letters, digits, underscore and hyphen (up to 63 characters)")
     profile = get_or_404(db, ScanProfile, body.profile_id, "Profile")
     if profile.technology != body.control_type:
         raise HTTPException(422, "The selected profile technology does not match control_type")
@@ -70,6 +94,8 @@ def _apply(db: DbSession, d: ScanDefinition, body: DefinitionBody) -> None:
             if model is Policy and row.technology != body.control_type:
                 raise HTTPException(422, "A selected policy technology does not match control_type")
     d.name, d.description, d.profile_id, d.control_type = body.name.strip(), body.description, body.profile_id, body.control_type
+    d.mail_security = {"enabled": enabled, "checks": {key: bool(selected_checks.get(key, False)) for key in allowed_mail_checks},
+                       "dkim_selectors": list(dict.fromkeys(item.strip() for item in selectors))}
     d.report_template_id, d.policy_mode = body.report_template_id, body.policy_mode
     try:
         d.exclusions = list(parse_entries(body.exclusions))

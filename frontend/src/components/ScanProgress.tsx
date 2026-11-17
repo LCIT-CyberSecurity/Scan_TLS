@@ -14,8 +14,9 @@ export function ScanProgress({ run }: { run: Run }) {
   const plan = run.plan;
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => { const id = window.setInterval(() => setNow(Date.now()), 1000); return () => window.clearInterval(id); }, []);
+  const tlsSteps = plan?.crypto === "pqc" ? ["starting", "pqc_preflight", ...BASE_STEPS.slice(1)] : [...BASE_STEPS];
   const steps: string[] = run.control_type === "ipsec" ? ["starting", "ipsec_probe", "reporting"]
-    : plan?.crypto === "pqc" ? ["starting", "pqc_preflight", ...BASE_STEPS.slice(1)] : [...BASE_STEPS];
+    : plan?.mail_security?.checks.length ? [...tlsSteps.slice(0, -1), "mail_security", "reporting"] : tlsSteps;
   const queued = run.status === "queued";
   const current = queued ? -1 : Math.max(0, steps.indexOf(run.phase));
   const elapsed = run.started_at ? Math.max(0, Math.round((now - new Date(run.started_at).getTime()) / 1000)) : 0;
@@ -35,6 +36,7 @@ export function ScanProgress({ run }: { run: Run }) {
         return parts.join(" · ");
       }
       case "ipsec_probe": return t("prog.what.ipsec_probe" as never);
+      case "mail_security": return t("prog.what.mail_security", { domains: plan.mail_security?.domains.length ?? 0, checks: plan.mail_security?.checks.join(", ") ?? "" });
       case "grading": return t("prog.what.grading", { policies: plan.policies.join(", ") });
       default: return t("prog.what.reporting", { formats: plan.formats.map((f) => f.toUpperCase()).join(", ") });
     }

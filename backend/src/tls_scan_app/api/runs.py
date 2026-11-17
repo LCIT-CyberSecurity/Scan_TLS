@@ -27,7 +27,7 @@ from tls_scan_app.services.trust_stores import public_snapshot
 router = APIRouter(prefix="/api", tags=["runs"])
 auditor = require_role(Role.AUDITOR)
 user_only = require_role(Role.USER)
-MEDIA = {"html": "text/html", "md": "text/markdown", "csv": "text/csv", "findings_csv": "text/csv", "cbom": "application/json", "metadata": "application/json"}
+MEDIA = {"html": "text/html", "md": "text/markdown", "csv": "text/csv", "findings_csv": "text/csv", "mail_security_csv": "text/csv", "cbom": "application/json", "metadata": "application/json"}
 
 
 def run_plan(snapshot: dict | None) -> dict | None:
@@ -49,6 +49,8 @@ def run_plan(snapshot: dict | None) -> dict | None:
         "private_stores": [s.get("name") for s in (snapshot.get("trust_stores") or [])],
         "revocation": bool(revocation.get("enabled")), "tls_checks": len(enabled_tls),
         "policies": [p.get("name") for p in snapshot.get("policies", [])], "formats": snapshot.get("export_formats", []),
+        "mail_security": {"domains": (snapshot.get("mail_security") or {}).get("domains", []),
+                          "checks": [key for key, enabled in ((snapshot.get("mail_security") or {}).get("checks") or {}).items() if enabled]},
     }
 
 
@@ -63,6 +65,7 @@ def run_out(r: ScanRun, detail: bool = False) -> dict:
         "control_type": (r.config_snapshot or {}).get("control_type", "tls"),
         "plan": run_plan(r.config_snapshot) if r.status in ACTIVE_STATUSES else None,
         "exclusions": (r.config_snapshot or {}).get("exclusions"),
+        "mail_security_results": r.mail_security_results or [],
         "reports": [{"format": f["format"], "size": f["size"], "sha256": f["sha256"]} for f in (r.report_files or [])],
     }
     if detail:

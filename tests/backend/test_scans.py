@@ -40,6 +40,36 @@ def test_no_tls_service_is_not_an_error_nor_compliant(user, catalog):
     assert final["summary"]["total_endpoints"] == 0
 
 
+def test_mail_security_is_optional_per_scan_and_validated(user, operator, catalog):
+    import uuid
+
+    target = user.post("/api/targets", json={"value": f"mail-{uuid.uuid4().hex[:8]}.example.org", "ports": "443"}).json()
+    payload = {"name": "mail-checks", "target_ids": [target["id"]], "policy_ids": [catalog["policy"]],
+               "profile_id": catalog["profile"]}
+    created = user.post("/api/scan-definitions", json=payload)
+    assert created.status_code == 201, created.text
+    assert created.json()["mail_security"]["enabled"] is False
+
+    enabled = {"enabled": True, "checks": {"spf": True, "dmarc": False, "dkim": False,
+                "mta_sts": False, "tls_rpt": False, "dane": False}, "dkim_selectors": []}
+    updated = user.put(f"/api/scan-definitions/{created.json()['id']}", json={**payload, "mail_security": enabled})
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["mail_security"]["enabled"] is True
+    version = operator.get(f"/api/profiles/{catalog['profile']}").json()["versions"][-1]
+    assert "mail_security" not in version["content"]  # published technical profile remains independent and immutable
+
+    invalid_checks = {**enabled, "checks": {}}
+    assert user.put(f"/api/scan-definitions/{created.json()['id']}", json={**payload, "mail_security": invalid_checks}).status_code == 422
+    invalid_selector = {**enabled, "checks": {**enabled["checks"], "dkim": True}, "dkim_selectors": ["selector;bad"]}
+    assert user.put(f"/api/scan-definitions/{created.json()['id']}", json={**payload, "mail_security": invalid_selector}).status_code == 422
+
+    ip_target = user.post("/api/targets", json={"value": f"198.51.100.{1 + uuid.uuid4().int % 253}", "ports": "443"}).json()
+    ip_payload = {**payload, "name": "mail-check-ip-only", "target_ids": [ip_target["id"]], "mail_security": enabled}
+    ip_definition = user.post("/api/scan-definitions", json=ip_payload)
+    assert ip_definition.status_code == 201, ip_definition.text
+    assert user.post(f"/api/scan-definitions/{ip_definition.json()['id']}/run").status_code == 422
+
+
 def test_cancel_stops_run_and_only_owner_or_operator_can(user, user2, operator, catalog):
     # a CIDR over unreachable space keeps nmap busy long enough to cancel
     definition = make_definition(user, catalog, ["10.255.0.0/20"], name="slow")
