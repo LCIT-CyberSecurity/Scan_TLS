@@ -20,18 +20,23 @@ import Reports from "./Reports";
 
 const DEFAULT_MAIL_SECURITY: MailSecurityConfig = { enabled: false, checks: { spf: true, dmarc: true, dkim: false, mta_sts: true, tls_rpt: true, dane: false }, dkim_selectors: [] };
 const MAIL_CHECKS = ["spf", "dmarc", "dkim", "mta_sts", "tls_rpt", "dane"] as const;
-const blank = { name: "", description: "", control_type: "tls" as "tls" | "ipsec", target_ids: [] as string[], group_ids: [] as string[], policy_ids: [] as string[], profile_id: "", report_template_id: "", policy_mode: "strict_all", tags: [] as string[], si_ids: [] as string[], mail_security: DEFAULT_MAIL_SECURITY };
+type Technology = "tls" | "ipsec";
+interface DefinitionForm { name: string; description: string; control_type: Technology; enabled_controls?: Technology[]; target_ids: string[]; group_ids: string[]; policy_ids: string[]; profile_id: string; report_template_id: string; policy_mode: string; tags: string[]; si_ids: string[]; mail_security: MailSecurityConfig }
+const blank: DefinitionForm = { name: "", description: "", control_type: "tls", enabled_controls: ["tls", "ipsec"], target_ids: [], group_ids: [], policy_ids: [], profile_id: "", report_template_id: "", policy_mode: "strict_all", tags: [], si_ids: [], mail_security: DEFAULT_MAIL_SECURITY };
 
 function DefinitionDialog({ initial, onClose, onSaved }: { initial?: Definition; onClose: () => void; onSaved: () => void }) {
   const { t } = useI18n();
-  const [form, setForm] = useState(initial ? { ...blank, ...initial, report_template_id: initial.report_template_id ?? "" } : blank);
+  const [form, setForm] = useState<DefinitionForm>(initial ? { ...blank, ...initial, control_type: initial.control_type === "ipsec" ? "ipsec" : "tls", enabled_controls: initial.enabled_controls?.filter((x): x is Technology => x === "tls" || x === "ipsec") ?? undefined, report_template_id: initial.report_template_id ?? "" } : blank);
   const [error, setError] = useState<unknown>();
   const { data: targets, reload: reloadTargets } = useLoad(() => api<Target[]>("/targets"));
   const [newTarget, setNewTarget] = useState(false);
   const { data: groups } = useLoad(() => api<Group[]>("/target-groups"));
-  const policyPath = form.control_type === "tls" ? "/policies" : "/policies?technology=ipsec";
-  const profilePath = form.control_type === "tls" ? "/profiles" : "/profiles?technology=ipsec";
-  const { data: policies } = useLoad(() => api<Versioned[]>(policyPath), [policyPath]);
+  const activeControls = form.enabled_controls ?? [form.control_type];
+  const policyPath = activeControls.length > 1 ? "multi" : activeControls[0] === "ipsec" ? "/policies?technology=ipsec" : "/policies";
+  const profilePath = form.enabled_controls ? "/profiles?technology=generic" : form.control_type === "tls" ? "/profiles" : "/profiles?technology=ipsec";
+  const { data: policies } = useLoad(() => policyPath === "multi"
+    ? Promise.all([api<Versioned[]>("/policies"), api<Versioned[]>("/policies?technology=ipsec")]).then((items) => items.flat())
+    : api<Versioned[]>(policyPath), [policyPath]);
   const { data: profiles } = useLoad(() => api<Versioned[]>(profilePath), [profilePath]);
   const { data: templates } = useLoad(() => api<Template[]>("/report-templates"));
   const { data: systems } = useLoad(() => api<SI[]>("/information-systems"));
@@ -56,13 +61,22 @@ function DefinitionDialog({ initial, onClose, onSaved }: { initial?: Definition;
     <Dialog open onOpenChange={(o) => !o && onClose()} title={initial ? t("def.edit") : t("def.new")} wide>
       <div className="space-y-4">
         <Field label={t("col.name")}><Input value={form.name} onChange={(e) => set("name", e.target.value)} /></Field>
-        <Field label={t("scan.controlType")}><Select value={form.control_type} onChange={(e) => { const type = e.target.value as "tls" | "ipsec"; setForm((f) => ({ ...f, control_type: type, profile_id: "", policy_ids: [], mail_security: type === "ipsec" ? { ...f.mail_security, enabled: false } : f.mail_security })); }}><option value="tls">TLS</option><option value="ipsec">VPN IPsec</option></Select></Field>
+        <fieldset className="space-y-2"><legend className="text-sm font-medium">{t("scan.controlType")}</legend>
+          {([ ["tls", "TLS"], ["ipsec", "VPN IPsec / IKE"] ] as const).map(([key, label]) => <label key={key} className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={activeControls.includes(key)} onChange={(e) => setForm((f) => {
+              const current = f.enabled_controls ?? [f.control_type];
+              const next = e.target.checked ? [...new Set([...current, key])] : current.filter((x) => x !== key);
+              if (!next.length) return f;
+              return { ...f, enabled_controls: next, control_type: next.includes("tls") ? "tls" : "ipsec", profile_id: "", policy_ids: [], ...(key === "tls" && !e.target.checked ? { mail_security: { ...f.mail_security, enabled: false } } : {}) };
+            })} />{label}
+          </label>)}
+        </fieldset>
         <Field label={t("col.description")}><Textarea value={form.description} onChange={(e) => set("description", e.target.value)} /></Field>
         <Field label={t("def.targets")}><CheckList items={(targets ?? []).map((x) => ({ id: x.id, label: x.name || x.value, sub: [x.name ? x.value : "", x.ports].filter(Boolean).join(" · ") }))} selected={form.target_ids} onChange={(v) => set("target_ids", v)} empty={t("def.noTargets")} /></Field>
         <div><Button type="button" variant="outline" size="sm" onClick={() => setNewTarget(true)}><Plus />{t("target.new")}</Button></div>
         <Field label={t("def.groups")}><CheckList items={(groups ?? []).map((x) => ({ id: x.id, label: x.name, sub: `${x.target_ids.length}` }))} selected={form.group_ids} onChange={(v) => set("group_ids", v)} empty={t("def.noGroups")} /></Field>
         <Field label={t("excl.label")} hint={t("excl.hint")}><Textarea rows={3} value={exclText} onChange={(e) => setExclText(e.target.value)} placeholder={"10.20.0.0/24\nlegacy.example.org\n*.test.example.org"} className="font-mono text-xs" /></Field>
-        {form.control_type === "tls" && <details className="rounded-sm border border-hairline p-3">
+        {activeControls.includes("tls") && <details className="rounded-sm border border-hairline p-3">
           <summary className="cursor-pointer text-sm font-medium">{t("mail.title")}</summary>
           <div className="mt-3 space-y-3">
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={mail.enabled} onChange={(e) => setMail({ enabled: e.target.checked })} />{t("mail.enable")}</label>
@@ -139,6 +153,7 @@ export default function Scans() {
     { key: "actions", header: "", render: (r) => (
       <div className="row-actions">
         {r.reports.some((x) => x.format === "html") && <Button asChild size="sm" variant="outline"><a href={downloadUrl(r.id, "html", true)} target="_blank" rel="noreferrer"><FileText />{t("action.report")}</a></Button>}
+        {r.reports.some((x) => x.format === "ipsec_html") && <Button asChild size="sm" variant="outline"><a href={downloadUrl(r.id, "ipsec_html", true)} target="_blank" rel="noreferrer"><FileText />IPsec</a></Button>}
         {r.definition_id && !(r.status === "queued" || r.status === "running") && <Button size="sm" variant="outline" onClick={() => void launch(r.definition_id as string)}><RotateCcw />{t("scans.rescan")}</Button>}
         {atLeast("OPERATOR") && !(r.status === "queued" || r.status === "running") && <ConfirmButton variant="outline" label={<Trash2 className="size-4" />} confirm={t("confirm.deleteScan")} onConfirm={async () => { try { await api(`/scan-runs/${r.id}`, { method: "DELETE" }); void reload(); } catch (e) { setError(e); } }} />}
         {(r.status === "queued" || r.status === "running") && (r.initiated_by === user?.id || atLeast("OPERATOR")) && <ConfirmButton variant="outline" label={t("action.cancelScan")} confirm={t("confirm.cancelScan")} onConfirm={async () => { try { await api(`/scan-runs/${r.id}/cancel`, { method: "POST" }); void reload(); } catch (e) { setError(e); } }} />}

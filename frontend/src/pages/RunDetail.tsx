@@ -173,7 +173,7 @@ export default function RunDetail() {
           </section>)}
         </CardContent>
       </Card>}
-      {run.control_type === "ipsec" && <Card className="mb-6"><CardHeader><CardTitle>{t("ipsec.results" as never)}</CardTitle></CardHeader>
+      {(run.control_type === "ipsec" || run.control_type === "multi") && <Card className="mb-6"><CardHeader><CardTitle>{t("ipsec.results" as never)}</CardTitle></CardHeader>
         <p className="px-5 pb-3 text-xs text-muted">{t("ipsec.notice" as never)}</p>
         {run.ipsec_observations?.length ? <DataTable rows={run.ipsec_observations} rowKey={(r) => `${r.target}:${r.port}:${r.ike_version}`} columns={[
           { key: "target", header: "Target", values: (r) => [r.target], render: (r) => r.target },

@@ -52,7 +52,8 @@ def create_run(
             status=QUEUED,
             fingerprint=fingerprint,
             config_snapshot=snapshot,
-            policy_versions=[{"name": p["name"], "version": p["version"], "version_id": p["version_id"]} for p in snapshot["policies"]],
+            policy_versions=[{"name": p["name"], "version": p["version"], "version_id": p["version_id"]}
+                             for p in [*snapshot.get("policies", []), *((snapshot.get("ipsec") or {}).get("policies", []))]],
         )
         try:
             with db.begin_nested():
@@ -191,12 +192,12 @@ def persist_results(db: DbSession, run: ScanRun, outcome: dict[str, Any], status
         path = Path(path_str)
         if path.suffix == ".html":
             report_branding.apply_to_html(path, branding)  # before hashing: the stored SHA-256 is of the delivered file
-            if addendum:
+            if addendum and not path.name.startswith("ipsec-results."):
                 report_addendum.apply_to_html(path, addendum)
         elif path.suffix == ".md" and addendum:
             report_addendum.apply_to_markdown(path, addendum)
         if path.is_file():
-            files.append({"format": _format_of(path), "path": str(path.relative_to(storage_root)),
+            files.append({"format": _format_of(path, run), "path": str(path.relative_to(storage_root)),
                           "sha256": hashlib.sha256(path.read_bytes()).hexdigest(), "size": path.stat().st_size})
     if run.mail_security_results and "csv" in (run.config_snapshot.get("export_formats") or []):
         import csv
@@ -229,7 +230,10 @@ def persist_results(db: DbSession, run: ScanRun, outcome: dict[str, Any], status
     audit.record(db, f"scan.{status}", actor_label="worker", resource_type="scan_run", resource_id=run.id)
 
 
-def _format_of(path: Path) -> str:
+def _format_of(path: Path, run: ScanRun | None = None) -> str:
+    controls = (run.config_snapshot or {}).get("enabled_controls", []) if run else []
+    if path.name.startswith("ipsec-results.") and "tls" in controls and "ipsec" in controls:
+        return f"ipsec_{path.suffix.lstrip('.')}"
     name = path.name
     if name.endswith(".cbom.json"):
         return "cbom"

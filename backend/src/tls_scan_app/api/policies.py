@@ -19,7 +19,7 @@ from tls_scan_app.models import Policy, PolicyVersion, ReportTemplate, Role, Sca
 from tls_scan_app.models.policy import ARCHIVED, DRAFT, PUBLISHED
 from tls_scan_app.services import audit
 from tls_scan_app.services import trust_stores as trust_svc
-from tls_scan_app.services.planner import PlanError, validate_policy_content, validate_profile_content
+from tls_scan_app.services.planner import PlanError, validate_generic_profile_content, validate_policy_content, validate_profile_content
 from tls_scanner.constants import ALLOWED_EXPORT_FORMATS
 
 router = APIRouter(prefix="/api", tags=["policies"])
@@ -42,6 +42,11 @@ def _kinds(kind: str):
 def _validate(validator, content, technology: str, db: DbSession | None = None):
     try:
         if technology not in {"tls", "ipsec"}:
+            if technology == "generic" and validator is validate_profile_content:
+                validate_generic_profile_content(content)
+                if db is not None:
+                    trust_svc.validate_profile_selection(db, content.get("tls", {}))
+                return
             raise PlanError("technology must be tls or ipsec")
         if technology == "ipsec":
             from tls_scan_app.services.ipsec import validate_ipsec_policy, validate_ipsec_profile
@@ -86,8 +91,10 @@ def _register(kind: str) -> None:
     model, version_model, fk_col, validator = _kinds(kind)
     fk = _fk(kind)
 
+    pattern = "^(tls|ipsec|generic)$" if kind == "profiles" else "^(tls|ipsec)$"
+
     @router.get(f"/{kind}", name=f"list_{kind}")
-    def list_items(technology: str = Query("tls", pattern="^(tls|ipsec)$"), db: DbSession = Depends(get_db), _: User = Depends(reader)) -> list[dict]:
+    def list_items(technology: str = Query("tls", pattern=pattern), db: DbSession = Depends(get_db), _: User = Depends(reader)) -> list[dict]:
         return [item_out(db, kind, i) for i in db.execute(select(model).where(model.technology == technology).order_by(model.name)).scalars()]
 
     @router.post(f"/{kind}", status_code=201, name=f"create_{kind}")
