@@ -251,10 +251,8 @@ function Diagnostics() {
 
 interface GbConnection { name: string; host: string; port: number; username: string; timeout: number; password_configured: boolean }
 interface GbJob { id: string; mode: string; source_name: string; status: string; created_at: string; requested_by?: string | null; error: string; progress?: { phase?: string }; result?: { objects?: Record<string, number>; applied?: Record<string, number> } }
-interface GbTarget { value: string; name: string; ports: string; previous_ports?: string | null; group_name: string; action: string; existing_id: string | null; importable: boolean; reason: string }
-interface GbTask { id: string; name: string; refs: Record<string, string>; missing_target: boolean }
-interface GbOption { id: string; name: string; published: boolean }
-interface GbPreview { summary: Record<string, number>; changes: { baseline_import_id: string | null; changed: { type: string; id: string; name: string }[]; absent: { type: string; id: string; name: string }[] }; targets: GbTarget[]; groups: number; tasks: GbTask[]; schedules: { id: string; name: string }[]; scan_configs: { id: string; name: string }[]; port_lists: { id: string; name: string }[]; tags: { id: string; name: string }[]; profiles: GbOption[]; policies: GbOption[]; warnings: string[] }
+interface GbTarget { value: string; name: string; kind: string; action: string; existing_id: string | null; existing_count: number; reason: string }
+interface GbPreview { summary: Record<string, number>; changes: { baseline_import_id: string | null; changed: { type: string; id: string; name: string }[]; absent: { type: string; id: string; name: string }[] }; targets: GbTarget[]; warnings: string[] }
 function GreenboneImports() {
   const { t, locale } = useI18n();
   const [config, setConfig] = useState<GbConnection | null>(null);
@@ -264,11 +262,6 @@ function GreenboneImports() {
   const [jobId, setJobId] = useState("");
   const [preview, setPreview] = useState<GbPreview | null>(null);
   const [selected, setSelected] = useState<number[]>([]);
-  const [selectedTasks, setSelectedTasks] = useState<string[]>([]);
-  const [profileId, setProfileId] = useState("");
-  const [policyIds, setPolicyIds] = useState<string[]>([]);
-  const [importGroups, setImportGroups] = useState(true);
-  const [addTag, setAddTag] = useState(true);
   const [message, setMessage] = useState("");
   const [error, setError] = useState<unknown>();
   const reload = async () => setJobs(await api<GbJob[]>("/admin/greenbone/imports"));
@@ -285,7 +278,7 @@ function GreenboneImports() {
     const timer = window.setInterval(() => { void api<GbJob>("/admin/greenbone/imports/" + jobId).then((job) => {
       if (job.status === "done" || job.status === "failed") {
         setJobs((previous) => [job, ...previous.filter((item) => item.id !== job.id)]);
-        if (job.result?.applied) setMessage(t("admin.gbImportResult") + ": " + job.result.applied.created + ", " + t("admin.gbDefinitionsResult") + ": " + job.result.applied.definitions_created);
+        if (job.result?.applied) setMessage(t("admin.gbImportResult") + ": " + job.result.applied.created + ", " + t("admin.gbReusedResult") + ": " + job.result.applied.reused + ", " + job.result.applied.ambiguous + " " + t("admin.gbTargetsAmbiguous"));
         window.clearInterval(timer);
       }
     }).catch(setError); }, 2000);
@@ -294,7 +287,7 @@ function GreenboneImports() {
   const run = async (operation: () => Promise<void>) => { setError(undefined); setMessage(""); try { await operation(); } catch (e) { setError(e); } };
   const loadPreview = async (id = jobId) => {
     const result = await api<GbPreview>("/admin/greenbone/imports/" + id + "/preview");
-    setJobId(id); setPreview(result); setSelected(result.targets.flatMap((item, index) => item.importable ? [index] : [])); setSelectedTasks([]); setMessage("");
+    setJobId(id); setPreview(result); setSelected(result.targets.flatMap((item, index) => item.action === "new" ? [index] : [])); setMessage("");
   };
   const save = async () => {
     if (!config) return;
@@ -328,46 +321,28 @@ function GreenboneImports() {
         <Button disabled={!files.length} onClick={() => void run(async () => { const job = await upload<GbJob>("/admin/greenbone/xml", files); setJobId(job.id); setFiles([]); await reload(); await loadPreview(job.id); })}>{t("admin.gbAnalyze")}</Button>
       </CardContent></Card>
       {preview && <Card><CardHeader><CardTitle>{t("admin.gbPreview")}</CardTitle></CardHeader><CardContent className="space-y-4">
-        <div className="flex flex-wrap gap-4 text-sm">{Object.entries(preview.summary).map(([key, value]) => <span key={key}><b>{value}</b> {key}</span>)}<span>{preview.groups} {t("admin.gbGroups")}</span><span>{preview.tasks.length} {t("admin.gbTasks")}</span><span>{preview.schedules.length} {t("nav.schedules")}</span></div>
+        <p className="text-sm">{Object.entries(preview.summary).map(([key, value]) => <span className="mr-4" key={key}><b>{value}</b> {key}</span>)}</p>
         {preview.warnings.map((warning) => <Note key={warning}>{warning}</Note>)}
-        {preview.changes.baseline_import_id && <Note tone="info">Comparaison avec la synchronisation précédente : {preview.changes.changed.length} modification(s), {preview.changes.absent.length} objet(s) absent(s) de la source. Les objets absents ne seront pas supprimés ; les associations existantes restent conservées.</Note>}
+        <Note>{t("admin.gbTag")}</Note>
+        {preview.changes.baseline_import_id && <Note tone="info">Comparaison avec la récupération précédente : {preview.changes.changed.length} cible(s) modifiée(s), {preview.changes.absent.length} absente(s). L’inventaire et les associations restent inchangés pour les cibles absentes.</Note>}
         {(preview.changes.changed.length > 0 || preview.changes.absent.length > 0) && <div className="max-h-40 overflow-auto rounded border border-border p-3 text-xs">
-          {preview.changes.changed.map((item) => <p key={`changed:${item.type}:${item.id}`}>Modifié — {item.type} {item.name} ({item.id})</p>)}
-          {preview.changes.absent.map((item) => <p key={`absent:${item.type}:${item.id}`}>Absent de la source — {item.type} {item.name} ({item.id})</p>)}
+          {preview.changes.changed.map((item) => <p key={`changed:${item.id}`}>Modifiée — cible {item.name} ({item.id})</p>)}
+          {preview.changes.absent.map((item) => <p key={`absent:${item.id}`}>Absente de la source — cible {item.name} ({item.id})</p>)}
         </div>}
-        <div className="grid gap-2 sm:grid-cols-2 text-sm">
-          <p>Port Lists : {preview.port_lists.map((item) => item.name).join(", ") || "—"}</p>
-          <p>{t("admin.gbScanConfigs")} : {preview.scan_configs.map((item) => item.name).join(", ") || "—"}</p>
-          <p>{t("admin.gbSourceTags")} : {preview.tags.map((item) => item.name).join(", ") || "—"}</p>
-          <p>{t("nav.schedules")} : {preview.schedules.map((item) => item.name).join(", ") || "—"} ({t("admin.gbSchedulesInactive")})</p>
-        </div>
-        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={selected.length === preview.targets.filter((item) => item.importable).length && selected.length > 0} onChange={(e) => setSelected(e.target.checked ? preview.targets.flatMap((item, index) => item.importable ? [index] : []) : [])} />{t("admin.gbSelectAll")}</label>
-        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={importGroups} onChange={(e) => setImportGroups(e.target.checked)} />{t("admin.gbGroups")}</label>
-        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={addTag} onChange={(e) => setAddTag(e.target.checked)} />{t("admin.gbTag")}</label>
+        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={selected.length === preview.targets.length && selected.length > 0} onChange={(e) => setSelected(e.target.checked ? preview.targets.map((_, index) => index) : [])} />{t("admin.gbSelectAll")}</label>
         <div className="max-h-72 overflow-auto rounded border border-border">
-          <Table><thead><tr><Th></Th><Th>{t("admin.gbTargets")}</Th><Th>{t("col.name")}</Th><Th>{t("admin.gbTcpPorts")}</Th><Th>{t("admin.gbGroups")}</Th><Th>{t("col.status")}</Th></tr></thead>
-            <tbody>{preview.targets.map((target, index) => <tr key={target.value + ":" + target.ports + ":" + index}><Td><input type="checkbox" aria-label={target.value} disabled={!target.importable} checked={selected.includes(index)} onChange={(e) => setSelected(e.target.checked ? [...selected, index] : selected.filter((item) => item !== index))} /></Td><Td className="font-mono text-xs">{target.value}</Td><Td>{target.name}</Td><Td>{target.ports || "—"}{target.action === "changed" && <div className="text-xs text-muted">Précédemment : {target.previous_ports || "—"}</div>}</Td><Td>{target.group_name}</Td><Td>{target.action}{target.reason && <div className="text-xs text-danger">{target.reason}</div>}</Td></tr>)}</tbody>
+          <Table><thead><tr><Th></Th><Th>{t("admin.gbTargets")}</Th><Th>{t("col.name")}</Th><Th>{t("admin.gbType")}</Th><Th>{t("col.status")}</Th></tr></thead>
+            <tbody>{preview.targets.map((target, index) => <tr key={target.value}><Td><input type="checkbox" aria-label={target.value} checked={selected.includes(index)} onChange={(e) => setSelected(e.target.checked ? [...selected, index] : selected.filter((item) => item !== index))} /></Td><Td className="font-mono text-xs">{target.value}</Td><Td>{target.name || "—"}</Td><Td>{target.kind}</Td><Td>{target.action}{target.reason && <div className="text-xs text-muted">{target.reason}</div>}</Td></tr>)}</tbody>
           </Table>
         </div>
-        {preview.tasks.length > 0 && <Card className="p-3"><p className="mb-2 font-medium">{t("admin.gbTaskMapping")}</p>
-          <p className="mb-3 text-xs text-muted">{t("admin.gbTaskHint")}</p>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <Field label={t("admin.gbProfile")}><Select value={profileId} onChange={(e) => setProfileId(e.target.value)}><option value="">—</option>{preview.profiles.filter((item) => item.published).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select></Field>
-            <Field label={t("admin.gbPolicies")}><Select multiple value={policyIds} onChange={(e) => setPolicyIds(Array.from(e.target.selectedOptions, (item) => item.value))}>{preview.policies.filter((item) => item.published).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select></Field>
-          </div>
-          <div className="mt-3 space-y-2">{preview.tasks.map((task) => <label key={task.id} className="flex items-start gap-2 text-sm">
-            <input type="checkbox" disabled={task.missing_target || !task.id} checked={selectedTasks.includes(task.id)} onChange={(e) => setSelectedTasks(e.target.checked ? [...selectedTasks, task.id] : selectedTasks.filter((id) => id !== task.id))} />
-            <span>{task.name} <span className="text-muted">({task.refs.target ? "Target " + task.refs.target : "—"}, {t("admin.gbConfigRef")} {task.refs.config || "—"})</span>{task.missing_target && <span className="text-danger"> — {t("admin.gbMissingTarget")}</span>}</span>
-          </label>)}</div>
-        </Card>}
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={() => void run(async () => { const definitions = selectedTasks.map((task_id) => ({ task_id, profile_id: profileId, policy_ids: policyIds })); const result = await api<{ selected: GbTarget[]; definitions: unknown[] }>("/admin/greenbone/imports/" + jobId + "/apply", { method: "POST", body: { dry_run: true, selected, import_groups: importGroups, add_tag: addTag, definitions } }); setMessage(result.selected.length + " " + t("admin.gbTargets") + ", " + result.definitions.length + " " + t("admin.gbDefinitionsResult") + " — " + t("admin.gbDryRunText")); })}>{t("admin.gbPreview")} ({selected.length})</Button>
-          <Button disabled={!selected.length && !selectedTasks.length} onClick={() => void run(async () => { if (!window.confirm(t("admin.gbApply") + " ?")) return; const definitions = selectedTasks.map((task_id) => ({ task_id, profile_id: profileId, policy_ids: policyIds })); const result = await api<GbJob>("/admin/greenbone/imports/" + jobId + "/apply", { method: "POST", body: { dry_run: false, selected, import_groups: importGroups, add_tag: addTag, definitions } }); setMessage(t("admin.gbPending")); await reload(); setJobId(result.id); })}>{t("admin.gbApply")}</Button>
+          <Button variant="outline" onClick={() => void run(async () => { const result = await api<{ selected: GbTarget[]; summary: Record<string, number> }>("/admin/greenbone/imports/" + jobId + "/apply", { method: "POST", body: { dry_run: true, selected } }); setMessage(result.selected.length + " " + t("admin.gbTargets") + " — " + t("admin.gbDryRunText")); })}>{t("admin.gbPreview")} ({selected.length})</Button>
+          <Button disabled={!selected.length} onClick={() => void run(async () => { if (!window.confirm(t("admin.gbApply") + " ?")) return; const result = await api<GbJob>("/admin/greenbone/imports/" + jobId + "/apply", { method: "POST", body: { dry_run: false, selected } }); setMessage(t("admin.gbPending")); await reload(); setJobId(result.id); })}>{t("admin.gbApply")}</Button>
         </div>
         {message && <Note tone="success">{message}</Note>}
       </CardContent></Card>}
       <Card><CardHeader><CardTitle>{t("admin.gbHistory")}</CardTitle></CardHeader><CardContent>
-        {jobs.length ? <Table><thead><tr><Th>{t("col.date")}</Th><Th>{t("col.name")}</Th><Th>Source</Th><Th>Demandeur</Th><Th>{t("col.status")}</Th><Th>Résultat</Th><Th>{t("admin.error")}</Th><Th /></tr></thead><tbody>{jobs.map((job) => <tr key={job.id}><Td>{formatDate(job.created_at, locale)}</Td><Td>{job.mode.toUpperCase()}</Td><Td>{job.source_name}</Td><Td className="font-mono text-xs">{job.requested_by || "—"}</Td><Td>{job.status}{job.progress?.phase && <div className="text-xs text-muted">{job.progress.phase}</div>}</Td><Td className="text-xs">{job.result?.objects && <div>Targets {job.result.objects.targets ?? 0} · Tasks {job.result.objects.tasks ?? 0}</div>}{job.result?.applied && <div>Créées {job.result.applied.created ?? 0} · Réutilisées {job.result.applied.reused ?? 0} · Définitions {job.result.applied.definitions_created ?? 0}</div>}</Td><Td className="text-xs text-danger">{job.error}</Td><Td>{job.status === "done" && <Button size="sm" variant="outline" onClick={() => void run(() => loadPreview(job.id))}>{t("admin.gbPreview")}</Button>}</Td></tr>)}</tbody></Table> : <Empty>—</Empty>}
+        {jobs.length ? <Table><thead><tr><Th>{t("col.date")}</Th><Th>{t("col.name")}</Th><Th>Source</Th><Th>Demandeur</Th><Th>{t("col.status")}</Th><Th>Résultat</Th><Th>{t("admin.error")}</Th><Th /></tr></thead><tbody>{jobs.map((job) => <tr key={job.id}><Td>{formatDate(job.created_at, locale)}</Td><Td>{job.mode.toUpperCase()}</Td><Td>{job.source_name}</Td><Td className="font-mono text-xs">{job.requested_by || "—"}</Td><Td>{job.status}{job.progress?.phase && <div className="text-xs text-muted">{job.progress.phase}</div>}</Td><Td className="text-xs">{job.result?.objects && <div>{t("admin.gbTargetsRetrieved")}: {job.result.objects.targets ?? 0}</div>}{job.result?.applied && <div>{job.result.applied.created ?? 0} {t("admin.gbCreatedCount")} · {job.result.applied.reused ?? 0} {t("admin.gbReusedCount")} · {job.result.applied.ambiguous ?? 0} {t("admin.gbTargetsAmbiguous")}</div>}</Td><Td className="text-xs text-danger">{job.error}</Td><Td>{job.status === "done" && <Button size="sm" variant="outline" onClick={() => void run(() => loadPreview(job.id))}>{t("admin.gbPreview")}</Button>}</Td></tr>)}</tbody></Table> : <Empty>—</Empty>}
       </CardContent></Card>
     </div>
   );
