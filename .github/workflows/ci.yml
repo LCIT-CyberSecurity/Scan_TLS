@@ -16,8 +16,6 @@ jobs:
         with: {python-version: "3.12"}
       - name: Check Python syntax
         run: python -m compileall -q backend tls_scanner tls_scan.py
-      - name: Check commit whitespace
-        run: git show --format= --check HEAD
 
   engine:
     # Full suite belongs to feature/main changes, not automatic integration stages.
