@@ -21,7 +21,7 @@ const run: Run = {
   status: "completed", phase: "completed", queued_at: "2026-11-17T10:00:00Z", started_at: null,
   finished_at: "2026-11-17T10:01:00Z", duration_seconds: 60, cancel_requested: false, error: "",
   progress: null, summary: { non_compliant_endpoints: 0 }, policy_versions: [], reports: [
-    { format: "html", size: 1000 }, { format: "csv", size: 200 }, { format: "findings_csv", size: 150 },
+    { format: "html", size: 1000 }, { format: "csv", size: 200 }, { format: "findings_csv", size: 150 }, { format: "service_csv", size: 180 },
   ],
 };
 
@@ -38,6 +38,7 @@ describe("Reports page", () => {
     expect(csv).toHaveAttribute("href", "/api/scan-runs/run-1/reports/csv");
     expect(csv).not.toHaveAttribute("target");
     expect(screen.getByRole("link", { name: "FINDINGS CSV" })).toHaveAttribute("href", "/api/scan-runs/run-1/reports/findings_csv");
+    expect(screen.getByRole("link", { name: "SERVICES CSV" })).toHaveAttribute("href", "/api/scan-runs/run-1/reports/service_csv");
   });
 
   it("filters reports by format and preserves legacy single-report links", async () => {

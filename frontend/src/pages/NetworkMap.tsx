@@ -409,6 +409,14 @@ export default function NetworkMap() {
           <div className="network-map-detail-meta"><span>{[...systems.filter((item) => host.target.si_ids.includes(item.id)).map((item) => item.name), ...host.target.zones.map((item) => item.name)].join(" · ") || t("map.zone")}</span><span>{host.target.ports || t("map.profilePorts")}</span></div>
           {!host.scan ? <p className="network-map-no-scan">{t("map.noScan")}</p> : <>
             <div className="network-map-scan-summary"><span>{t("map.lastScan")}</span><time>{new Date(host.scan.finished_at).toLocaleString(locale)}</time><strong>{host.scan.status}</strong></div>
+            {!!host.scan.services?.length && <><h3>{t("service.results" as never)} <small>{host.scan.services.length}</small></h3>
+              <p className="text-xs text-muted">{t("service.lastObserved" as never)} {host.scan.service_scan_finished_at ? new Date(host.scan.service_scan_finished_at).toLocaleString(locale) : "—"}</p>
+              <div className="network-map-endpoints">{host.scan.services.map((service, index) => <article key={`${service.target}:${service.port ?? "none"}:${index}`}>
+                <div><strong>{service.service || t("service.unknown" as never)}</strong><span>{service.port ? `:${service.port}/${service.transport}` : ""}</span></div>
+                <small>{[service.product, service.version].filter(Boolean).join(" ") || service.extra_info || "—"}</small>
+                <small>{service.address && service.address !== service.target ? `${service.address} · ` : ""}{service.status} · {Math.round(service.confidence * 100)}% · {service.source}</small>
+              </article>)}</div>
+            </>}
             <div className="network-map-severity-list">{severityEntries.map(([key, count]) => <span key={key} className={`severity-${key}`}>{t(`map.${key}` as never)} <b>{count}</b></span>)}</div>
             <h3>{t("map.endpoints")} <small>{host.scan.endpoints.length}</small></h3>
             <div className="network-map-endpoints">{host.scan.endpoints.map((endpoint) => <article key={endpoint.endpoint_id}>

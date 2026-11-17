@@ -86,12 +86,14 @@ class ScanOutcome:
     skipped_hosts: list[str] = field(default_factory=list)
     excluded_targets: list[str] = field(default_factory=list)  # targets dropped because an exclusion covers them entirely
     duration_seconds: float = 0.0
+    open_ports: dict[str, list[int]] = field(default_factory=dict)
+    scope_names_by_ip: dict[str, list[str]] = field(default_factory=dict)
 
 
 Hook = Callable[[str, dict[str, Any]], None]
 
 
-def collect_job_results(job, targets, logger, nmap, tqdm, cancel_event=None, on_event: Hook | None = None, on_host_done=None):
+def collect_job_results(job, targets, logger, nmap, tqdm, cancel_event=None, on_event: Hook | None = None, on_host_done=None, on_open_ports=None):
     """Discovery + TLS scan + grading; shared by the CLI and the worker. Returns (results, findings)."""
     emit = on_event or (lambda name, data: None)
     results = []
@@ -114,6 +116,8 @@ def collect_job_results(job, targets, logger, nmap, tqdm, cancel_event=None, on_
                 open_ports.pop(host)
             if dropped:
                 logger.info("excluded_hosts count=%s", len(dropped))
+        if on_open_ports:
+            on_open_ports(open_ports, resolve_requested_names(targets))
         discovered_count = sum(len(ports) for ports in open_ports.values())
         logger.info("port_discovery_done hosts=%s open_ports=%s", len(open_ports), discovered_count)
         emit("phase", {"phase": "tls_scan", "hosts": sorted(open_ports)})
@@ -130,6 +134,14 @@ def collect_job_results(job, targets, logger, nmap, tqdm, cancel_event=None, on_
         logger.info("tls_scan_start targets=%s ports=%s", targets, job.ports)
         emit("phase", {"phase": "tls_scan", "hosts": targets.split()})
         run_scan_with_progress(scanner, tqdm, "TLS scan", hosts=targets, ports=job.ports, arguments=tls_arguments)
+        if on_open_ports:
+            open_ports = {}
+            for host in scanner.all_hosts():
+                if "tcp" in scanner[host]:
+                    ports = sorted(port for port, info in scanner[host]["tcp"].items() if info.get("state") == "open")
+                    if ports:
+                        open_ports[host] = ports
+            on_open_ports(open_ports, resolve_requested_names(targets))
         collect_scan_results(scanner, job, results, findings, fqdn_cache, cancel_event)
         logger.info("tls_scan_done targets=%s ports=%s", targets, job.ports)
 
@@ -139,7 +151,8 @@ def collect_job_results(job, targets, logger, nmap, tqdm, cancel_event=None, on_
     return results, findings
 
 
-def execute_scan(job: ScanJob, cancel_event=None, on_event: Hook | None = None, passes: list[tuple[str, str]] | None = None) -> ScanOutcome:
+def execute_scan(job: ScanJob, cancel_event=None, on_event: Hook | None = None, passes: list[tuple[str, str]] | None = None,
+                 collect_open_ports: bool = False) -> ScanOutcome:
     """Run a validated `ScanJob` and write its exports. Never prints, never exits.
 
     `passes` (optional) is a list of (targets, ports) executed one after the other with the same job
@@ -187,13 +200,22 @@ def execute_scan(job: ScanJob, cancel_event=None, on_event: Hook | None = None, 
 
     logger.info("scan_start targets=%s ports=%s workers=%s crypto=%s", targets, job.ports, job.workers, job.crypto)
     results, findings = [], {}
+    open_ports_by_host: dict[str, set[int]] = {}
+    scope_names_by_ip: dict[str, set[str]] = {}
+
+    def remember_open_ports(found: dict[str, list[int]], names_by_ip: dict[str, tuple[str, ...]] | None = None) -> None:
+        for host, ports in found.items():
+            open_ports_by_host.setdefault(host, set()).update(ports)
+        for host, names in (names_by_ip or {}).items():
+            scope_names_by_ip.setdefault(host, set()).update(names)
     for pass_targets, pass_ports in pass_list:
         if cancel_event is not None and cancel_event.is_set():
             skipped.extend(normalize_targets(pass_targets).split())
             continue
         pass_job = ScanJob(**{**job.__dict__, "targets": pass_targets, "ports": pass_ports})
         pass_results, pass_findings = collect_job_results(
-            pass_job, normalize_targets(pass_targets), logger, nmap, QuietProgress, cancel_event, on_event, host_done
+            pass_job, normalize_targets(pass_targets), logger, nmap, QuietProgress, cancel_event, on_event, host_done,
+            remember_open_ports if collect_open_ports else None,
         )
         results.extend(pass_results)
         findings.update(pass_findings)
@@ -214,4 +236,6 @@ def execute_scan(job: ScanJob, cancel_event=None, on_event: Hook | None = None, 
         skipped_hosts=skipped,
         excluded_targets=excluded_targets,
         duration_seconds=duration,
+        open_ports={host: sorted(ports) for host, ports in open_ports_by_host.items()},
+        scope_names_by_ip={host: sorted(names) for host, names in scope_names_by_ip.items()},
     )

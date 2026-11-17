@@ -294,7 +294,19 @@ def _link_out(item: NetworkLink) -> dict:
 def _target_latest(db: DbSession, target_values: set[str]) -> dict[str, dict]:
     """Return the most recent persisted TLS result whose run actually included the target value."""
     latest: dict[str, tuple[datetime, ScanRun]] = {}
+    latest_services: dict[str, tuple[datetime, list[dict]]] = {}
     scanned_ports: dict[str, set[str]] = {}
+    targets_by_ip: dict[str, set[str]] = {}
+    target_networks: list[tuple[str, ipaddress.IPv4Network | ipaddress.IPv6Network]] = []
+    for value in target_values:
+        try:
+            network = ipaddress.ip_network(value, strict=False)
+        except ValueError:
+            continue
+        if network.prefixlen == network.max_prefixlen:
+            targets_by_ip.setdefault(str(network.network_address), set()).add(value)
+        else:
+            target_networks.append((value, network))
     for run in db.execute(select(ScanRun).where(ScanRun.status.in_(FINISHED), ScanRun.finished_at.is_not(None)).order_by(ScanRun.finished_at.desc())).scalars():
         for pass_ in (run.config_snapshot or {}).get("passes", []):
             for value in pass_.get("targets", []):
@@ -304,6 +316,23 @@ def _target_latest(db: DbSession, target_values: set[str]) -> dict[str, dict]:
                     latest[value] = (run.finished_at, run)
                 if latest[value][1].id == run.id:
                     scanned_ports.setdefault(value, set()).add(str(pass_.get("ports", "")))
+        run_services: dict[str, list[dict]] = {}
+        for observation in run.service_observations or []:
+            observed_target = str(observation.get("target", ""))
+            matches = {observed_target} if observed_target in target_values else set()
+            matches.update(set(observation.get("scope_targets") or []) & target_values)
+            observed_address = observation.get("address")
+            if observed_address:
+                try:
+                    address = ipaddress.ip_address(observed_address)
+                    matches.update(targets_by_ip.get(str(address), set()))
+                    matches.update(value for value, network in target_networks if address in network)
+                except ValueError:
+                    pass
+            for value in matches:
+                run_services.setdefault(value, []).append(observation)
+        for value, observations in run_services.items():
+            latest_services.setdefault(value, (run.finished_at, observations))
     run_ids = {run.id for _, run in latest.values()}
     endpoints_by_run: dict[uuid.UUID, list[RunEndpoint]] = {}
     if run_ids:
@@ -314,7 +343,9 @@ def _target_latest(db: DbSession, target_values: set[str]) -> dict[str, dict]:
         result = out.setdefault(value, {"run_id": str(run.id), "status": run.status, "finished_at": finished_at,
                                         "endpoints": [], "severity": {"critical": 0, "high": 0, "medium": 0, "low": 0},
                                         "compliant": 0, "non_compliant": 0, "unevaluated": 0,
-                                        "scanned_ports": sorted(scanned_ports.get(value, set()))})
+                                        "scanned_ports": sorted(scanned_ports.get(value, set())),
+                                        "services": latest_services.get(value, (None, []))[1],
+                                        "service_scan_finished_at": latest_services.get(value, (None, []))[0]})
         for endpoint in endpoints_by_run.get(run.id, []):
             # Only associate an endpoint with its exact scanned name/address. A CIDR is safe to match because the run
             # itself explicitly scanned that network; DNS aliases and shared IPs are otherwise kept separate.

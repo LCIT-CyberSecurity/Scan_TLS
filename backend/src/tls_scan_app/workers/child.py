@@ -16,6 +16,7 @@ from tls_scan_app.services.planner import job_from_snapshot
 from tls_scanner.runner import execute_scan
 from tls_scan_app.services.ipsec import evaluate_policy, probe
 from tls_scan_app.services.ssh_audit import audit_target, evaluate_ssh_policy
+from tls_scan_app.services.service_identification import identify_services, write_report as write_service_report
 import csv
 import html
 import io
@@ -153,13 +154,25 @@ def main(argv: list[str]) -> int:
     payload = json.loads(snapshot_path.read_text())
     cancel = threading.Event()
     signal.signal(signal.SIGTERM, lambda *_: cancel.set())
+    def scan_services(snapshot: dict, passes: list[dict], open_ports: dict[str, list[int]] | None = None,
+                      scope_names_by_ip: dict[str, list[str]] | None = None):
+        config = snapshot.get("service_identification")
+        if not config or not config.get("enabled") or cancel.is_set():
+            return [], []
+        emit("phase", {"phase": "service_identification", "hosts": sorted({t for p in passes for t in p["targets"]})})
+        observations, _metadata = identify_services(passes, config, open_ports=open_ports,
+                                                     scope_names_by_ip=scope_names_by_ip, cancel=cancel)
+        files = write_service_report(observations, Path(payload["export_dir"]), payload["run_id"], snapshot["export_formats"])
+        return observations, files
     if payload["snapshot"].get("control_type") == "ssh":
         snapshot = payload["snapshot"]
         observations, targets = scan_ssh(snapshot["ssh"], cancel, emit)
         written = write_ssh_reports(observations, Path(payload["export_dir"]), payload["run_id"], snapshot["export_formats"])
+        service_observations, service_files = scan_services(snapshot, snapshot["passes"])
         outcome_path.write_text(json.dumps({"status": "partial" if cancel.is_set() else "completed",
-            "report_model": {"statistics": {"ssh_observations": len(observations)}}, "ssh_observations": observations,
-            "written_files": written, "scanned_hosts": targets, "skipped_hosts": [], "duration_seconds": 0}, default=str))
+            "report_model": {"statistics": {"ssh_observations": len(observations), "service_observations": len(service_observations)}}, "ssh_observations": observations,
+            "service_observations": service_observations,
+            "written_files": [*written, *service_files], "scanned_hosts": targets, "skipped_hosts": [], "duration_seconds": 0}, default=str))
         return 0
     if payload["snapshot"].get("control_type") == "ipsec":
         snapshot = payload["snapshot"]
@@ -217,9 +230,11 @@ def main(argv: list[str]) -> int:
             else:
                 continue
             written.append(str(path))
+        service_observations, service_files = scan_services(snapshot, snapshot["passes"])
         outcome_path.write_text(json.dumps({"status": "partial" if cancel.is_set() else "completed",
-            "report_model": {"statistics": {"ipsec_observations": len(observations)}}, "ipsec_observations": observations,
-            "written_files": written, "scanned_hosts": targets, "skipped_hosts": [],
+            "report_model": {"statistics": {"ipsec_observations": len(observations), "service_observations": len(service_observations)}}, "ipsec_observations": observations,
+            "service_observations": service_observations,
+            "written_files": [*written, *service_files], "scanned_hosts": targets, "skipped_hosts": [],
             "duration_seconds": 0}, default=str))
         return 0
     if "tls" not in payload["snapshot"].get("enabled_controls", []) and "ipsec" in payload["snapshot"].get("enabled_controls", []):
@@ -231,16 +246,27 @@ def main(argv: list[str]) -> int:
         if snapshot.get("ssh") and "ssh" in snapshot["enabled_controls"] and not cancel.is_set():
             ssh_observations, ssh_targets = scan_ssh(snapshot["ssh"], cancel, emit)
             ssh_files = write_ssh_reports(ssh_observations, Path(payload["export_dir"]), payload["run_id"], snapshot["export_formats"])
+        service_observations, service_files = scan_services(snapshot, snapshot["passes"])
         outcome_path.write_text(json.dumps({"status": "partial" if cancel.is_set() else "completed",
-            "report_model": {"statistics": {"ipsec_observations": len(ike_observations), "ssh_observations": len(ssh_observations)}},
+            "report_model": {"statistics": {"ipsec_observations": len(ike_observations), "ssh_observations": len(ssh_observations), "service_observations": len(service_observations)}},
             "ipsec_observations": ike_observations, "ssh_observations": ssh_observations,
-            "written_files": [*ike_files, *ssh_files], "scanned_hosts": sorted(set(ike_targets + ssh_targets)),
+            "service_observations": service_observations,
+            "written_files": [*ike_files, *ssh_files, *service_files], "scanned_hosts": sorted(set(ike_targets + ssh_targets)),
             "skipped_hosts": [], "duration_seconds": 0}, default=str))
         return 0
     job, passes = job_from_snapshot(
         payload["snapshot"], payload["run_id"], payload["export_dir"], payload.get("log_file"), payload["max_workers"]
     )
-    outcome = execute_scan(job, cancel_event=cancel, on_event=emit, passes=passes)
+    service_config = payload["snapshot"].get("service_identification") or {}
+    outcome = execute_scan(job, cancel_event=cancel, on_event=emit, passes=passes,
+                           collect_open_ports=bool(service_config.get("enabled")))
+    service_observations, service_files = scan_services(payload["snapshot"], payload["snapshot"]["passes"],
+                                                        open_ports=getattr(outcome, "open_ports", {}) if service_config.get("enabled") else None,
+                                                        scope_names_by_ip=getattr(outcome, "scope_names_by_ip", {}))
+    if service_observations:
+        outcome.report_model["statistics"]["service_observations"] = len(service_observations)
+        outcome.written_files.extend(service_files)
+        outcome.service_observations = service_observations
     ipsec_config = payload["snapshot"].get("ipsec")
     if ipsec_config and "ipsec" in payload["snapshot"].get("enabled_controls", []):
         targets = ipsec_config.get("targets") or sorted({target for item in payload["snapshot"]["passes"] for target in item["targets"]})
@@ -272,6 +298,7 @@ def main(argv: list[str]) -> int:
         "mail_security_results": mail_security_results,
         "ipsec_observations": getattr(outcome, "ipsec_observations", []),
         "ssh_observations": getattr(outcome, "ssh_observations", []),
+        "service_observations": getattr(outcome, "service_observations", service_observations),
     }, default=str))
     return 0
 

@@ -98,7 +98,24 @@ export function TrustAuthorities({ cert, setCert }: { cert: Content; setCert: (p
   );
 }
 
-function ProfileForm({ value, onChange }: { value: Content; onChange: (c: Content) => void }) {
+function ServiceIdentificationProfileForm({ value, onChange }: { value: Content; onChange: (c: Content) => void }) {
+  const { t } = useI18n();
+  const settings = value ?? {};
+  const patch = (key: string, next: unknown) => onChange({ ...settings, [key]: next });
+  return <div className="space-y-3 rounded-sm border border-hairline p-3">
+    <h4 className="text-sm font-medium">{t("service.profileTitle" as never)}</h4>
+    <div className="grid gap-3 sm:grid-cols-2">
+      <Field label={t("service.strategy" as never)}><select className="w-full" value={settings.strategy ?? "fast"} onChange={(e) => patch("strategy", e.target.value)}><option value="fast">{t("service.fast" as never)}</option><option value="detailed">{t("service.detailed" as never)}</option></select></Field>
+      <Field label={t("service.maxTargets" as never)}><Input type="number" min={1} max={128} value={settings.max_targets ?? 64} onChange={(e) => patch("max_targets", Number(e.target.value))} /></Field>
+      <Field label={t("service.maxServices" as never)}><Input type="number" min={1} max={500} value={settings.max_services ?? 200} onChange={(e) => patch("max_services", Number(e.target.value))} /></Field>
+      <Field label={t("service.timeout" as never)}><Input type="number" min={5} max={90} value={settings.timeout_seconds ?? 45} onChange={(e) => patch("timeout_seconds", Number(e.target.value))} /></Field>
+      <Field label={t("service.parallelism" as never)}><Input type="number" min={1} max={10} value={settings.max_parallelism ?? 5} onChange={(e) => patch("max_parallelism", Number(e.target.value))} /></Field>
+    </div>
+    <p className="text-xs text-muted">{t("service.profileHint" as never)}</p>
+  </div>;
+}
+
+function ProfileForm({ value, onChange, includeServiceSettings = true }: { value: Content; onChange: (c: Content) => void; includeServiceSettings?: boolean }) {
   const { t } = useI18n();
   const scan = value.scan ?? {};
   const cert = value.checks?.certificate ?? {};
@@ -120,15 +137,17 @@ function ProfileForm({ value, onChange }: { value: Content; onChange: (c: Conten
       {check(t("prof.revocation"), rev.enabled ?? false, (b) => setCert({ revocation: { ...rev, enabled: b } }))}
       {rev.enabled && <div className="ml-6 space-y-2">{check("OCSP", rev.ocsp ?? true, (b) => setCert({ revocation: { ...rev, ocsp: b } }))}{check("CRL", rev.crl ?? true, (b) => setCert({ revocation: { ...rev, crl: b } }))}</div>}
       <TlsChecksPicker value={value} onChange={onChange} />
+      {includeServiceSettings && <ServiceIdentificationProfileForm value={value.service_identification ?? {}} onChange={(service_identification) => onChange({ ...value, service_identification })} />}
     </div>
   );
 }
 
 function GenericProfileForm({ value, onChange }: { value: Content; onChange: (c: Content) => void }) {
   return <div className="space-y-6">
-    <section className="space-y-3"><h3 className="text-sm font-semibold">TLS</h3><ProfileForm value={value.tls ?? {}} onChange={(tls) => onChange({ ...value, tls })} /></section>
+    <section className="space-y-3"><h3 className="text-sm font-semibold">TLS</h3><ProfileForm value={value.tls ?? {}} onChange={(tls) => onChange({ ...value, tls })} includeServiceSettings={false} /></section>
     <section className="space-y-3"><h3 className="text-sm font-semibold">VPN IPsec / IKE</h3><IpsecProfileForm value={value.ipsec ?? { ike: { versions: ["IKEv1", "IKEv2"], ports: [500, 4500], timeout_ms: 1000, retries: 0, nat_t: true, aggressive_mode: false } }} onChange={(ipsec) => onChange({ ...value, ipsec })} /></section>
     <section className="space-y-3"><h3 className="text-sm font-semibold">SSH</h3><SshProfileForm value={value} onChange={onChange} /></section>
+    <section className="space-y-3"><ServiceIdentificationProfileForm value={value.service_identification ?? {}} onChange={(service_identification) => onChange({ ...value, service_identification })} /></section>
   </div>;
 }
 
@@ -245,6 +264,7 @@ export default function Policies() {
           tls: { scan: { ports: "fast", crypto: "standard", resolve_dns: true, workers: 4 }, checks: { certificate: { enabled: true, expires_within_days: 30, trust: { enabled: true }, revocation: { enabled: false } }, ...tlsDefaults } },
           ipsec: { ike: { versions: ["IKEv1", "IKEv2"], ports: [500, 4500], timeout_ms: 1000, retries: 0, nat_t: true, aggressive_mode: false } },
           ssh: { ports: [22], timeout_seconds: 2, preset: "quick", max_targets: 256 },
+          service_identification: { strategy: "fast", max_targets: 64, max_services: 200, timeout_seconds: 45, max_parallelism: 5 },
         }} /></TabsContent>
         <TabsContent value="templates"><TemplatesTab /></TabsContent>
       </Tabs>
