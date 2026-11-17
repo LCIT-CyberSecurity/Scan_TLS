@@ -660,6 +660,8 @@ export const de: Messages = {
   "map.closePanel": "Details schließen",
   "nav.section.results": "Ergebnisse",
   "nav.section.admin": "Administration",
+  "nav.collapseSidebar": "Seitenleiste einklappen",
+  "nav.expandSidebar": "Seitenleiste ausklappen",
   "nav.openMenu": "Menü öffnen",
   "brand.tagline": "TLS-Konformität",
   "brand.signedInAs": "Angemeldet als {role}",

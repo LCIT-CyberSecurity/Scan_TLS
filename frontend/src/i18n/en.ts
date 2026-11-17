@@ -659,6 +659,8 @@ export const en = {
   "map.closePanel": "Close details",
   "nav.section.results": "Results",
   "nav.section.admin": "Administration",
+  "nav.collapseSidebar": "Collapse sidebar",
+  "nav.expandSidebar": "Expand sidebar",
   "nav.openMenu": "Open the menu",
   "brand.tagline": "TLS compliance",
   "brand.signedInAs": "Signed in as {role}",
