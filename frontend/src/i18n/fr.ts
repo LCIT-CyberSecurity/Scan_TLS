@@ -647,6 +647,8 @@ export const fr: Messages = {
   "map.closePanel": "Fermer le détail",
   "nav.section.results": "Résultats",
   "nav.section.admin": "Administration",
+  "nav.collapseSidebar": "Réduire la barre latérale",
+  "nav.expandSidebar": "Développer la barre latérale",
   "nav.openMenu": "Ouvrir le menu",
   "brand.tagline": "Conformité TLS",
   "brand.signedInAs": "Connecté en tant que {role}",

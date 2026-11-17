@@ -1,9 +1,9 @@
 import { expect, test } from "@playwright/test";
-import { DEMO, login } from "./helpers";
+import { DEMO, login, navigateSidebar } from "./helpers";
 
 test("operator: the profile form offers the complementary TLS checks, recommended ones pre-selected for a new profile", async ({ page }) => {
   await login(page, "operator@crashtest.example.com", DEMO);
-  await page.getByRole("link", { name: "Profiles" }).click();
+  await navigateSidebar(page, "Scanning", "Profiles");
   await page.getByRole("tab", { name: "Scan profiles" }).click();
   await page.getByRole("button", { name: "New", exact: true }).click();
   const dialog = page.getByRole("dialog");
@@ -50,7 +50,7 @@ test("operator: the profile form offers the complementary TLS checks, recommende
 
 test("operator: an existing profile shows the checks unticked and is saved unchanged", async ({ page }) => {
   await login(page, "operator@crashtest.example.com", DEMO);
-  await page.getByRole("link", { name: "Profiles" }).click();
+  await navigateSidebar(page, "Scanning", "Profiles");
   await page.getByRole("tab", { name: "Scan profiles" }).click();
   await page.getByRole("button", { name: "Edit" }).first().click();
   const zone = page.getByRole("dialog").getByRole("group", { name: "Complementary TLS checks" });
