@@ -25,6 +25,7 @@ reader = require_role(Role.USER)  # AUDITOR only consults reports
 
 class DefinitionBody(BaseModel):
     name: str = Field(min_length=1, max_length=160)
+    control_type: str = "tls"
     description: str = ""
     target_ids: list[uuid.UUID] = []
     group_ids: list[uuid.UUID] = []
@@ -41,7 +42,7 @@ def out(db: DbSession, d: ScanDefinition) -> dict:
     cls = classification_of(db, "definition", [d.id])[d.id]
     return {
         "id": str(d.id), "name": d.name, "description": d.description, "owner_id": str(d.owner_id) if d.owner_id else None,
-        "profile_id": str(d.profile_id), "report_template_id": str(d.report_template_id) if d.report_template_id else None,
+        "profile_id": str(d.profile_id), "control_type": d.control_type, "report_template_id": str(d.report_template_id) if d.report_template_id else None,
         "policy_mode": d.policy_mode, "exclusions": d.exclusions or [], "tags": cls["tags"], "si_ids": cls["si"],
         "target_ids": [str(x) for x in db.execute(select(DefinitionTarget.target_id).where(DefinitionTarget.definition_id == d.id)).scalars()],
         "group_ids": [str(x) for x in db.execute(select(DefinitionGroup.group_id).where(DefinitionGroup.definition_id == d.id)).scalars()],
@@ -56,13 +57,19 @@ def _apply(db: DbSession, d: ScanDefinition, body: DefinitionBody) -> None:
         raise HTTPException(422, "Select at least one target or group")
     if not body.policy_ids:
         raise HTTPException(422, "Select at least one policy")
-    get_or_404(db, ScanProfile, body.profile_id, "Profile")
+    if body.control_type not in {"tls", "ipsec"}:
+        raise HTTPException(422, "control_type must be tls or ipsec")
+    profile = get_or_404(db, ScanProfile, body.profile_id, "Profile")
+    if profile.technology != body.control_type:
+        raise HTTPException(422, "The selected profile technology does not match control_type")
     if body.report_template_id:
         get_or_404(db, ReportTemplate, body.report_template_id, "Report template")
     for model, ids, label in ((Target, body.target_ids, "Target"), (TargetGroup, body.group_ids, "Group"), (Policy, body.policy_ids, "Policy")):
         for i in ids:
-            get_or_404(db, model, i, label)
-    d.name, d.description, d.profile_id = body.name.strip(), body.description, body.profile_id
+            row = get_or_404(db, model, i, label)
+            if model is Policy and row.technology != body.control_type:
+                raise HTTPException(422, "A selected policy technology does not match control_type")
+    d.name, d.description, d.profile_id, d.control_type = body.name.strip(), body.description, body.profile_id, body.control_type
     d.report_template_id, d.policy_mode = body.report_template_id, body.policy_mode
     try:
         d.exclusions = list(parse_entries(body.exclusions))

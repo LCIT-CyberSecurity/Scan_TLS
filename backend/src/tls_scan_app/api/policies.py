@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import yaml
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
@@ -31,6 +31,7 @@ class VersionedBody(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     description: str = ""
     content: dict[str, Any]
+    technology: str = "tls"
 
 
 def _kinds(kind: str):
@@ -38,12 +39,18 @@ def _kinds(kind: str):
         ScanProfile, ScanProfileVersion, ScanProfileVersion.profile_id, validate_profile_content)
 
 
-def _validate(validator, content, db: DbSession | None = None):
+def _validate(validator, content, technology: str, db: DbSession | None = None):
     try:
-        validator(content)
+        if technology not in {"tls", "ipsec"}:
+            raise PlanError("technology must be tls or ipsec")
+        if technology == "ipsec":
+            from tls_scan_app.services.ipsec import validate_ipsec_policy, validate_ipsec_profile
+            (validate_ipsec_policy if validator is validate_policy_content else validate_ipsec_profile)(content)
+        else:
+            validator(content)
         if validator is validate_profile_content and db is not None:
             trust_svc.validate_profile_selection(db, content)
-    except (PlanError, trust_svc.TrustStoreError) as error:
+    except (ValueError, trust_svc.TrustStoreError) as error:
         raise HTTPException(422, str(error)) from error
 
 
@@ -68,7 +75,7 @@ def version_out(v) -> dict:
 def item_out(db: DbSession, kind: str, item) -> dict:
     _, version_model, fk_col, _ = _kinds(kind)
     versions = db.execute(select(version_model).where(fk_col == item.id).order_by(version_model.version.desc())).scalars().all()
-    return {"id": str(item.id), "name": item.name, "description": item.description, "archived": item.archived,
+    return {"id": str(item.id), "name": item.name, "description": item.description, "technology": item.technology, "archived": item.archived,
             "versions": [version_out(v) for v in versions]}
 
 
@@ -80,13 +87,13 @@ def _register(kind: str) -> None:
     fk = _fk(kind)
 
     @router.get(f"/{kind}", name=f"list_{kind}")
-    def list_items(db: DbSession = Depends(get_db), _: User = Depends(reader)) -> list[dict]:
-        return [item_out(db, kind, i) for i in db.execute(select(model).order_by(model.name)).scalars()]
+    def list_items(technology: str = Query("tls", pattern="^(tls|ipsec)$"), db: DbSession = Depends(get_db), _: User = Depends(reader)) -> list[dict]:
+        return [item_out(db, kind, i) for i in db.execute(select(model).where(model.technology == technology).order_by(model.name)).scalars()]
 
     @router.post(f"/{kind}", status_code=201, name=f"create_{kind}")
     def create_item(body: VersionedBody, db: DbSession = Depends(get_db), user: User = Depends(operator)) -> dict:
-        _validate(validator, body.content, db)
-        item = model(name=body.name.strip(), description=body.description, created_by=user.id)
+        _validate(validator, body.content, body.technology, db)
+        item = model(name=body.name.strip(), description=body.description, technology=body.technology, created_by=user.id)
         db.add(item)
         try:
             db.flush()
@@ -106,7 +113,9 @@ def _register(kind: str) -> None:
     def new_version(item_id: uuid.UUID, body: VersionedBody, db: DbSession = Depends(get_db), user: User = Depends(operator)) -> dict:
         """Edit = a new draft version; published versions are never modified."""
         item = get_or_404(db, model, item_id)
-        _validate(validator, body.content, db)
+        if body.technology != item.technology:
+            raise HTTPException(422, "A version cannot change the technology of its parent")
+        _validate(validator, body.content, item.technology, db)
         if kind == "profiles":
             previous = db.execute(select(version_model).where(fk_col == item.id).order_by(version_model.version.desc()).limit(1)).scalar_one_or_none()
             _audit_trust_selection(db, user, item, trust_svc.selected_store_ids(previous.content) if previous else [],
@@ -139,7 +148,7 @@ def _register(kind: str) -> None:
     def duplicate(item_id: uuid.UUID, db: DbSession = Depends(get_db), user: User = Depends(operator)) -> dict:
         item = get_or_404(db, model, item_id)
         latest = db.execute(select(version_model).where(fk_col == item.id).order_by(version_model.version.desc()).limit(1)).scalar_one()
-        copy = model(name=_free_name(db, model, item.name), description=item.description, created_by=user.id)
+        copy = model(name=_free_name(db, model, item.name), description=item.description, technology=item.technology, created_by=user.id)
         db.add(copy)
         db.flush()
         db.add(version_model(**{fk: copy.id}, version=1, status=DRAFT, content=latest.content, created_by=user.id))
@@ -189,6 +198,8 @@ def import_policy_yaml(body: YamlBody, db: DbSession = Depends(get_db), user: Us
 @router.get("/policies/{item_id}/export-yaml", response_class=PlainTextResponse)
 def export_policy_yaml(item_id: uuid.UUID, db: DbSession = Depends(get_db), _: User = Depends(reader)) -> str:
     policy = get_or_404(db, Policy, item_id)
+    if policy.technology != "tls":
+        raise HTTPException(409, "IPsec policies do not use the TLS YAML format")
     version = db.execute(select(PolicyVersion).where(PolicyVersion.policy_id == policy.id).order_by(PolicyVersion.version.desc()).limit(1)).scalar_one()
     return yaml.safe_dump({"name": policy.name, "version": str(version.version), "description": policy.description, "tls": version.content}, sort_keys=False)
 
