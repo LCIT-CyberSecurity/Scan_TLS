@@ -1,7 +1,7 @@
 # CI mirrors the commands used on the integration VM (see docs/dev/testing.md). Not yet exercised on GitHub's runners.
 name: ci
 on:
-  push: {branches: [main, "feature/**"]}
+  push: {branches: [main, "_SANDBOX", "feature/**"]}
   pull_request:
 permissions: {contents: read}
 
