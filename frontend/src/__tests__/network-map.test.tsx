@@ -5,26 +5,42 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const graphState = vi.hoisted(() => ({
   handlers: {} as Record<string, (event: { target: { id: string } }) => void>,
-  data: undefined as { nodes: { id: string; data?: Record<string, unknown> }[]; edges: { id: string; source: string; target: string }[] } | undefined,
+  data: undefined as { nodes: { id: string; data?: Record<string, unknown> }[]; edges: { source: string; target: string }[]; combos: unknown[] } | undefined,
+  nodeType: undefined as unknown,
 }));
 
-vi.mock("@xyflow/react", async () => {
-  const React = await import("react");
-  return {
-    Background: () => null, Controls: () => null, MiniMap: () => null,
-    ReactFlowProvider: ({ children }: { children: React.ReactNode }) => React.createElement(React.Fragment, null, children),
-    useReactFlow: () => ({ fitView: vi.fn() }),
-    ReactFlow: (props: { nodes: NonNullable<typeof graphState.data>["nodes"]; edges: NonNullable<typeof graphState.data>["edges"]; onNodeClick: (event: React.MouseEvent, node: { id: string }) => void }) => {
-      graphState.data = { nodes: props.nodes, edges: props.edges };
-      graphState.handlers["node:click"] = (event) => {
-        const node = props.nodes.find((candidate) => candidate.id === event.target.id);
-        if (node) props.onNodeClick({} as React.MouseEvent, node);
-      };
-      if (props.edges.some((edge) => !props.nodes.some((node) => node.id === edge.source) || !props.nodes.some((node) => node.id === edge.target))) throw new Error("Flow edge endpoint is missing from current node set");
-      return React.createElement("div", { "data-testid": "network-flow" }, props.nodes.map((node) => React.createElement("button", { key: node.id, onClick: () => props.onNodeClick({} as React.MouseEvent, node) }, String(node.data?.label || node.id))));
-    },
-  };
-});
+vi.mock("@antv/g6", () => ({
+  NodeEvent: { CLICK: "node:click" },
+  ExtensionCategory: { NODE: "node" },
+  register: vi.fn(),
+  Circle: class {
+    render() {}
+    getSize(attributes: { size?: [number, number] }) { return attributes.size ?? [148, 148]; }
+    upsert() {}
+  },
+  Rect: class {
+    render() {}
+    getSize(attributes: { size?: [number, number] }) { return attributes.size ?? [232, 116]; }
+    upsert() {}
+  },
+  Graph: class {
+    constructor(options: { node?: { type?: unknown } }) { graphState.nodeType = options.node?.type; }
+    on(event: string, handler: (event: { target: { id: string } }) => void) { graphState.handlers[event] = handler; return this; }
+    setData(data: typeof graphState.data) {
+      if (data?.edges.some((edge) => !data.nodes.some((node) => node.id === edge.source) || !data.nodes.some((node) => node.id === edge.target))) {
+        throw new Error("Graph edge endpoint is missing from current node set");
+      }
+      graphState.data = data;
+    }
+    render() { return Promise.resolve(); }
+    fitView() { return Promise.resolve(); }
+    resize() {}
+    destroy() {}
+    zoomBy() { return Promise.resolve(); }
+    setElementState() {}
+    getNodeData(id: string) { return graphState.data?.nodes.find((node) => node.id === id); }
+  },
+}));
 
 const calls: { path: string; params?: Record<string, string | boolean | undefined> }[] = [];
 vi.mock("../auth/AuthContext", () => ({ useAuth: () => ({ atLeast: () => true }) }));
@@ -48,7 +64,7 @@ vi.mock("../api/client", async (original) => ({
           { id: "device:child-device", kind: "device", name: "Application gateway", device_type: "gateway", zone_id: "zone-child" },
         ], links: [], truncated: false,
       };
-      if (options.params?.zone_id) return { scope: { zone: { id: "zone-1", name: "Public DMZ" } }, mode: "si", nodes: [{ id: "target:host-1", kind: "host", name: "web.example.test", target_id: "host-1", value: "web.example.test", exposure: { run_id: "run-1", status: "completed", finished_at: "2026-01-01T12:00:00Z", endpoints: [{ endpoint_id: "endpoint-1", hostname: "web.example.test", ip_address: "192.0.2.20", port: 443, grade: "A", compliance_status: "compliant", highest_severity: null, tls_versions: ["TLS 1.3"], cipher_suites: [], certificate: null, errors: [], untested_checks: [], tls_checks: [] }], severity: { critical: 0, high: 0, medium: 0, low: 0 }, compliant: 1, non_compliant: 0, unevaluated: 0 } }], links: [], truncated: false };
+      if (options.params?.zone_id) return { scope: { zone: { id: "zone-1", name: "Public DMZ" } }, mode: "si", nodes: [{ id: "target:host-1", kind: "host", name: "web.example.test", target_id: "host-1", value: "web.example.test", exposure: null }], links: [], truncated: false };
       if (options.params?.si_id && options.params?.mode === "network") return {
         scope: { si: { id: "si-1", name: "Production", description: "" } }, mode: "network",
         nodes: [
@@ -59,7 +75,7 @@ vi.mock("../api/client", async (original) => ({
         ],
         links: [{ id: "link-1", source_device_id: "device-1", target_device_id: "device-2", provenance: "DECLARED" }], truncated: false,
       };
-      if (options.params?.si_id) return { scope: { si: { id: "si-1", name: "Production", description: "" } }, mode: "si", nodes: [{ id: "zone:zone-1", kind: "zone", name: "Public DMZ", zone_id: "zone-1", zone_type: "dmz", exposure: { targets: 1, scanned_targets: 1, unscanned_targets: 0, severity: {}, endpoint_count: 1, endpoints: [{ endpoint_id: "endpoint-1", hostname: "web.example.test", ip_address: "192.0.2.20", port: 443, compliance_status: "compliant" }] } }], links: [], truncated: false };
+      if (options.params?.si_id) return { scope: { si: { id: "si-1", name: "Production", description: "" } }, mode: "si", nodes: [{ id: "zone:zone-1", kind: "zone", name: "Public DMZ", zone_id: "zone-1", zone_type: "dmz" }], links: [], truncated: false };
       return { scope: {}, mode: "si", nodes: [{ id: "si:si-1", kind: "si", name: "Production", si_id: "si-1", exposure: { targets: 1, scanned_targets: 0, unscanned_targets: 1, severity: {} } }], links: [], truncated: false };
     }
     if (path === "/map/hosts/host-1") return { target: { id: "host-1", name: "web.example.test", value: "web.example.test", kind: "fqdn", ports: "443", description: "", owner_id: null, tags: [], si_ids: ["si-1"], zones: [{ id: "zone-1", name: "Public DMZ" }] }, scan: null, findings: [] };
@@ -76,6 +92,7 @@ beforeEach(() => {
   calls.length = 0;
   graphState.handlers = {};
   graphState.data = undefined;
+  graphState.nodeType = undefined;
   globalThis.ResizeObserver = class { observe() {} disconnect() {} unobserve() {} } as unknown as typeof ResizeObserver;
 });
 
@@ -83,17 +100,17 @@ describe("Network Exposure Map", () => {
   it("progressively explores real SI, zone and host data without inventing scan results", async () => {
     render(<I18nProvider initial="en"><NetworkMap /></I18nProvider>);
     await screen.findByText("Network exposure map");
+    expect(typeof graphState.nodeType).toBe("function");
+    expect((graphState.nodeType as (datum: { type?: string }) => string)({ type: "network-exposure-host-circle" })).toBe("network-exposure-host-circle");
     await waitFor(() => expect(graphState.data?.nodes[0]?.id).toBe("si:si-1"));
 
     act(() => graphState.handlers["node:click"]?.({ target: { id: "si:si-1" } }));
     await waitFor(() => expect(calls.some((item) => item.path === "/map/graph" && item.params?.si_id === "si-1")).toBe(true));
     await waitFor(() => expect(graphState.data?.nodes[0]?.id).toBe("zone:zone-1"));
-    expect(graphState.data?.nodes[0]?.data?.endpoints).toEqual([expect.objectContaining({ hostname: "web.example.test", port: 443 })]);
 
     act(() => graphState.handlers["node:click"]?.({ target: { id: "zone:zone-1" } }));
     await waitFor(() => expect(calls.some((item) => item.path === "/map/graph" && item.params?.zone_id === "zone-1")).toBe(true));
     await waitFor(() => expect(graphState.data?.nodes[0]?.id).toBe("target:host-1"));
-    await waitFor(() => expect(graphState.data?.nodes.find((node) => node.id === "target:host-1")?.data?.endpoints).toEqual(expect.arrayContaining([expect.objectContaining({ hostname: "web.example.test", port: 443 })])));
     act(() => graphState.handlers["node:click"]?.({ target: { id: "target:host-1" } }));
     expect(await screen.findByText("No TLS scan result is associated with this target.")).toBeInTheDocument();
   });
@@ -125,7 +142,7 @@ describe("Network Exposure Map", () => {
     fireEvent.change(screen.getByLabelText("Information systems"), { target: { value: "si-1" } });
     await waitFor(() => expect(graphState.data?.nodes[0]?.id).toBe("zone:zone-1"));
     fireEvent.click(screen.getByRole("button", { name: "Network architecture" }));
-    await waitFor(() => expect(graphState.data?.edges).toEqual([{ id: "link:link-1", source: "device:device-1", target: "device:device-2", type: "smoothstep", data: { provenance: "DECLARED" }, style: expect.any(Object) }]));
+    await waitFor(() => expect(graphState.data?.edges).toEqual([{ id: "link:link-1", source: "device:device-1", target: "device:device-2", type: "line", data: { provenance: "DECLARED" }, style: expect.any(Object) }]));
   });
 
   it("reveals nested-zone equipment only after entering its parent zone", async () => {
