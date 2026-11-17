@@ -52,6 +52,7 @@
   --info: #2e6fbe;
   --info-soft: #e9f1fb;
   --info-line: #c3d9f3;
+  --chart-trend: var(--primary);
 
   /* Geometry. One scale, used by every surface and control. */
   --radius-xs: 6px;
