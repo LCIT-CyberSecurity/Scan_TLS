@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import copy
 import hashlib
+import ipaddress
 import json
 import unicodedata
 from typing import Any
@@ -141,9 +142,29 @@ def build_snapshot(db: DbSession, definition: ScanDefinition, max_addresses: int
     if not policies:
         raise PlanError("at least one policy is required")
     policies.sort(key=lambda p: p["name"])
-
     template = db.get(ReportTemplate, definition.report_template_id) if definition.report_template_id else None
     formats = [f for f in (template.export_formats if template else DEFAULT_FORMATS) if f in ALLOWED_EXPORT_FORMATS]
+
+    if definition.control_type == "ipsec":
+        ike = copy.deepcopy(profile_version.content["ike"])
+        probe_targets = []
+        for target in targets:
+            if target.kind == "cidr":
+                probe_targets.extend(str(address) for address in ipaddress.ip_network(target.value, strict=False))
+            else:
+                probe_targets.append(target.value)
+        if exclusions:
+            probe_targets, _, _ = exclusions.filter_targets(probe_targets)
+        if not probe_targets:
+            raise PlanError("every target address is excluded: nothing to probe")
+        return {
+            "control_type": "ipsec", "definition": {"id": str(definition.id), "name": definition.name},
+            "profile": {"id": str(definition.profile_id), "version_id": str(profile_version.id), "version": profile_version.version},
+            "ike": ike, "passes": [{"targets": sorted(set(probe_targets))}], "policies": policies,
+            "policy_mode": definition.policy_mode, "export_formats": [f for f in formats if f in {"html", "md", "csv"}], "branding": (template.branding if template else None) or {},
+            "limitations": ["Unauthenticated IKE exchange only", "ESP/Child SA, authentication, PFS and tunnel operation are not evaluated"],
+        }
+
     try:
         checks, trust_stores = resolve_for_snapshot(db, profile_version.content.get("checks", {}))
     except TrustStoreError as error:
@@ -165,13 +186,15 @@ def build_snapshot(db: DbSession, definition: ScanDefinition, max_addresses: int
 
 def fingerprint(snapshot: dict[str, Any]) -> str:
     """Hash of everything that influences observations (not the output formats nor worker count)."""
-    scan = {k: v for k, v in snapshot["scan"].items() if k != "workers"}
+    scan = {k: v for k, v in snapshot.get("scan", {}).items() if k != "workers"}
     material = {
+        "control_type": snapshot.get("control_type", "tls"),
         "passes": snapshot["passes"],
         "scan": scan,
-        "checks": snapshot["checks"],
+        "checks": snapshot.get("checks", {}),
         "policies": [(p["name"], p["version_id"]) for p in snapshot["policies"]],
         "mode": snapshot["policy_mode"],
+        "ike": snapshot.get("ike"),
     }
     return hashlib.sha256(json.dumps(material, sort_keys=True, default=str).encode()).hexdigest()
 
