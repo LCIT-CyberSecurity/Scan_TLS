@@ -36,7 +36,6 @@ export interface CertificateInfo {
 export interface RunTrustStore { id: string; name: string; version: number; content_sha256: string; anchors: string[]; intermediate_count: number }
 export interface Endpoint { endpoint_id: string; hostname: string; ip_address: string; port: string; grade: string; compliance_status: string; highest_severity: string; tls_versions: string[]; certificate: CertificateInfo; errors: string[]; untested_checks: string[]; tls_checks?: TlsCheckResult[]; tags?: string[] }
 export interface Finding { finding_id: string; title: string; severity: string; status: string; category: string; evidence: string; remediation: string; affected_endpoint_ids: string[] }
-<<<<<<< HEAD
 export interface RunDetail extends Run { endpoints: Endpoint[]; findings: Finding[]; ipsec_observations: IpsecObservation[]; trust_stores?: RunTrustStore[] }
 export interface Schedule {
   id: string; task_type: "tls" | "dns_discovery"; task_config?: { domain: string; options: Record<string, unknown> } | null;
