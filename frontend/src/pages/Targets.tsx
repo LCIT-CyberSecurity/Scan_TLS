@@ -1,5 +1,6 @@
 import { Download, Pencil, Plus, Radar, Trash2, Upload } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { api } from "../api/client";
 import type { Group, SI, Tag, Target } from "../api/types";
 import { formatDate } from "../lib/utils";
@@ -138,6 +139,9 @@ function ProvenanceDialog({ target, onClose }: { target: Target; onClose: () => 
 export default function Targets() {
   const { t } = useI18n();
   const { user, atLeast } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requestedDiscovery = searchParams.get("discovery");
+  const [selectedTab, setSelectedTab] = useState(requestedDiscovery ? "dns" : "targets");
   const [q, setQ] = useState("");
   const [tag, setTag] = useState("");
   const [si, setSi] = useState("");
@@ -145,9 +149,9 @@ export default function Targets() {
   const [origin, setOrigin] = useState("");                       // "" | "dns": targets a discovery has seen
   const [imported, setImported] = useState("");                   // a discovery id: only the targets that import processed
   const [prov, setProv] = useState<Target | undefined>();
-  const [discoverId, setDiscoverId] = useState<string | undefined>();
+  const [discoverId, setDiscoverId] = useState<string | undefined>(requestedDiscovery ?? undefined);
   const [discoveries, setDiscoveries] = useState(0);
-  const [dialog, setDialog] = useState<"target" | "import" | "group" | "discover" | null>(null);
+  const [dialog, setDialog] = useState<"target" | "import" | "group" | "discover" | null>(requestedDiscovery ? "discover" : null);
   const [editT, setEditT] = useState<Target | undefined>();
   const [editG, setEditG] = useState<Group | undefined>();
   const [err, setErr] = useState<unknown>();
@@ -159,12 +163,20 @@ export default function Targets() {
   const siName = (id: string) => systems.data?.find((s) => s.id === id)?.name ?? "";
   const own = (owner: string | null) => atLeast("OPERATOR") || owner === user?.id;
   const remove = (path: string, reload: () => Promise<void>) => async () => { try { await api(path, { method: "DELETE" }); await reload(); } catch (e) { setErr(e); } };
+  useEffect(() => {
+    if (!requestedDiscovery) return;
+    setSelectedTab("dns"); setDiscoverId(requestedDiscovery); setDialog("discover");
+  }, [requestedDiscovery]);
+  function closeDiscovery() {
+    setDialog(null); setDiscoverId(undefined); setDiscoveries((n) => n + 1);
+    const next = new URLSearchParams(searchParams); next.delete("discovery"); setSearchParams(next, { replace: true });
+  }
 
   return (
     <>
       <PageHeader title={t("nav.targets")} />
       <ErrorNote error={err} />
-      <Tabs defaultValue="targets">
+      <Tabs value={selectedTab} onValueChange={setSelectedTab}>
         <TabsList><TabsTrigger value="targets">{t("targets.targets")}</TabsTrigger><TabsTrigger value="groups">{t("targets.groups")}</TabsTrigger><TabsTrigger value="dns">{t("dd.tab")}</TabsTrigger><TabsTrigger value="si">{t("targets.si")}</TabsTrigger><TabsTrigger value="tags">{t("targets.tags")}</TabsTrigger></TabsList>
         <TabsContent value="targets">
           <div className="mb-3 flex flex-wrap items-center gap-3">
@@ -211,7 +223,7 @@ export default function Targets() {
         </TabsContent>
       </Tabs>
       {dialog === "target" && systems.data && <TargetDialog initial={editT} systems={systems.data} onClose={() => setDialog(null)} onSaved={() => { void targets.reload(); void tags.reload(); }} />}
-      {dialog === "discover" && <DnsDiscoveryDialog resumeId={discoverId} onClose={() => { setDialog(null); setDiscoverId(undefined); setDiscoveries((n) => n + 1); }} onDone={() => { void targets.reload(); void groups.reload(); void tags.reload(); }} onViewTargets={(id) => { setOrigin(""); setQ(""); setTag(""); setSi(""); setMine(false); setImported(id); }} />}
+      {dialog === "discover" && <DnsDiscoveryDialog resumeId={discoverId} onClose={closeDiscovery} onDone={() => { void targets.reload(); void groups.reload(); void tags.reload(); }} onViewTargets={(id) => { setOrigin(""); setQ(""); setTag(""); setSi(""); setMine(false); setImported(id); }} />}
       {prov && <ProvenanceDialog target={prov} onClose={() => setProv(undefined)} />}
       {dialog === "import" && <ImportDialog onClose={() => setDialog(null)} onDone={() => { void targets.reload(); }} />}
       {dialog === "group" && systems.data && <GroupDialog initial={editG} targets={targets.data ?? []} systems={systems.data} onClose={() => setDialog(null)} onSaved={() => void groups.reload()} />}

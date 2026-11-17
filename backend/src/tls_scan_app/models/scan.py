@@ -4,7 +4,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func, text
+from sqlalchemy import CheckConstraint, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from tls_scan_app.database import Base, JsonType
@@ -58,13 +58,18 @@ class DefinitionPolicy(Base):
 
 class ScanSchedule(Base):
     __tablename__ = "scan_schedules"
+    __table_args__ = (CheckConstraint(
+        "(task_type = 'tls' AND definition_id IS NOT NULL) OR (task_type = 'dns_discovery' AND definition_id IS NULL)",
+        name="ck_scan_schedule_task_definition"),)
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    definition_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("scan_definitions.id", ondelete="CASCADE"), index=True)
+    definition_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("scan_definitions.id", ondelete="CASCADE"), index=True)
+    task_type: Mapped[str] = mapped_column(String(24), default="tls", server_default="tls")  # tls | dns_discovery
     owner_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     kind: Mapped[str] = mapped_column(String(10))  # once | daily | weekly | monthly | cron
     # once: {at}; daily: {time}; weekly: {time, weekday 0-6}; monthly: {time, day 1-28}; cron: {expr}
     params: Mapped[dict] = mapped_column(JsonType)
+    task_config: Mapped[dict | None] = mapped_column(JsonType)
     timezone: Mapped[str] = mapped_column(String(64), default="UTC")
     active: Mapped[bool] = mapped_column(default=True)
     next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
@@ -84,6 +89,7 @@ class ScheduleTrigger(Base):
     outcome: Mapped[str] = mapped_column(String(20))  # triggered | skipped_overlap | skipped_late | error
     reason: Mapped[str] = mapped_column(Text, default="")
     run_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("scan_runs.id", ondelete="SET NULL"))
+    discovery_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("dns_discoveries.id", ondelete="SET NULL"))
     __table_args__ = (UniqueConstraint("schedule_id", "due_at", name="uq_trigger_schedule_due"),)
 
 

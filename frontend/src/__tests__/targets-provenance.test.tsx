@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "../test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Targets from "../pages/Targets";
 import { I18nProvider } from "../i18n";
+import { MemoryRouter } from "react-router-dom";
 
 const calls: { path: string; params?: Record<string, string> }[] = [];
 const dns = (created: boolean) => ({ domains: ["client.test"], methods: ["axfr", "dns"], created, first_seen: "2026-10-01T10:00:00Z", last_seen: "2026-10-12T10:00:00Z", discovery_id: "d1" });
@@ -27,7 +28,7 @@ beforeEach(() => { calls.length = 0; });
 
 describe("Targets: DNS provenance", () => {
   it("marks the targets a discovery saw, tells created from enriched, and filters on the provenance", async () => {
-    render(<I18nProvider><Targets /></I18nProvider>);
+    render(<MemoryRouter><I18nProvider><Targets /></I18nProvider></MemoryRouter>);
     await screen.findByText("manual.example.org");
     expect(screen.getAllByRole("button", { name: /DNS provenance/ })).toHaveLength(2);          // nothing added to the manual target
     expect(screen.getByRole("button", { name: "DNS provenance srv01.client.test" })).toHaveAttribute("title", expect.stringContaining("Created by a DNS discovery"));

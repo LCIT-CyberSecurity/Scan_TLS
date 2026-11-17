@@ -37,7 +37,16 @@ export interface RunTrustStore { id: string; name: string; version: number; cont
 export interface Endpoint { endpoint_id: string; hostname: string; ip_address: string; port: string; grade: string; compliance_status: string; highest_severity: string; tls_versions: string[]; certificate: CertificateInfo; errors: string[]; untested_checks: string[]; tls_checks?: TlsCheckResult[]; tags?: string[] }
 export interface Finding { finding_id: string; title: string; severity: string; status: string; category: string; evidence: string; remediation: string; affected_endpoint_ids: string[] }
 export interface RunDetail extends Run { endpoints: Endpoint[]; findings: Finding[]; ipsec_observations: IpsecObservation[]; trust_stores?: RunTrustStore[] }
-export interface Schedule { id: string; definition_id: string; owner_id: string | null; kind: string; params: Record<string, unknown>; timezone: string; active: boolean; next_run_at: string | null; last_run_at: string | null; last_run: { id: string; status: string; duration_seconds: number | null } | null; triggers?: { due_at: string; outcome: string; reason: string; run_id: string | null }[] }
+export interface Schedule {
+  id: string; task_type: "tls" | "dns_discovery"; task_config?: { domain: string; options: Record<string, unknown> } | null;
+  definition_id: string | null; owner_id: string | null; kind: string; params: Record<string, unknown>; timezone: string;
+  active: boolean; next_run_at: string | null; last_run_at: string | null;
+  last_run: { id: string; status: string; duration_seconds: number | null } | null;
+  last_discovery?: { id: string; status: string } | null;
+  triggers?: { due_at: string; outcome: string; reason: string; run_id: string | null; discovery_id?: string | null;
+    discovery_status?: string | null; comparison?: { compared_with: string; complete: boolean; new_names: string[];
+      not_observed: string[]; ip_changed: { fqdn: string; previous: string[]; current: string[] }[] } | null }[];
+}
 export interface Comparison { old_run_id: string; new_run_id: string; warnings: string[]; new: FindingBrief[]; fixed: FindingBrief[]; persistent: FindingBrief[]; not_retested: FindingBrief[]; endpoints_added: string[]; endpoints_removed: string[]; endpoint_changes: Record<string, unknown>[]; counts: Record<string, number> }
 export interface FindingBrief { finding_id: string; title: string; severity: string; affected: string[] }
 export interface Posture {

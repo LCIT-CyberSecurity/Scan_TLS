@@ -93,6 +93,56 @@ def test_A_D_internal_zone_transfer_gives_names_with_provenance(operator):
     assert data["security"] == []                                                          # an internal server accepting AXFR is not a finding
 
 
+def test_dns_discovery_schedule_uses_worker_and_never_changes_inventory(operator, user, admin):
+    from datetime import UTC, datetime, timedelta
+
+    before = {t["id"] for t in operator.get("/api/targets").json()}
+    at = (datetime.now(UTC) + timedelta(seconds=8)).replace(microsecond=0).isoformat()
+    request = {
+        "task_type": "dns_discovery", "domain": "client.test", "authorized": True,
+        "dns_options": {"mode": "advanced", "methods": ["dns"], "dns_server": LAB_DNS,
+                        "timeout_seconds": 2, "concurrency": 1, "max_duration_seconds": 60},
+        "kind": "once", "params": {"at": at}, "timezone": "UTC",
+    }
+    assert user.post("/api/schedules", json=request).status_code == 403
+    assert operator.post("/api/schedules", json={**request, "authorized": False}).status_code == 400
+    assert operator.post("/api/schedules", json={**request, "dns_options": {**request["dns_options"], "dns_server": "8.8.8.8"}}).status_code == 422
+    response = operator.post("/api/schedules", json=request)
+    assert response.status_code == 201, response.text
+    schedule = response.json()
+    assert schedule["task_type"] == "dns_discovery" and schedule["definition_id"] is None
+    def schedule_done():
+        current = operator.get(f"/api/schedules/{schedule['id']}").json()
+        return current if current.get("triggers") else None
+
+    detail = wait_for(schedule_done, timeout=60)
+    trigger = detail["triggers"][0]
+    assert trigger["outcome"] == "triggered" and trigger["run_id"] is None and trigger["discovery_id"]
+    def discovery_done():
+        current = operator.get(f"/api/targets/discover/{trigger['discovery_id']}").json()
+        return current if current["status"] in ("done", "failed") else None
+
+    discovery = wait_for(discovery_done, timeout=60)
+    assert discovery["domain"] == "client.test"
+    assert operator.get(f"/api/schedules/{schedule['id']}").json()["last_discovery"]["id"] == discovery["id"]
+    assert {t["id"] for t in operator.get("/api/targets").json()} == before
+
+    saved_settings = admin.get("/api/admin/settings").json()["dns_discovery"]
+    at = (datetime.now(UTC) + timedelta(seconds=8)).replace(microsecond=0).isoformat()
+    invalidated = operator.post("/api/schedules", json={**request, "kind": "once", "params": {"at": at}}).json()
+    assert admin.put("/api/admin/settings/dns_discovery", json={"value": {"allowed_servers": [], "ct_enabled": False}}).status_code == 200
+    try:
+        def schedule_rejected_by_current_scope():
+            current = operator.get(f"/api/schedules/{invalidated['id']}").json()
+            return current if current.get("triggers") else None
+
+        rejected = wait_for(schedule_rejected_by_current_scope, timeout=60)["triggers"][0]
+        assert rejected["outcome"] == "error" and rejected["discovery_id"] is None
+        assert "no longer valid" in rejected["reason"]
+    finally:
+        assert admin.put("/api/admin/settings/dns_discovery", json={"value": saved_settings}).status_code == 200
+
+
 def test_A_grouped_import_creates_the_targets_and_is_idempotent(operator, admin):
     job = discover(operator, "client.test", methods=["dns", "axfr"])
     names = ["srv01.client.test", "gitlab.client.test"]

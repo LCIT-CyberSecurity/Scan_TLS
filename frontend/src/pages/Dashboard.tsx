@@ -63,7 +63,7 @@ export default function Dashboard() {
           <Card className="self-start">
             <CardHeader><CardTitle>{t("dash.upcoming")}</CardTitle></CardHeader>
             <CardContent className="dash-list">
-              {data?.upcoming.length ? data.upcoming.map((s) => <div key={s.id} className="dash-row"><span>{s.kind}</span><span className="text-muted">{formatDate(s.next_run_at, locale)}</span></div>) : <p className="text-sm text-muted">{t("dash.noUpcoming")}</p>}
+              {data?.upcoming.length ? data.upcoming.map((s) => <div key={s.id} className="dash-row"><span>{s.task_type === "dns_discovery" ? `${t("sched.task.dns")} · ${s.task_config?.domain ?? "—"}` : t("sched.task.tls")} · {t(`sched.${s.kind}` as never)}</span><span className="text-muted">{formatDate(s.next_run_at, locale)}</span></div>) : <p className="text-sm text-muted">{t("dash.noUpcoming")}</p>}
             </CardContent>
           </Card>
         </div>
