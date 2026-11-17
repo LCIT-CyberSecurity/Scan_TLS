@@ -55,6 +55,7 @@ def run_plan(snapshot: dict | None) -> dict | None:
 
 
 def run_out(r: ScanRun, detail: bool = False) -> dict:
+    mail_cfg = (r.config_snapshot or {}).get("mail_security") or {}
     data = {
         "id": str(r.id), "name": r.name, "definition_id": str(r.definition_id) if r.definition_id else None,
         "schedule_id": str(r.schedule_id) if r.schedule_id else None, "initiated_by": str(r.initiated_by) if r.initiated_by else None,
@@ -64,6 +65,9 @@ def run_out(r: ScanRun, detail: bool = False) -> dict:
         "trust_stores": (r.config_snapshot or {}).get("trust_stores") or [],
         "control_type": (r.config_snapshot or {}).get("control_type", "tls"),
         "plan": run_plan(r.config_snapshot) if r.status in ACTIVE_STATUSES else None,
+        "mail_security": ({"domains": mail_cfg.get("domains", []),
+                           "checks": [key for key, enabled in (mail_cfg.get("checks") or {}).items() if enabled]}
+                          if mail_cfg.get("enabled") else None),
         "exclusions": (r.config_snapshot or {}).get("exclusions"),
         "mail_security_results": r.mail_security_results or [],
         "reports": [{"format": f["format"], "size": f["size"], "sha256": f["sha256"]} for f in (r.report_files or [])],

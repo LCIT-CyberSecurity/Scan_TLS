@@ -416,6 +416,7 @@ export const en = {
   "scans.none": "No scan.",
   "scans.onlyMine": "Only mine",
   "scans.runs": "Executions",
+  "scans.mailControls": "DNS & mail",
   "sched.active": "Active",
   "sched.allSubtitle": "All schedules",
   "sched.at": "Date and time",

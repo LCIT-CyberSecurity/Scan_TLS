@@ -417,6 +417,7 @@ export const fr: Messages = {
   "scans.none": "Aucun scan.",
   "scans.onlyMine": "Seulement les miens",
   "scans.runs": "Exécutions",
+  "scans.mailControls": "DNS et messagerie",
   "sched.active": "Actif",
   "sched.allSubtitle": "Toutes les planifications",
   "sched.at": "Date et heure",

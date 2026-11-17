@@ -6,6 +6,7 @@ import type { Definition, Group, MailSecurityConfig, Run, SI, Target, Template, 
 import { useAuth } from "../auth/AuthContext";
 import { CheckList, ConfirmButton, Empty, ErrorNote, PageHeader, StatusBadge, TagList, TagsInput, useLoad } from "../components/common";
 import { Button } from "../components/ui/button";
+import { Badge } from "../components/ui/badge";
 import { Dialog } from "../components/ui/dialog";
 import { Field, Input, Select, Textarea } from "../components/ui/input";
 import { Card } from "../components/ui/card";
@@ -17,6 +18,7 @@ import { useI18n } from "../i18n";
 import { formatDate, formatDuration } from "../lib/utils";
 
 const DEFAULT_MAIL_SECURITY: MailSecurityConfig = { enabled: false, checks: { spf: true, dmarc: true, dkim: false, mta_sts: true, tls_rpt: true, dane: false }, dkim_selectors: [] };
+const MAIL_CHECKS = ["spf", "dmarc", "dkim", "mta_sts", "tls_rpt", "dane"] as const;
 const blank = { name: "", description: "", control_type: "tls" as "tls" | "ipsec", target_ids: [] as string[], group_ids: [] as string[], policy_ids: [] as string[], profile_id: "", report_template_id: "", policy_mode: "strict_all", tags: [] as string[], si_ids: [] as string[], mail_security: DEFAULT_MAIL_SECURITY };
 
 function DefinitionDialog({ initial, onClose, onSaved }: { initial?: Definition; onClose: () => void; onSaved: () => void }) {
@@ -110,10 +112,19 @@ export default function Scans() {
   const canEdit = (d: Definition) => atLeast("OPERATOR") || d.owner_id === user?.id;
 
   const phaseText = (r: Run) => `${r.status === "running" ? t(`phase.${r.phase}` as never) : ""}${r.progress ? ` ${r.progress.hosts_done}/${r.progress.hosts_total}` : ""}`.trim();
+  const runMailChecks = (r: Run) => {
+    const planned = r.plan?.mail_security?.checks ?? r.mail_security?.checks ?? [];
+    if (planned.length) return planned;
+    return [...new Set((r.mail_security_results ?? []).flatMap((domain) => domain.checks.map((check) => check.check)).filter((check) => MAIL_CHECKS.includes(check as (typeof MAIL_CHECKS)[number])))];
+  };
+  const mailBadges = (checks: string[]) => checks.length
+    ? <div className="flex flex-wrap gap-1">{checks.map((check) => <Badge key={check} tone="info">{t(`mail.${check}` as never)}</Badge>)}</div>
+    : <span className="text-muted">—</span>;
   const runColumns: Column<Run>[] = [
     { key: "name", header: t("col.name"), values: (r) => [r.name], sort: (r) => r.name, render: (r) => <><Link className="row-link" to={`/scans/${r.id}`}>{r.name}</Link>{r.schedule_id && <span className="ml-2 text-xs text-muted">⏱</span>}</> },
     { key: "status", header: t("col.status"), values: (r) => [r.status], render: (r) => <StatusBadge status={r.status} /> },
     { key: "phase", header: t("col.phase"), sort: phaseText, render: (r) => <span className="text-muted">{phaseText(r)}</span> },
+    { key: "mail", header: t("scans.mailControls"), values: (r) => runMailChecks(r).map((check) => t(`mail.${check}` as never)), render: (r) => mailBadges(runMailChecks(r)) },
     { key: "date", header: t("col.date"), sort: (r) => r.queued_at, values: (r) => [new Date(r.queued_at).toLocaleDateString(locale)], render: (r) => formatDate(r.queued_at, locale) },
     { key: "duration", header: t("col.duration"), sort: (r) => r.duration_seconds ?? -1, render: (r) => formatDuration(r.duration_seconds) },
     { key: "nc", header: t("col.nonCompliant"), sort: (r) => r.summary?.non_compliant_endpoints ?? -1, values: (r) => [String(r.summary?.non_compliant_endpoints ?? "—")], render: (r) => r.summary?.non_compliant_endpoints ?? "—" },
@@ -127,6 +138,7 @@ export default function Scans() {
   ];
   const defColumns: Column<Definition>[] = [
     { key: "name", header: t("col.name"), values: (d) => [d.name], sort: (d) => d.name, render: (d) => <>{d.name}<div className="text-xs font-normal text-muted">{d.description}</div></> },
+    { key: "mail", header: t("scans.mailControls"), values: (d) => MAIL_CHECKS.filter((check) => d.mail_security?.enabled && d.mail_security.checks[check]).map((check) => t(`mail.${check}` as never)), render: (d) => mailBadges(MAIL_CHECKS.filter((check) => d.mail_security?.enabled && d.mail_security.checks[check])) },
     { key: "tags", header: t("col.tags"), values: (d) => d.tags, render: (d) => <TagList tags={d.tags} /> },
     { key: "targets", header: t("def.targets"), sort: (d) => d.target_ids.length + d.group_ids.length, render: (d) => d.target_ids.length + d.group_ids.length },
     { key: "actions", header: "", render: (d) => (
