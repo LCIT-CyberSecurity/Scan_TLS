@@ -2,7 +2,7 @@ import { Download, GitCompare, Trash2, XCircle } from "lucide-react";
 import { useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api, downloadUrl } from "../api/client";
-import type { Comparison, Endpoint, Finding, FindingBrief, RunDetail as Detail } from "../api/types";
+import type { Comparison, Endpoint, Finding, FindingBrief, RunDetail as Detail, ServiceObservation } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { ConfirmButton, Empty, ErrorNote, Loading, Metric, Note, PageHeader, SeverityBadge, StatusBadge, TagList, useLoad } from "../components/common";
 import { Badge } from "../components/ui/badge";
@@ -138,7 +138,7 @@ export default function RunDetail() {
       {cmp && run.control_type !== "ipsec" && <div className="mb-6"><ComparisonView runId={id} withRun={withRun} /></div>}
       {run.reports.length > 0 && (
         <Card className="mb-6"><CardHeader><CardTitle>{t("nav.reports")}</CardTitle></CardHeader><CardContent className="flex flex-wrap gap-2">
-          {run.reports.filter((r) => ["html", "md", "csv", "cbom", "findings_csv", "mail_security_csv", "ipsec_html", "ipsec_md", "ipsec_csv", "ssh_html", "ssh_md", "ssh_csv"].includes(r.format)).map((r) => <Button key={r.format} asChild variant="outline" size="sm"><a href={downloadUrl(id, r.format)}><Download />{r.format === "mail_security_csv" ? "MAIL CSV" : r.format.replaceAll("_", " ").toUpperCase()}</a></Button>)}
+          {run.reports.filter((r) => ["html", "md", "csv", "cbom", "findings_csv", "mail_security_csv", "service_csv", "ipsec_html", "ipsec_md", "ipsec_csv", "ssh_html", "ssh_md", "ssh_csv"].includes(r.format)).map((r) => <Button key={r.format} asChild variant="outline" size="sm"><a href={downloadUrl(id, r.format)}><Download />{r.format === "service_csv" ? "SERVICES CSV" : r.format === "mail_security_csv" ? "MAIL CSV" : r.format.replaceAll("_", " ").toUpperCase()}</a></Button>)}
           {run.reports.filter((r) => ["html", "ipsec_html", "ssh_html"].includes(r.format)).map((r) => <Button key={`${r.format}-open`} asChild size="sm"><a href={downloadUrl(id, r.format, true)} target="_blank" rel="noreferrer">{t("run.openHtml")} · {r.format.replace("_html", "").toUpperCase()}</a></Button>)}
         </CardContent></Card>
       )}
@@ -194,6 +194,16 @@ export default function RunDetail() {
           { key: "banner", header: "Banner", values: (r) => [r.banner], render: (r) => <code className="text-xs">{r.banner || "—"}</code> },
           { key: "fingerprints", header: "Host key fingerprints", values: (r) => Object.values(r.fingerprints).map(String), render: (r) => <code className="break-all text-xs">{Object.entries(r.fingerprints).map(([key, value]) => `${key}: ${String(value)}`).join(" · ") || "—"}</code> },
           { key: "algorithms", header: "Observed algorithms", values: (r) => Object.values(r.algorithms).flat(), render: (r) => <span className="text-xs">{Object.entries(r.algorithms).flatMap(([k, v]) => v.map((x) => `${k}: ${x}`)).join(" · ") || "Indeterminate"}</span> },
+        ]} />
+      </Card>}
+      {!!run.service_observations?.length && <Card className="mb-6"><CardHeader><CardTitle>{t("service.results" as never)}</CardTitle></CardHeader>
+        <p className="px-5 pb-3 text-xs text-muted">{t("service.resultsHint" as never)}</p>
+        <DataTable rows={run.service_observations} rowKey={(r: ServiceObservation) => `${r.target}:${r.port ?? "none"}`} columns={[
+          { key: "target", header: "Target", values: (r) => [r.target, ...(r.scope_targets ?? [])], render: (r) => <span>{r.target || "—"}{!!r.scope_targets?.length && r.scope_targets.some((name) => name !== r.target) && <small className="ml-1 block text-muted">{r.scope_targets.filter((name) => name !== r.target).join(", ")}</small>}</span> },
+          { key: "port", header: "TCP", values: (r) => [String(r.port ?? "")], render: (r) => r.port ?? "—" },
+          { key: "service", header: t("service.name" as never), values: (r) => [r.service, r.product, r.version], render: (r) => <span>{r.service || "—"}{r.product && ` · ${r.product}`}{r.version && ` ${r.version}`}</span> },
+          { key: "confidence", header: t("service.confidence" as never), values: (r) => [String(r.confidence)], render: (r) => `${Math.round(r.confidence * 100)}%` },
+          { key: "status", header: t("col.status"), values: (r) => [r.status], render: (r) => <Badge tone={r.status === "observed" ? "success" : r.status === "probable" ? "warning" : "neutral"}>{r.status}</Badge> },
         ]} />
       </Card>}
       {run.control_type !== "ipsec" && <Card><CardHeader><CardTitle>{t("run.findings")}</CardTitle></CardHeader>

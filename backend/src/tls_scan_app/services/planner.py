@@ -37,7 +37,7 @@ class PlanError(ValueError):
 
 def validate_profile_content(content: dict[str, Any]) -> None:
     """Validate with the engine's own parser, so the WebUI accepts exactly what YAML accepts."""
-    allowed = {"scan", "checks"}
+    allowed = {"scan", "checks", "service_identification"}
     if set(content) - allowed:
         raise PlanError(f"unsupported profile sections: {sorted(set(content) - allowed)}")
     checks = content.get("checks", {})
@@ -53,12 +53,34 @@ def validate_profile_content(content: dict[str, Any]) -> None:
         build_job_from_sections(content.get("scan", {}), {}, {}, ["192.0.2.1"], None, engine_checks)
     except ConfigError as error:
         raise PlanError(str(error)) from error
+    if "service_identification" in content:
+        validate_service_identification_profile(content["service_identification"])
+
+
+def validate_service_identification_profile(content: Any) -> None:
+    """Validate fixed Nmap service-probe budgets; no command or NSE options are user-configurable."""
+    if not isinstance(content, dict) or set(content) - {"strategy", "max_targets", "max_services", "timeout_seconds", "max_parallelism"}:
+        raise PlanError("service_identification contains unsupported fields")
+    strategy = content.get("strategy", "fast")
+    limits = {
+        "max_targets": (1, 128, 64),
+        "max_services": (1, 500, 200),
+        "timeout_seconds": (5, 90, 45),
+        "max_parallelism": (1, 10, 5),
+    }
+    if strategy not in {"fast", "detailed"}:
+        raise PlanError("service_identification.strategy must be fast or detailed")
+    for key, (minimum, maximum, _default) in limits.items():
+        value = content.get(key, _default)
+        if isinstance(value, bool) or not isinstance(value, int) or not minimum <= value <= maximum:
+            raise PlanError(f"service_identification.{key} must be between {minimum} and {maximum}")
 
 
 def validate_generic_profile_content(content: dict[str, Any]) -> None:
     """Validate independent, versioned sections for the currently available engines."""
-    if not isinstance(content, dict) or not content or set(content) - {"tls", "ipsec", "ssh"}:
-        raise PlanError("generic profiles may contain tls, ipsec and/or ssh sections")
+    if (not isinstance(content, dict) or not content or set(content) - {"tls", "ipsec", "ssh", "service_identification"}
+            or not set(content).intersection({"tls", "ipsec", "ssh"})):
+        raise PlanError("generic profiles may contain tls, ipsec, ssh and service_identification sections")
     if "tls" in content:
         validate_profile_content(content["tls"])
     if "ipsec" in content:
@@ -67,6 +89,8 @@ def validate_generic_profile_content(content: dict[str, Any]) -> None:
     if "ssh" in content:
         from tls_scan_app.services.ssh_audit import validate_ssh_profile
         validate_ssh_profile({"ssh": content["ssh"]})
+    if "service_identification" in content:
+        validate_service_identification_profile(content["service_identification"])
 
 
 def validate_policy_content(content: dict[str, Any]) -> None:
@@ -85,6 +109,21 @@ def latest_published(db: DbSession, model, fk_column, parent_id):
     return db.execute(
         select(model).where(fk_column == parent_id, model.status == PUBLISHED).order_by(model.version.desc()).limit(1)
     ).scalar_one_or_none()
+
+
+def _service_identification_snapshot(definition: ScanDefinition, profile_content: dict[str, Any]) -> dict[str, Any] | None:
+    if not definition.service_identification_enabled:
+        return None
+    settings = profile_content.get("service_identification") or {}
+    return {
+        "enabled": True,
+        "strategy": settings.get("strategy", "fast"),
+        "max_targets": settings.get("max_targets", 64),
+        "max_services": settings.get("max_services", 200),
+        "timeout_seconds": settings.get("timeout_seconds", 45),
+        "max_parallelism": settings.get("max_parallelism", 5),
+        "source": "nmap -sV; selected target scope only",
+    }
 
 
 def resolve_targets(db: DbSession, definition: ScanDefinition) -> list[Target]:
@@ -128,6 +167,7 @@ def build_snapshot(db: DbSession, definition: ScanDefinition, max_addresses: int
         ssh_profile = {}
     scan_cfg = copy.deepcopy(tls_profile.get("scan", {}))
     default_ports = scan_cfg.get("ports", "fast")
+    service_identification = _service_identification_snapshot(definition, profile_content)
 
     targets = resolve_targets(db, definition)
     if not targets:
@@ -201,7 +241,8 @@ def build_snapshot(db: DbSession, definition: ScanDefinition, max_addresses: int
         return {
             "control_type": "ipsec", "definition": {"id": str(definition.id), "name": definition.name},
             "profile": {"id": str(definition.profile_id), "version_id": str(profile_version.id), "version": profile_version.version},
-            "ike": ike, "passes": [{"targets": sorted(set(probe_targets))}], "policies": policy_bundles["ipsec"],
+            "ike": ike, "scan": scan_cfg, "service_identification": service_identification,
+            "passes": [{"targets": sorted(set(probe_targets)), "ports": str(default_ports)}], "policies": policy_bundles["ipsec"],
             "policy_mode": definition.policy_mode, "export_formats": [f for f in formats if f in {"html", "md", "csv"}], "branding": (template.branding if template else None) or {},
             "limitations": ["Unauthenticated IKE exchange only", "ESP/Child SA, authentication, PFS and tunnel operation are not evaluated"],
         }
@@ -237,6 +278,7 @@ def build_snapshot(db: DbSession, definition: ScanDefinition, max_addresses: int
         "exclusions": {"entries": [{"value": v, "scope": s} for v, s in sources.items()], "removed_targets": sorted(set(removed)), "partial_targets": sorted(set(partial))},
         "checks": checks,
         "mail_security": mail_security,
+        "service_identification": service_identification,
         "enabled_controls": selected,
         "ipsec": ({"ike": copy.deepcopy(ipsec_profile["ike"]), "policies": policy_bundles["ipsec"],
                     "targets": sorted({str(address) for target in targets
@@ -279,6 +321,8 @@ def fingerprint(snapshot: dict[str, Any]) -> str:
     mail_security = snapshot.get("mail_security") or {}
     if mail_security.get("enabled"):
         material["mail_security"] = mail_security
+    if (snapshot.get("service_identification") or {}).get("enabled"):
+        material["service_identification"] = snapshot["service_identification"]
     return hashlib.sha256(json.dumps(material, sort_keys=True, default=str).encode()).hexdigest()
 
 

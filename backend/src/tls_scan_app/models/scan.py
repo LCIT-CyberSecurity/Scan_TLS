@@ -4,7 +4,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import CheckConstraint, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func, text
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from tls_scan_app.database import Base, JsonType
@@ -31,6 +31,7 @@ class ScanDefinition(Base):
     mail_security: Mapped[dict | None] = mapped_column(JsonType)  # optional per-definition mail posture checks; defaults to disabled
     # Optional technology switches. NULL preserves the pre-multiprotocol control_type semantics.
     enabled_controls: Mapped[list | None] = mapped_column(JsonType)
+    service_identification_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"), nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     updated_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
@@ -120,6 +121,7 @@ class ScanRun(Base):
     # Exact configuration used (targets, ports, profile content+version, policy contents+versions).
     config_snapshot: Mapped[dict] = mapped_column(JsonType)
     mail_security_results: Mapped[list | None] = mapped_column(JsonType)
+    service_observations: Mapped[list | None] = mapped_column(JsonType)
     policy_versions: Mapped[list] = mapped_column(JsonType, default=list)
     queued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

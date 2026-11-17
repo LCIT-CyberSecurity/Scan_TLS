@@ -21,12 +21,12 @@ import Reports from "./Reports";
 const DEFAULT_MAIL_SECURITY: MailSecurityConfig = { enabled: false, checks: { spf: true, dmarc: true, dkim: false, mta_sts: true, tls_rpt: true, dane: false }, dkim_selectors: [] };
 const MAIL_CHECKS = ["spf", "dmarc", "dkim", "mta_sts", "tls_rpt", "dane"] as const;
 type Technology = "tls" | "ipsec" | "ssh";
-interface DefinitionForm { name: string; description: string; control_type: Technology; enabled_controls?: Technology[]; target_ids: string[]; group_ids: string[]; policy_ids: string[]; profile_id: string; report_template_id: string; policy_mode: string; tags: string[]; si_ids: string[]; mail_security: MailSecurityConfig }
-const blank: DefinitionForm = { name: "", description: "", control_type: "tls", enabled_controls: ["tls", "ipsec"], target_ids: [], group_ids: [], policy_ids: [], profile_id: "", report_template_id: "", policy_mode: "strict_all", tags: [], si_ids: [], mail_security: DEFAULT_MAIL_SECURITY };
+interface DefinitionForm { name: string; description: string; control_type: Technology; enabled_controls?: Technology[]; service_identification_enabled: boolean; target_ids: string[]; group_ids: string[]; policy_ids: string[]; profile_id: string; report_template_id: string; policy_mode: string; tags: string[]; si_ids: string[]; mail_security: MailSecurityConfig }
+const blank: DefinitionForm = { name: "", description: "", control_type: "tls", enabled_controls: ["tls", "ipsec"], service_identification_enabled: false, target_ids: [], group_ids: [], policy_ids: [], profile_id: "", report_template_id: "", policy_mode: "strict_all", tags: [], si_ids: [], mail_security: DEFAULT_MAIL_SECURITY };
 
 function DefinitionDialog({ initial, onClose, onSaved }: { initial?: Definition; onClose: () => void; onSaved: () => void }) {
   const { t } = useI18n();
-  const [form, setForm] = useState<DefinitionForm>(initial ? { ...blank, ...initial, control_type: initial.control_type === "ipsec" ? "ipsec" : "tls", enabled_controls: initial.enabled_controls?.filter((x): x is Technology => x === "tls" || x === "ipsec" || x === "ssh") ?? undefined, report_template_id: initial.report_template_id ?? "" } : blank);
+  const [form, setForm] = useState<DefinitionForm>(initial ? { ...blank, ...initial, control_type: initial.control_type === "ipsec" ? "ipsec" : "tls", enabled_controls: initial.enabled_controls?.filter((x): x is Technology => x === "tls" || x === "ipsec" || x === "ssh") ?? undefined, service_identification_enabled: initial.service_identification_enabled ?? false, report_template_id: initial.report_template_id ?? "" } : blank);
   const [error, setError] = useState<unknown>();
   const { data: targets, reload: reloadTargets } = useLoad(() => api<Target[]>("/targets"));
   const [newTarget, setNewTarget] = useState(false);
@@ -70,6 +70,10 @@ function DefinitionDialog({ initial, onClose, onSaved }: { initial?: Definition;
               return { ...f, enabled_controls: next, control_type: next.includes("tls") ? "tls" : next.includes("ipsec") ? "ipsec" : "tls", profile_id: "", policy_ids: [], ...(key === "tls" && !e.target.checked ? { mail_security: { ...f.mail_security, enabled: false } } : {}) };
             })} />{label}
           </label>)}
+        </fieldset>
+        <fieldset className="space-y-2 rounded-sm border border-hairline p-3">
+          <legend className="px-1 text-sm font-medium">{t("service.title" as never)}</legend>
+          <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={form.service_identification_enabled} onChange={(e) => set("service_identification_enabled", e.target.checked)} /><span>{t("service.enable" as never)}<small className="mt-1 block text-xs text-muted">{t("service.scanHint" as never)}</small></span></label>
         </fieldset>
         <Field label={t("col.description")}><Textarea value={form.description} onChange={(e) => set("description", e.target.value)} /></Field>
         <Field label={t("def.targets")}><CheckList items={(targets ?? []).map((x) => ({ id: x.id, label: x.name || x.value, sub: [x.name ? x.value : "", x.ports].filter(Boolean).join(" · ") }))} selected={form.target_ids} onChange={(v) => set("target_ids", v)} empty={t("def.noTargets")} /></Field>
