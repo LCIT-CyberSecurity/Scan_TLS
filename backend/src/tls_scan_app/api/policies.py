@@ -41,14 +41,19 @@ def _kinds(kind: str):
 
 def _validate(validator, content, technology: str, db: DbSession | None = None):
     try:
-        if technology not in {"tls", "ipsec"}:
+        if technology not in {"tls", "ipsec", "ssh"}:
             if technology == "generic" and validator is validate_profile_content:
                 validate_generic_profile_content(content)
                 if db is not None:
                     trust_svc.validate_profile_selection(db, content.get("tls", {}))
                 return
-            raise PlanError("technology must be tls or ipsec")
-        if technology == "ipsec":
+            raise PlanError("technology must be tls, ipsec, ssh or generic profiles")
+        if technology == "ssh" and validator is validate_profile_content:
+            raise PlanError("SSH technical settings belong in the SSH section of a generic profile")
+        if technology == "ssh":
+            from tls_scan_app.services.ssh_audit import validate_ssh_policy, validate_ssh_profile
+            (validate_ssh_policy if validator is validate_policy_content else validate_ssh_profile)(content if validator is validate_policy_content else {"ssh": content.get("ssh", {})})
+        elif technology == "ipsec":
             from tls_scan_app.services.ipsec import validate_ipsec_policy, validate_ipsec_profile
             (validate_ipsec_policy if validator is validate_policy_content else validate_ipsec_profile)(content)
         else:
@@ -91,7 +96,7 @@ def _register(kind: str) -> None:
     model, version_model, fk_col, validator = _kinds(kind)
     fk = _fk(kind)
 
-    pattern = "^(tls|ipsec|generic)$" if kind == "profiles" else "^(tls|ipsec)$"
+    pattern = "^(tls|ipsec|generic)$" if kind == "profiles" else "^(tls|ipsec|ssh)$"
 
     @router.get(f"/{kind}", name=f"list_{kind}")
     def list_items(technology: str = Query("tls", pattern=pattern), db: DbSession = Depends(get_db), _: User = Depends(reader)) -> list[dict]:

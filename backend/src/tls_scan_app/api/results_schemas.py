@@ -16,7 +16,7 @@ def example(value: Any) -> ConfigDict:
 
 RunStatus = Literal["scheduled", "queued", "running", "completed", "partial", "failed", "cancelled", "expired"]
 Severity = Literal["critical", "high", "medium", "low", "informational"]
-ReportFormat = Literal["html", "md", "csv", "findings_csv", "mail_security_csv", "ipsec_html", "ipsec_md", "ipsec_csv", "cbom", "metadata"]
+ReportFormat = Literal["html", "md", "csv", "findings_csv", "mail_security_csv", "ipsec_html", "ipsec_md", "ipsec_csv", "ssh_html", "ssh_md", "ssh_csv", "cbom", "metadata"]
 
 
 class Pagination(BaseModel):
@@ -170,6 +170,7 @@ class RunDetail(Run):
     skipped_hosts: list[Any] = Field([], description="Hosts the scan could not process.")
     reports: list[ReportInfo] = []
     mail_security_results: list[dict[str, Any]] = Field([], description="Read-only mail posture observations, limited to selected FQDNs. Empty when the optional check is disabled.")
+    ssh_observations: list[dict[str, Any]] = Field([], description="Unauthenticated ssh-audit protocol observations, separate from TLS grades.")
 
 
 class RunPage(BaseModel):

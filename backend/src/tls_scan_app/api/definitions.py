@@ -67,7 +67,7 @@ def _apply(db: DbSession, d: ScanDefinition, body: DefinitionBody) -> None:
     enabled_controls = body.enabled_controls
     if enabled_controls is not None:
         if (not enabled_controls or len(set(enabled_controls)) != len(enabled_controls)
-                or set(enabled_controls) - {"tls", "ipsec"}):
+                or set(enabled_controls) - {"tls", "ipsec", "ssh"}):
             raise HTTPException(422, "enabled_controls must contain unique available technologies")
     mail_security = body.mail_security if body.mail_security is not None else (d.mail_security or {"enabled": False, "checks": {}, "dkim_selectors": []})
     allowed_mail_checks = {"spf", "dmarc", "dkim", "mta_sts", "tls_rpt", "dane"}

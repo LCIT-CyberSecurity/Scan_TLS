@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session as DbSession
 from tls_scan_app.api.common import can_modify, get_or_404, ids_matching_filter
 from tls_scan_app.deps import get_db, require_role
 from tls_scan_app.models import (
-    DnsDiscovery, Role, RunEndpoint, RunFinding, RunIpsecObservation, ScanDefinition, ScanRun, ScanRunRequester, ScanSchedule,
+    DnsDiscovery, Role, RunEndpoint, RunFinding, RunIpsecObservation, RunSshObservation, ScanDefinition, ScanRun, ScanRunRequester, ScanSchedule,
     ScheduleTrigger, User,
 )
 from tls_scan_app.models.scan import ACTIVE_STATUSES, FINAL_STATUSES
@@ -27,7 +27,7 @@ from tls_scan_app.services.trust_stores import public_snapshot
 router = APIRouter(prefix="/api", tags=["runs"])
 auditor = require_role(Role.AUDITOR)
 user_only = require_role(Role.USER)
-MEDIA = {"html": "text/html", "md": "text/markdown", "csv": "text/csv", "findings_csv": "text/csv", "mail_security_csv": "text/csv", "ipsec_html": "text/html", "ipsec_md": "text/markdown", "ipsec_csv": "text/csv", "cbom": "application/json", "metadata": "application/json"}
+MEDIA = {"html": "text/html", "md": "text/markdown", "csv": "text/csv", "findings_csv": "text/csv", "mail_security_csv": "text/csv", "ipsec_html": "text/html", "ipsec_md": "text/markdown", "ipsec_csv": "text/csv", "ssh_html": "text/html", "ssh_md": "text/markdown", "ssh_csv": "text/csv", "cbom": "application/json", "metadata": "application/json"}
 
 
 def run_plan(snapshot: dict | None) -> dict | None:
@@ -49,7 +49,7 @@ def run_plan(snapshot: dict | None) -> dict | None:
         "private_stores": [s.get("name") for s in (snapshot.get("trust_stores") or [])],
         "revocation": bool(revocation.get("enabled")), "tls_checks": len(enabled_tls),
         "controls": snapshot.get("enabled_controls", [snapshot.get("control_type", "tls")]),
-        "policies": [p.get("name") for p in [*snapshot.get("policies", []), *((snapshot.get("ipsec") or {}).get("policies", []))]], "formats": snapshot.get("export_formats", []),
+        "policies": [p.get("name") for p in [*snapshot.get("policies", []), *((snapshot.get("ipsec") or {}).get("policies", [])), *((snapshot.get("ssh") or {}).get("policies", []))]], "formats": snapshot.get("export_formats", []),
         "mail_security": {"domains": (snapshot.get("mail_security") or {}).get("domains", []),
                           "checks": [key for key, enabled in ((snapshot.get("mail_security") or {}).get("checks") or {}).items() if enabled]},
     }
@@ -110,6 +110,11 @@ def get_run(run_id: uuid.UUID, db: DbSession = Depends(get_db), user: User = Dep
         {"target": x.target, "port": x.port, "status": x.status, "ike_version": x.ike_version,
          "exchange": x.exchange, "proposal": x.proposal, "verdict": x.verdict, "evidence": x.evidence}
         for x in db.execute(select(RunIpsecObservation).where(RunIpsecObservation.run_id == r.id).order_by(RunIpsecObservation.target, RunIpsecObservation.port)).scalars()
+    ]
+    out["ssh_observations"] = [
+        {"target": x.target, "port": x.port, "status": x.status, "verdict": x.verdict, "banner": x.banner,
+         "algorithms": x.algorithms, "host_keys": x.host_keys, "fingerprints": x.fingerprints, "evidence": x.evidence}
+        for x in db.execute(select(RunSshObservation).where(RunSshObservation.run_id == r.id).order_by(RunSshObservation.target, RunSshObservation.port)).scalars()
     ]
     return out
 
@@ -191,7 +196,7 @@ def download_report(run_id: uuid.UUID, fmt: str, request: Request, inline: bool 
     audit.record(db, "report.download", actor=user, resource_type="scan_run", resource_id=r.id, detail={"format": fmt})
     db.commit()
     headers = {"X-Content-Type-Options": "nosniff", "Content-Security-Policy": "sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:; script-src 'unsafe-inline'"}
-    if fmt == "html":
+    if fmt in {"html", "ssh_html", "ipsec_html"}:
         # The report's own script renders it. Sandboxed to an opaque origin (no allow-same-origin): it cannot touch the app's cookies or API.
         headers = headers | {"Content-Security-Policy": "sandbox allow-scripts allow-modals allow-downloads; default-src 'none'; style-src 'unsafe-inline'; img-src data:; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'"}
         body = inline_report_assets(path.read_text(encoding="utf-8"), path.parent)

@@ -13,7 +13,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DbSession
 
-from tls_scan_app.models import RunEndpoint, RunFinding, RunIpsecObservation, ScanDefinition, ScanRun, ScanRunRequester, User
+from tls_scan_app.models import RunEndpoint, RunFinding, RunIpsecObservation, RunSshObservation, ScanDefinition, ScanRun, ScanRunRequester, User
 from tls_scan_app.models.scan import ACTIVE_STATUSES, CANCELLED, COMPLETED, EXPIRED, FAILED, PARTIAL, QUEUED, RUNNING
 from tls_scan_app.services import audit, report_addendum, report_branding
 from tls_scan_app.services.mail_security import attach_smtp_observations
@@ -53,7 +53,7 @@ def create_run(
             fingerprint=fingerprint,
             config_snapshot=snapshot,
             policy_versions=[{"name": p["name"], "version": p["version"], "version_id": p["version_id"]}
-                             for p in [*snapshot.get("policies", []), *((snapshot.get("ipsec") or {}).get("policies", []))]],
+                             for p in [*snapshot.get("policies", []), *((snapshot.get("ipsec") or {}).get("policies", [])), *((snapshot.get("ssh") or {}).get("policies", []))]],
         )
         try:
             with db.begin_nested():
@@ -150,6 +150,13 @@ def persist_results(db: DbSession, run: ScanRun, outcome: dict[str, Any], status
             proposal=observation.get("proposal") or {}, verdict=observation.get("verdict", "indeterminate"),
             evidence=observation.get("evidence") or {},
         ))
+    for observation in outcome.get("ssh_observations", []):
+        db.add(RunSshObservation(
+            run_id=run.id, target=observation["target"], port=int(observation["port"]), status=observation["status"],
+            verdict=observation.get("verdict", "indeterminate"), banner=observation.get("banner", ""),
+            algorithms=observation.get("algorithms") or {}, host_keys=observation.get("host_keys") or [],
+            fingerprints=observation.get("fingerprints") or {}, evidence=observation.get("evidence") or {},
+        ))
     for endpoint in model.get("endpoints", []):
         cert = endpoint.get("certificate") or {}
         db.add(RunEndpoint(
@@ -181,7 +188,7 @@ def persist_results(db: DbSession, run: ScanRun, outcome: dict[str, Any], status
         attach_smtp_observations(run.mail_security_results, model.get("endpoints", []))
     run.summary, run.status, run.finished_at = model.get("statistics"), status, datetime.now(UTC)
     db.flush()
-    if (run.config_snapshot or {}).get("control_type") == "ipsec":
+    if (run.config_snapshot or {}).get("control_type") in {"ipsec", "ssh"}:
         addendum = None  # TLS-only evolution/finding addenda must not be mixed into IKE reports.
     else:
         try:
@@ -234,6 +241,8 @@ def _format_of(path: Path, run: ScanRun | None = None) -> str:
     controls = (run.config_snapshot or {}).get("enabled_controls", []) if run else []
     if path.name.startswith("ipsec-results.") and "tls" in controls and "ipsec" in controls:
         return f"ipsec_{path.suffix.lstrip('.')}"
+    if path.name.startswith("ssh-results."):
+        return f"ssh_{path.suffix.lstrip('.')}"
     name = path.name
     if name.endswith(".cbom.json"):
         return "cbom"

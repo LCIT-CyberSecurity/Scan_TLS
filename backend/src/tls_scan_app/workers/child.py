@@ -15,6 +15,7 @@ from pathlib import Path
 from tls_scan_app.services.planner import job_from_snapshot
 from tls_scanner.runner import execute_scan
 from tls_scan_app.services.ipsec import evaluate_policy, probe
+from tls_scan_app.services.ssh_audit import audit_target, evaluate_ssh_policy
 import csv
 import html
 import io
@@ -23,6 +24,70 @@ from datetime import UTC, datetime
 
 def emit(name: str, data: dict) -> None:
     print(json.dumps({"event": name, **data}), flush=True)
+
+
+def scan_ssh(config: dict, cancel, emit):
+    """Bounded unauthenticated ssh-audit probes. No credentials or rate tests are used."""
+    settings, policies = config["settings"], config.get("policies", [])
+    observations = []
+    targets = config.get("targets", [])[:int(settings.get("max_targets", 256))]
+    ports = settings.get("ports", [22])
+    if settings.get("preset", "quick") == "quick":
+        ports = ports[:1]
+    total = len(targets) * len(ports)
+    for target in targets:
+        for port in ports:
+            if cancel.is_set():
+                break
+            emit("phase", {"phase": "ssh_audit", "hosts": targets})
+            observation = audit_target(target, int(port), int(settings.get("timeout_seconds", 2)))
+            retries = int(settings.get("retries", 0))
+            for _ in range(retries):
+                if observation.get("status") != "timeout" or cancel.is_set():
+                    break
+                observation = audit_target(target, int(port), int(settings.get("timeout_seconds", 2)))
+            verdicts = {p["name"]: evaluate_ssh_policy(observation, p["content"]) for p in policies}
+            values = set(verdicts.values())
+            observation.update({"target": target, "port": int(port), "verdict": (
+                "non_compliant" if "non_compliant" in values else "compliant" if values == {"compliant"} else "indeterminate")})
+            observation.setdefault("evidence", {})["policy_verdicts"] = verdicts
+            observations.append(observation)
+            emit("host_done", {"target": target, "hosts_done": len(observations), "hosts_total": total})
+        if cancel.is_set():
+            break
+    return observations, targets
+
+
+def write_ssh_reports(observations: list[dict], export_dir: Path, run_id: str, formats: list[str]):
+    root = export_dir / run_id
+    root.mkdir(parents=True, exist_ok=True)
+    files = []
+    fields = ("target", "port", "status", "verdict", "banner", "protocol_versions", "key_exchange", "encryption", "mac", "host_key", "fingerprints")
+    for fmt in formats:
+        path = root / f"ssh-results.{fmt}"
+        rows = [{"target": x["target"], "port": x["port"], "status": x["status"], "verdict": x["verdict"], "banner": x.get("banner", ""),
+                 **{k: ", ".join((x.get("algorithms") or {}).get(src, [])) for k, src in (("protocol_versions", "protocol_versions"), ("key_exchange", "key_exchange"), ("encryption", "encryption"), ("mac", "mac"), ("host_key", "host_key"))},
+                 "fingerprints": json.dumps(x.get("fingerprints") or {}, sort_keys=True)}
+                for x in observations]
+        if fmt == "csv":
+            import csv, io
+            stream = io.StringIO(newline="")
+            writer = csv.DictWriter(stream, fieldnames=fields); writer.writeheader(); writer.writerows(rows)
+            path.write_text(stream.getvalue(), encoding="utf-8")
+        elif fmt == "md":
+            lines = ["# SSH audit results", "", "> Unauthenticated protocol audit. No password, key or rate-limit tests were performed.", "",
+                     "| Target | Port | Status | Verdict | Banner | Algorithms |", "|---|---:|---|---|---|---|"]
+            lines.extend(f"| {r['target']} | {r['port']} | {r['status']} | {r['verdict']} | {r['banner']} | {', '.join(r['key_exchange'] + r['encryption'] + r['mac'] + r['host_key'])} |" for r in rows)
+            path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        elif fmt == "html":
+            import html
+            head = "".join(f"<th>{html.escape(k.replace('_', ' ').title())}</th>" for k in fields)
+            body = "".join("<tr>" + "".join(f"<td>{html.escape(str(r.get(k, '')))}</td>" for k in fields) + "</tr>" for r in rows)
+            path.write_text("<!doctype html><meta charset='utf-8'><title>SSH audit</title><h1>SSH audit results</h1><p>Unauthenticated protocol audit; no credentials or rate tests were used.</p><table><thead><tr>" + head + "</tr></thead><tbody>" + body + "</tbody></table>", encoding="utf-8")
+        else:
+            continue
+        files.append(str(path))
+    return files
 
 
 def scan_ipsec(config: dict, targets: list[str], export_dir: Path, run_id: str, formats: list[str], cancel, emit):
@@ -88,6 +153,14 @@ def main(argv: list[str]) -> int:
     payload = json.loads(snapshot_path.read_text())
     cancel = threading.Event()
     signal.signal(signal.SIGTERM, lambda *_: cancel.set())
+    if payload["snapshot"].get("control_type") == "ssh":
+        snapshot = payload["snapshot"]
+        observations, targets = scan_ssh(snapshot["ssh"], cancel, emit)
+        written = write_ssh_reports(observations, Path(payload["export_dir"]), payload["run_id"], snapshot["export_formats"])
+        outcome_path.write_text(json.dumps({"status": "partial" if cancel.is_set() else "completed",
+            "report_model": {"statistics": {"ssh_observations": len(observations)}}, "ssh_observations": observations,
+            "written_files": written, "scanned_hosts": targets, "skipped_hosts": [], "duration_seconds": 0}, default=str))
+        return 0
     if payload["snapshot"].get("control_type") == "ipsec":
         snapshot = payload["snapshot"]
         ike = snapshot["ike"]
@@ -149,6 +222,21 @@ def main(argv: list[str]) -> int:
             "written_files": written, "scanned_hosts": targets, "skipped_hosts": [],
             "duration_seconds": 0}, default=str))
         return 0
+    if "tls" not in payload["snapshot"].get("enabled_controls", []) and "ipsec" in payload["snapshot"].get("enabled_controls", []):
+        snapshot = payload["snapshot"]
+        ike_config = snapshot["ipsec"]
+        ike_targets = ike_config.get("targets") or sorted({t for p in snapshot["passes"] for t in p["targets"]})
+        ike_observations, ike_files = scan_ipsec(ike_config, ike_targets, Path(payload["export_dir"]), payload["run_id"], snapshot["export_formats"], cancel, emit)
+        ssh_observations, ssh_files, ssh_targets = [], [], []
+        if snapshot.get("ssh") and "ssh" in snapshot["enabled_controls"] and not cancel.is_set():
+            ssh_observations, ssh_targets = scan_ssh(snapshot["ssh"], cancel, emit)
+            ssh_files = write_ssh_reports(ssh_observations, Path(payload["export_dir"]), payload["run_id"], snapshot["export_formats"])
+        outcome_path.write_text(json.dumps({"status": "partial" if cancel.is_set() else "completed",
+            "report_model": {"statistics": {"ipsec_observations": len(ike_observations), "ssh_observations": len(ssh_observations)}},
+            "ipsec_observations": ike_observations, "ssh_observations": ssh_observations,
+            "written_files": [*ike_files, *ssh_files], "scanned_hosts": sorted(set(ike_targets + ssh_targets)),
+            "skipped_hosts": [], "duration_seconds": 0}, default=str))
+        return 0
     job, passes = job_from_snapshot(
         payload["snapshot"], payload["run_id"], payload["export_dir"], payload.get("log_file"), payload["max_workers"]
     )
@@ -161,6 +249,13 @@ def main(argv: list[str]) -> int:
         outcome.report_model["statistics"]["ipsec_observations"] = len(observations)
         outcome.written_files.extend(ipsec_files)
         outcome.ipsec_observations = observations
+    ssh_config = payload["snapshot"].get("ssh")
+    if ssh_config and "ssh" in payload["snapshot"].get("enabled_controls", []) and not cancel.is_set():
+        observations, _ = scan_ssh(ssh_config, cancel, emit)
+        outcome.report_model["statistics"]["ssh_observations"] = len(observations)
+        outcome.written_files.extend(write_ssh_reports(observations, Path(payload["export_dir"]), payload["run_id"],
+                                                       payload["snapshot"]["export_formats"]))
+        outcome.ssh_observations = observations
     mail_security_results = []
     mail_cfg = payload["snapshot"].get("mail_security") or {}
     if mail_cfg.get("enabled") and not cancel.is_set():
@@ -176,6 +271,7 @@ def main(argv: list[str]) -> int:
         "duration_seconds": outcome.duration_seconds,
         "mail_security_results": mail_security_results,
         "ipsec_observations": getattr(outcome, "ipsec_observations", []),
+        "ssh_observations": getattr(outcome, "ssh_observations", []),
     }, default=str))
     return 0
 

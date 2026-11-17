@@ -36,6 +36,24 @@ function IpsecPolicyForm({ value, onChange }: { value: Content; onChange: (c: Co
   return <div className="space-y-4">{fields.map(([key, label]) => <Field key={key} label={label} hint="Comma-separated values"><Input value={list(value[key])} onChange={(e) => onChange({ ...value, [key]: split(e.target.value) })} placeholder={key === "allowed_versions" ? "IKEv1, IKEv2" : "AES-GCM, SHA-256, MODP-2048"} /></Field>)}</div>;
 }
 
+function SshPolicyForm({ value, onChange }: { value: Content; onChange: (c: Content) => void }) {
+  const fields = [["allowed_protocols", "SSH protocols"], ["allowed_kex", "Key exchange"], ["allowed_encryption", "Encryption"], ["allowed_macs", "MAC"], ["allowed_host_keys", "Host keys"]] as const;
+  return <div className="space-y-3">{fields.map(([key, label]) => <Field key={key} label={label}>
+    <Input value={Array.isArray(value[key]) ? (value[key] as string[]).join(", ") : ""} onChange={(e) => onChange({ ...value, [key]: e.target.value.split(",").map((x) => x.trim()).filter(Boolean) })} />
+  </Field>)}<Field label="Minimum RSA key size (bits)"><Input type="number" min={1024} max={16384} value={Number(value.minimum_rsa_bits ?? 2048)} onChange={(e) => onChange({ ...value, minimum_rsa_bits: Number(e.target.value) })} /></Field></div>;
+}
+
+function SshProfileForm({ value, onChange }: { value: Content; onChange: (c: Content) => void }) {
+  const ssh = value.ssh ?? {};
+  const patch = (key: string, next: unknown) => onChange({ ...value, ssh: { ...ssh, [key]: next } });
+  return <div className="space-y-3"><Field label="TCP ports"><Input value={(ssh.ports ?? [22]).join(", ")} onChange={(e) => patch("ports", e.target.value.split(",").map((x) => Number(x.trim())).filter((x) => Number.isFinite(x)))} /></Field>
+    <div className="grid gap-3 sm:grid-cols-3"><Field label="Per-port timeout (1–5 s)"><Input type="number" min={1} max={5} value={ssh.timeout_seconds ?? 2} onChange={(e) => patch("timeout_seconds", Number(e.target.value))} /></Field>
+      <Field label="Timeout retries (0–1)"><Input type="number" min={0} max={1} value={ssh.retries ?? 0} onChange={(e) => patch("retries", Number(e.target.value))} /></Field>
+      <Field label="Maximum targets (1–1024)"><Input type="number" min={1} max={1024} value={ssh.max_targets ?? 256} onChange={(e) => patch("max_targets", Number(e.target.value))} /></Field></div>
+    <Field label="Audit preset"><select className="w-full" value={ssh.preset ?? "quick"} onChange={(e) => patch("preset", e.target.value)}><option value="quick">Quick</option><option value="deep">Deep</option></select></Field>
+    <p className="text-xs text-muted">Uses ssh-audit protocol inspection only. No authentication or rate-limit tests are run.</p></div>;
+}
+
 function IpsecProfileForm({ value, onChange }: { value: Content; onChange: (c: Content) => void }) {
   const ike = value.ike ?? {};
   const patch = (key: string, v: unknown) => onChange({ ike: { ...ike, [key]: v } });
@@ -110,13 +128,14 @@ function GenericProfileForm({ value, onChange }: { value: Content; onChange: (c:
   return <div className="space-y-6">
     <section className="space-y-3"><h3 className="text-sm font-semibold">TLS</h3><ProfileForm value={value.tls ?? {}} onChange={(tls) => onChange({ ...value, tls })} /></section>
     <section className="space-y-3"><h3 className="text-sm font-semibold">VPN IPsec / IKE</h3><IpsecProfileForm value={value.ipsec ?? { ike: { versions: ["IKEv1", "IKEv2"], ports: [500, 4500], timeout_ms: 1000, retries: 0, nat_t: true, aggressive_mode: false } }} onChange={(ipsec) => onChange({ ...value, ipsec })} /></section>
+    <section className="space-y-3"><h3 className="text-sm font-semibold">SSH</h3><SshProfileForm value={value} onChange={onChange} /></section>
   </div>;
 }
 
-function VersionedTab({ kind, technology, Form, blank }: { kind: "policies" | "profiles"; technology: "tls" | "ipsec" | "generic"; Form: ComponentType<{ value: Content; onChange: (c: Content) => void }>; blank: Content }) {
+function VersionedTab({ kind, technology, Form, blank }: { kind: "policies" | "profiles"; technology: "tls" | "ipsec" | "ssh" | "generic"; Form: ComponentType<{ value: Content; onChange: (c: Content) => void }>; blank: Content }) {
   const { t } = useI18n();
   const { atLeast } = useAuth();
-  const { data, reload, error } = useLoad(() => api<Versioned[]>(technology === "tls" ? `/${kind}` : `/${kind}?technology=ipsec`), [kind, technology]);
+  const { data, reload, error } = useLoad(() => api<Versioned[]>(technology === "tls" ? `/${kind}` : `/${kind}?technology=${technology}`), [kind, technology]);
   const [edit, setEdit] = useState<{ item?: Versioned; name: string; description: string; content: Content } | null>(null);
   const [yaml, setYaml] = useState<string | null>(null);
   const [err, setErr] = useState<unknown>();
@@ -207,7 +226,7 @@ function TemplatesTab() {
 
 export default function Policies() {
   const { t } = useI18n();
-  const [technology, setTechnology] = useState<"tls" | "ipsec">("tls");
+  const [technology, setTechnology] = useState<"tls" | "ipsec" | "ssh">("tls");
   const { data: tlsCatalog } = useLoad(() => api<TlsCheckSpec[]>("/tls-checks"));
   // New profiles start with the recommended complementary checks; existing profiles are never modified.
   const tlsDefaults = tlsCatalog?.length ? { tls: recommendedSection(tlsCatalog) } : {};
@@ -217,13 +236,15 @@ export default function Policies() {
       <div className="mb-4 flex gap-2" role="group" aria-label={t("scan.controlType")}>
         <Button variant={technology === "tls" ? "default" : "outline"} onClick={() => setTechnology("tls")}>TLS</Button>
         <Button variant={technology === "ipsec" ? "default" : "outline"} onClick={() => setTechnology("ipsec")}>VPN IPsec</Button>
+        <Button variant={technology === "ssh" ? "default" : "outline"} onClick={() => setTechnology("ssh")}>SSH</Button>
       </div>
       <Tabs defaultValue="policies">
         <TabsList><TabsTrigger value="policies">{t("pol.policies")}</TabsTrigger><TabsTrigger value="profiles">{t("pol.profiles")}</TabsTrigger><TabsTrigger value="templates">{t("pol.templates")}</TabsTrigger></TabsList>
-        <TabsContent value="policies"><VersionedTab kind="policies" technology={technology} Form={technology === "tls" ? PolicyForm : IpsecPolicyForm} blank={technology === "tls" ? { allowed_versions: ["TLSv1.2", "TLSv1.3"], allowed_cipher_algorithms: ["AES-GCM", "CHACHA20-POLY1305"], allowed_signature_hashes: ["SHA-256", "SHA-384", "SHA-512"], minimum_rsa_bits: 2048 } : { allowed_versions: ["IKEv1", "IKEv2"], allowed_encryption: ["AES-GCM"], allowed_integrity: ["SHA-256"], allowed_prf: ["PRF-HMAC-SHA2-256"], allowed_dh_groups: ["MODP-2048"] }} /></TabsContent>
+        <TabsContent value="policies"><VersionedTab kind="policies" technology={technology} Form={technology === "tls" ? PolicyForm : technology === "ipsec" ? IpsecPolicyForm : SshPolicyForm} blank={technology === "tls" ? { allowed_versions: ["TLSv1.2", "TLSv1.3"], allowed_cipher_algorithms: ["AES-GCM", "CHACHA20-POLY1305"], allowed_signature_hashes: ["SHA-256", "SHA-384", "SHA-512"], minimum_rsa_bits: 2048 } : technology === "ipsec" ? { allowed_versions: ["IKEv1", "IKEv2"], allowed_encryption: ["AES-GCM"], allowed_integrity: ["SHA-256"], allowed_prf: ["PRF-HMAC-SHA2-256"], allowed_dh_groups: ["MODP-2048"] } : { allowed_protocols: ["SSH-2.0"], allowed_kex: ["curve25519-sha256", "diffie-hellman-group14-sha256"], allowed_encryption: ["chacha20-poly1305@openssh.com", "aes256-gcm@openssh.com"], allowed_macs: ["hmac-sha2-256-etm@openssh.com"], allowed_host_keys: ["ssh-ed25519", "rsa-sha2-512"], minimum_rsa_bits: 2048 }} /></TabsContent>
         <TabsContent value="profiles"><VersionedTab kind="profiles" technology="generic" Form={GenericProfileForm} blank={{
           tls: { scan: { ports: "fast", crypto: "standard", resolve_dns: true, workers: 4 }, checks: { certificate: { enabled: true, expires_within_days: 30, trust: { enabled: true }, revocation: { enabled: false } }, ...tlsDefaults } },
           ipsec: { ike: { versions: ["IKEv1", "IKEv2"], ports: [500, 4500], timeout_ms: 1000, retries: 0, nat_t: true, aggressive_mode: false } },
+          ssh: { ports: [22], timeout_seconds: 2, preset: "quick", max_targets: 256 },
         }} /></TabsContent>
         <TabsContent value="templates"><TemplatesTab /></TabsContent>
       </Tabs>
