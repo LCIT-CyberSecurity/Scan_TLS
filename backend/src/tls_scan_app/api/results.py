@@ -118,6 +118,7 @@ def get_result(run_id: uuid.UUID, request: Request, db: DbSession = Depends(get_
         "profile_version": profile.get("version"),
         "policy_versions": r.policy_versions or [], "trust_stores": snap.get("trust_stores") or [], "exclusions": snap.get("exclusions"), "progress": r.progress, "error": r.error or None,
         "skipped_hosts": r.skipped_hosts or [], "reports": _reports(r, Path(request.app.state.settings.storage_root)),
+        "mail_security_results": r.mail_security_results or [],
     }
     rows = db.execute(select(RunEndpoint.endpoint_id, RunEndpoint.errors, RunEndpoint.untested_checks).where(RunEndpoint.run_id == r.id)
                       .order_by(RunEndpoint.endpoint_id)).all()

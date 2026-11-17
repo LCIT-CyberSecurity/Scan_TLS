@@ -165,6 +165,25 @@ def build_snapshot(db: DbSession, definition: ScanDefinition, max_addresses: int
             "limitations": ["Unauthenticated IKE exchange only", "ESP/Child SA, authentication, PFS and tunnel operation are not evaluated"],
         }
 
+    mail_security = copy.deepcopy(definition.mail_security or {"enabled": False, "checks": {}, "dkim_selectors": []})
+    mail_security["enabled"] = bool(mail_security.get("enabled"))
+    if mail_security["enabled"]:
+        mail_security["checks"] = {key: bool((mail_security.get("checks") or {}).get(key))
+                                    for key in ("spf", "dmarc", "dkim", "mta_sts", "tls_rpt", "dane")}
+        if not any(mail_security["checks"].values()):
+            raise PlanError("enable at least one mail security check")
+        mail_domains = sorted({target.value.rstrip(".").lower() for target in targets if target.kind == "fqdn"})
+        if exclusions:
+            mail_domains, _, _ = exclusions.filter_targets(mail_domains)
+        if not mail_domains:
+            raise PlanError("mail security checks require at least one explicitly selected FQDN target; IP/CIDR targets are not inferred as mail domains")
+        if len(mail_domains) > 25:
+            raise PlanError("mail security checks are limited to 25 explicitly selected FQDNs per scan")
+        mail_security["domains"] = mail_domains
+        mail_security["dkim_selectors"] = list(dict.fromkeys(mail_security.get("dkim_selectors") or []))[:20]
+    else:
+        mail_security = {"enabled": False, "checks": {}, "dkim_selectors": []}
+
     try:
         checks, trust_stores = resolve_for_snapshot(db, profile_version.content.get("checks", {}))
     except TrustStoreError as error:
@@ -175,6 +194,7 @@ def build_snapshot(db: DbSession, definition: ScanDefinition, max_addresses: int
         "scan": scan_cfg,
         "exclusions": {"entries": [{"value": v, "scope": s} for v, s in sources.items()], "removed_targets": sorted(set(removed)), "partial_targets": sorted(set(partial))},
         "checks": checks,
+        "mail_security": mail_security,
         "trust_stores": trust_stores,
         "passes": passes,
         "policy_mode": definition.policy_mode,
@@ -196,6 +216,9 @@ def fingerprint(snapshot: dict[str, Any]) -> str:
         "mode": snapshot["policy_mode"],
         "ike": snapshot.get("ike"),
     }
+    mail_security = snapshot.get("mail_security") or {}
+    if mail_security.get("enabled"):
+        material["mail_security"] = mail_security
     return hashlib.sha256(json.dumps(material, sort_keys=True, default=str).encode()).hexdigest()
 
 

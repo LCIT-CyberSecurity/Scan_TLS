@@ -49,7 +49,9 @@ def _certificates(db: DbSession, run: ScanRun) -> list[dict[str, Any]]:
 def build(db: DbSession, run: ScanRun) -> dict[str, Any]:
     """The run's rows must already be flushed."""
     previous = comparison.previous_comparable(db, run) if run.definition_id else None
-    out: dict[str, Any] = {"evolution": None, "certificates": _certificates(db, run), "trend": [], "scope": None}
+    mail_cfg = (run.config_snapshot or {}).get("mail_security") or {}
+    out: dict[str, Any] = {"evolution": None, "certificates": _certificates(db, run), "trend": [], "scope": None,
+                           "mail_security": run.mail_security_results if mail_cfg.get("enabled") else None}
     if previous is not None:
         out["evolution"] = {"previous": {"id": str(previous.id), "name": previous.name, "finished_at": previous.finished_at},
                             **evolution.summarize_comparison(db, previous, run)}
@@ -70,7 +72,7 @@ def build(db: DbSession, run: ScanRun) -> dict[str, Any]:
 
 
 def has_content(addendum: dict[str, Any]) -> bool:
-    return bool(addendum["evolution"] or addendum["certificates"] or addendum["trend"] or addendum["scope"])
+    return bool(addendum["evolution"] or addendum["certificates"] or addendum["trend"] or addendum["scope"] or addendum.get("mail_security"))
 
 
 # ---------- HTML ----------
@@ -125,6 +127,20 @@ def render_html(addendum: dict[str, Any]) -> str:
         if sc["skipped_total"]:
             inner += f'<p>Hosts skipped ({sc["skipped_total"]}): {_e(", ".join(map(str, sc["skipped_hosts"])))}{" …" if sc["skipped_total"] > len(sc["skipped_hosts"]) else ""}</p>'
         parts.append(_section("Scan scope", "Scope", inner, "scope"))
+    mail_domains = addendum.get("mail_security") or []
+    if mail_domains:
+        rows = [[domain.get("domain"), check.get("check"), check.get("status"), check.get("message"), "; ".join(check.get("records") or [])]
+                for domain in mail_domains for check in domain.get("checks", [])]
+        inner = "<p>Observations are limited to selected FQDN targets. DNS/HTTPS posture does not prove that messages are delivered or reports received.</p>"
+        inner += _table(["Domain", "Control", "Verdict", "Observation", "Evidence"], rows[:MAX_ROWS])
+        smtp_rows = [[domain.get("domain"), item.get("host"), item.get("port") or "—", item.get("status"),
+                      ", ".join(item.get("tls_versions") or []), item.get("message", "")]
+                     for domain in mail_domains for item in domain.get("smtp_starttls", [])]
+        if smtp_rows:
+            inner += "<h3>Existing SMTP STARTTLS observations</h3>" + _table(["Domain", "MX", "Port", "Status", "TLS versions", "Observation"], smtp_rows[:MAX_ROWS])
+        if len(rows) > MAX_ROWS:
+            inner += f"<p>{len(rows) - MAX_ROWS} additional observations are available in the scan result and CSV export.</p>"
+        parts.append(_section("Mail security", "Mail security", inner, "mail-security"))
     return "".join(parts)
 
 
@@ -177,6 +193,17 @@ def render_markdown(addendum: dict[str, Any]) -> str:
                 lines += [f"Targets removed before the scan: {', '.join(sc['removed_targets'][:MAX_ROWS])}", ""]
         if sc["skipped_total"]:
             lines += [f"Hosts skipped ({sc['skipped_total']}): {', '.join(map(str, sc['skipped_hosts']))}", ""]
+    mail_domains = addendum.get("mail_security") or []
+    if mail_domains:
+        rows = [[domain.get("domain"), check.get("check"), check.get("status"), check.get("message"), "; ".join(check.get("records") or [])]
+                for domain in mail_domains for check in domain.get("checks", [])]
+        lines += ["", "## Mail security", "", "Observations are limited to selected FQDN targets. DNS/HTTPS posture does not prove that messages are delivered or reports received.", "",
+                  *_md_table(["Domain", "Control", "Verdict", "Observation", "Evidence"], rows)]
+        smtp_rows = [[domain.get("domain"), item.get("host"), item.get("port") or "—", item.get("status"),
+                      ", ".join(item.get("tls_versions") or []), item.get("message", "")]
+                     for domain in mail_domains for item in domain.get("smtp_starttls", [])]
+        if smtp_rows:
+            lines += ["### Existing SMTP STARTTLS observations", "", *_md_table(["Domain", "MX", "Port", "Status", "TLS versions", "Observation"], smtp_rows)]
     return "\n".join(lines) + "\n" if lines else ""
 
 

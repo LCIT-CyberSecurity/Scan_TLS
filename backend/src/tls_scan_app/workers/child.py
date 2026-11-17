@@ -95,6 +95,12 @@ def main(argv: list[str]) -> int:
         payload["snapshot"], payload["run_id"], payload["export_dir"], payload.get("log_file"), payload["max_workers"]
     )
     outcome = execute_scan(job, cancel_event=cancel, on_event=emit, passes=passes)
+    mail_security_results = []
+    mail_cfg = payload["snapshot"].get("mail_security") or {}
+    if mail_cfg.get("enabled") and not cancel.is_set():
+        emit("phase", {"phase": "mail_security", "hosts": mail_cfg.get("domains", [])})
+        from tls_scan_app.services.mail_security import inspect_domains
+        mail_security_results = inspect_domains(mail_cfg.get("domains", []), mail_cfg, cancel)
     outcome_path.write_text(json.dumps({
         "status": outcome.status,
         "report_model": outcome.report_model,
@@ -102,6 +108,7 @@ def main(argv: list[str]) -> int:
         "scanned_hosts": outcome.scanned_hosts,
         "skipped_hosts": outcome.skipped_hosts,
         "duration_seconds": outcome.duration_seconds,
+        "mail_security_results": mail_security_results,
     }, default=str))
     return 0
 

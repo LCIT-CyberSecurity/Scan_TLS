@@ -138,7 +138,7 @@ export default function RunDetail() {
       {cmp && run.control_type !== "ipsec" && <div className="mb-6"><ComparisonView runId={id} withRun={withRun} /></div>}
       {run.reports.length > 0 && (
         <Card className="mb-6"><CardHeader><CardTitle>{t("nav.reports")}</CardTitle></CardHeader><CardContent className="flex flex-wrap gap-2">
-          {run.reports.filter((r) => ["html", "md", "csv", "cbom", "findings_csv"].includes(r.format)).map((r) => <Button key={r.format} asChild variant="outline" size="sm"><a href={downloadUrl(id, r.format)}><Download />{r.format.toUpperCase()}</a></Button>)}
+          {run.reports.filter((r) => ["html", "md", "csv", "cbom", "findings_csv", "mail_security_csv"].includes(r.format)).map((r) => <Button key={r.format} asChild variant="outline" size="sm"><a href={downloadUrl(id, r.format)}><Download />{r.format === "mail_security_csv" ? "MAIL CSV" : r.format.toUpperCase()}</a></Button>)}
           {run.reports.some((r) => r.format === "html") && <Button asChild size="sm"><a href={downloadUrl(id, "html", true)} target="_blank" rel="noreferrer">{t("run.openHtml")}</a></Button>}
         </CardContent></Card>
       )}
@@ -158,6 +158,21 @@ export default function RunDetail() {
           <DataTable rows={tlsCheckRows} rowKey={(r) => `${r.endpoint}/${r.check.check_id}`} columns={tlsCheckColumns(t as never)} />
         </Card>
       )}
+      {!!run.mail_security_results?.length && <Card className="mb-6">
+        <CardHeader><CardTitle>{t("mail.results" as never)}</CardTitle></CardHeader>
+        <CardContent><p className="mb-3 text-xs text-muted">{t("mail.limits" as never)}</p>
+          {run.mail_security_results.map((domain) => <section key={domain.domain} className="mb-5 last:mb-0">
+            <h3 className="mb-2 text-sm font-semibold">{domain.domain}</h3>
+            {!!domain.smtp_starttls?.length && <p className="mb-2 text-xs text-muted">{t("mail.smtpStarttls" as never)}: {domain.smtp_starttls.map((item) => `${item.host}${item.port ? `:${item.port}` : ""} — ${t(`mail.smtpStatus.${item.status}` as never)}${item.tls_versions.length ? ` (${item.tls_versions.join(", ")})` : ""}`).join(" · ")}</p>}
+            <DataTable rows={domain.checks} rowKey={(row) => `${row.check}-${row.details.selector ?? ""}`} columns={[
+              { key: "check", header: t("mail.check" as never), values: (row) => [row.check], render: (row) => row.check.toUpperCase() },
+              { key: "status", header: t("mail.verdict" as never), values: (row) => [row.status], render: (row) => <Badge tone={row.status === "compliant" ? "success" : row.status === "non_compliant" || row.status === "error" ? "danger" : row.status === "warning" ? "warning" : "neutral"}>{t(`mail.status.${row.status}` as never)}</Badge> },
+              { key: "message", header: t("mail.observation" as never), values: (row) => [row.message], render: (row) => <span className="text-xs">{row.message}</span> },
+              { key: "evidence", header: t("mail.evidence" as never), values: (row) => row.records, render: (row) => <code className="break-all text-xs">{row.records.join("; ") || "—"}</code> },
+            ]} />
+          </section>)}
+        </CardContent>
+      </Card>}
       {run.control_type === "ipsec" && <Card className="mb-6"><CardHeader><CardTitle>{t("ipsec.results" as never)}</CardTitle></CardHeader>
         <p className="px-5 pb-3 text-xs text-muted">{t("ipsec.notice" as never)}</p>
         {run.ipsec_observations?.length ? <DataTable rows={run.ipsec_observations} rowKey={(r) => `${r.target}:${r.port}:${r.ike_version}`} columns={[

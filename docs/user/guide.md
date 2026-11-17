@@ -15,7 +15,8 @@ Everyone signed in can read shared results; only an object's owner (or an operat
    tags, SI/sub-SI. Importing: one `value;ports;description` per line. A target exists once and can be used by any
    number of definitions and groups. SI, sub-SI and tags only help you organise and filter.
 2. **Scans → Definitions → New scan**: pick targets/groups, a *technical profile* (how to scan), one or more
-   *policies* (what is acceptable; the latest published version is used), a report template, tags and SI.
+   *policies* (what is acceptable; the latest published version is used), a report template, tags and SI. Optional
+   mail-security checks are disabled by default; details and limits are described in [Mail security checks](mail-security.md).
 3. **Run**. The run page shows the current phase (*port discovery*, *TLS analysis*, *evaluating compliance*,
    *generating reports*), elapsed time and — only when reliable — hosts processed. No fake percentage.
 4. **Cancel** your own scan any time: unstarted hosts are skipped and listed, results gathered so far are kept

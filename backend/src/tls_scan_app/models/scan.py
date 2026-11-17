@@ -28,6 +28,7 @@ class ScanDefinition(Base):
     report_template_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("report_templates.id", ondelete="SET NULL"))
     policy_mode: Mapped[str] = mapped_column(String(20), default="strict_all")
     exclusions: Mapped[list | None] = mapped_column(JsonType)  # hosts, networks and names this scan never touches (IP, CIDR, FQDN, *.domain)
+    mail_security: Mapped[dict | None] = mapped_column(JsonType)  # optional per-definition mail posture checks; defaults to disabled
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     updated_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
@@ -116,6 +117,7 @@ class ScanRun(Base):
     fingerprint: Mapped[str] = mapped_column(String(64), index=True)
     # Exact configuration used (targets, ports, profile content+version, policy contents+versions).
     config_snapshot: Mapped[dict] = mapped_column(JsonType)
+    mail_security_results: Mapped[list | None] = mapped_column(JsonType)
     policy_versions: Mapped[list] = mapped_column(JsonType, default=list)
     queued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
