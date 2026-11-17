@@ -50,10 +50,16 @@
   .brand small { color: var(--text-secondary); font-size: 13.5px; font-weight: 500; }
   .brand-logo { flex: none; width: 78px; height: 44px; object-fit: contain; }
   :root[data-appearance="dark"] .brand-logo { padding: 3px; background: #f4f5f8; border-radius: 8px; }
-  .nav-heading {
-    flex: none; margin: 0; padding: 0 14px 8px;
-    color: var(--text-faint); font-size: 13px; font-weight: 680; letter-spacing: 0.09em; text-transform: uppercase;
-  }
+  .sidebar-collapse { display: grid; place-items: center; flex: none; width: 34px; height: 34px; margin-left: auto; border: 1px solid transparent; border-radius: var(--radius-sm); color: var(--text-secondary); background: transparent; cursor: pointer; }
+  .sidebar-collapse:hover { color: var(--text-primary); background: var(--surface-secondary); }
+  .sidebar-collapse:focus-visible, .nav-heading-toggle:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+  .nav-heading-toggle { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 34px; margin: 0; padding: 0 12px 4px; border: 0; color: var(--text-faint); background: transparent; font: inherit; text-align: left; cursor: pointer; }
+  .nav-heading-toggle > svg { flex: none; margin-left: auto; transition: transform var(--fast) ease; }
+  .nav-heading-toggle.expanded > svg { transform: rotate(180deg); }
+  .nav-heading-icon { display: none; flex: none; }
+  .nav-heading-label { overflow: hidden; color: inherit; font-size: 13px; font-weight: 680; letter-spacing: 0.09em; text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
+  .nav-group-items { display: flex; flex-direction: column; gap: 4px; }
+  .nav-group-items[hidden] { display: none; }
   .nav-link {
     position: relative; display: flex; align-items: center; gap: 12px;
     min-height: 50px; padding: 0 14px; border-radius: var(--radius-sm);
@@ -102,10 +108,29 @@
   .user-name { font-size: 15px; font-weight: 600; line-height: 18px; text-align: left; }
   .user-name span { display: block; color: var(--text-faint); font-size: 12.5px; font-weight: 400; }
   .app-main { flex: 1; width: 100%; max-width: calc(1780px / var(--ui-zoom)); margin: 0 auto; padding: 32px clamp(20px, 2.2vw, 40px) 64px; display: block; }
+  @media (min-width: 861px) {
+    .sidebar { transition: width 160ms ease; }
+    .sidebar--compact { width: 82px; padding-right: 10px; padding-left: 10px; }
+    .sidebar--compact .brand { flex-direction: column; gap: 10px; padding: 2px 0 22px; }
+    .sidebar--compact .brand-logo { width: 48px; }
+    .sidebar--compact .brand-title, .sidebar--compact .sidebar-footer { display: none; }
+    .sidebar--compact .sidebar-collapse { margin-left: 0; }
+    .sidebar--compact nav { gap: 16px; }
+    .sidebar--compact .nav-heading-toggle { justify-content: center; gap: 0; padding: 0 0 4px; }
+    .sidebar--compact .nav-heading-icon { display: inline-flex; }
+    .sidebar--compact .nav-heading-label, .sidebar--compact .nav-heading-toggle > svg { display: none; }
+    .sidebar--compact .nav-link { justify-content: center; gap: 0; padding: 0; }
+    .sidebar--compact .nav-link span { display: none; }
+    .sidebar--compact .nav-link.active::before { left: -10px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .sidebar, .nav-heading-toggle > svg { transition: none; }
+  }
   @media (max-width: 860px) {
     .sidebar { position: fixed; inset: 0 auto 0 0; transform: translateX(-100%); transition: transform 180ms ease; box-shadow: var(--shadow-lg); }
     .sidebar--open { transform: none; }
     .crumb .mobile-menu { display: inline-flex; }
+    .sidebar-collapse { display: none; }
     .sidebar-scrim { position: fixed; inset: 0; z-index: 5; background: var(--scrim); }
     .user-name span { display: none; }
   }
