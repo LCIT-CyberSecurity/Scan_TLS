@@ -625,6 +625,7 @@ export const en = {
   "map.compliantShort": "OK",
   "map.nonCompliantShort": "NC",
   "map.global": "Global view",
+  "map.backToParent": "Back to parent view",
   "map.zoomIn": "Zoom in",
   "map.zoomOut": "Zoom out",
   "map.center": "Center map",

@@ -626,6 +626,7 @@ export const de: Messages = {
   "map.compliantShort": "OK",
   "map.nonCompliantShort": "NC",
   "map.global": "Gesamtansicht",
+  "map.backToParent": "Zur übergeordneten Ansicht",
   "map.zoomIn": "Vergrößern",
   "map.zoomOut": "Verkleinern",
   "map.center": "Karte zentrieren",
