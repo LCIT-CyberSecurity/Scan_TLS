@@ -1,5 +1,5 @@
 from tls_scan_app.models.catalog import (  # noqa: F401
-    DnsDiscovery, DnsLookalikeMonitor, GreenboneImport, GreenboneObjectLink, InformationSystem, Organization, ResourceSI, ResourceTag, Tag, Target, TargetDnsObservation, TargetGroup, TargetGroupMember,
+    DnsDiscovery, DnsLookalikeMonitor, EndpointExposure, GreenboneImport, GreenboneObjectLink, InformationSystem, Organization, ResourceSI, ResourceTag, Tag, Target, TargetDnsObservation, TargetGroup, TargetGroupMember,
 )
 from tls_scan_app.models.policy import (  # noqa: F401
     Policy, PolicyVersion, ReportTemplate, ScanProfile, ScanProfileVersion,

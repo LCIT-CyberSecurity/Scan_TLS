@@ -435,6 +435,7 @@ export default function NetworkMap() {
               <div><strong>{endpoint.hostname || endpoint.ip_address || host.target.value}</strong><span>:{endpoint.port ?? "—"}</span></div>
               <span className={`network-map-status network-map-status--${endpoint.compliance_status || "unknown"}`}>{endpoint.compliance_status || t("map.unknown")}</span>
               <small>{endpoint.tls_versions.join(" · ") || "—"} {endpoint.certificate?.valid_until ? `· ${t("map.validUntil")}: ${endpoint.certificate.valid_until}` : ""}</small>
+              <small title={[endpoint.exposure?.source, endpoint.exposure?.evidence_method, endpoint.exposure?.justification].filter(Boolean).join(" · ")}>{t("exposure.state" as never)}: {t(`exposure.${endpoint.exposure?.state ?? "unknown"}` as never)}{endpoint.exposure?.validated ? ` · ${t("exposure.validated" as never)}` : ` · ${t("exposure.notEvaluated" as never)}`}</small>
               {endpoint.certificate && <small>{t("map.issuer")}: {String(endpoint.certificate.issuer ?? "—")} · {t("map.trust")}: {String(endpoint.certificate.trust_classification ?? "—")}</small>}
             </article>)}</div>
             {host.findings.length > 0 && <><h3>{t("map.findings")} <small>{host.findings.length}</small></h3><ul className="network-map-findings">{host.findings.map((finding) => <li key={`${finding.finding_id}:${finding.title}`}><span className={`severity-${finding.severity}`}>{finding.severity}</span><span>{finding.title}</span></li>)}</ul></>}
