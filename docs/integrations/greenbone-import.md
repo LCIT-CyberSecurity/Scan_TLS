@@ -62,7 +62,11 @@ Consult the official [python-gvm connection API](https://greenbone.github.io/pyt
 
 The earlier disposable GMP rehearsal is recorded in Jira LST-24 comment 10762. It passed the connector and import invariants against a temporary TLS Scan database. It does **not** prove an import into the persistent Sandbox inventory.
 
-The follow-up check on 2026-11-18 found the TLS Scan Docker Sandbox reachable on the authorized integration VM, but no OpenVAS/GVM manager was available there: no matching running or stopped container, no Greenbone Docker volume, no OpenVAS/GVM deployment directory, and no OpenVAS SSH host alias in the current SSH configuration. Only the `gvmd:stable`, `pg-gvm:stable`, and `pg-gvm-migrator:stable` images were cached; no scanner or complete Greenbone test stack was running. The VM had about 22 GB free disk, close to Greenbone's documented 20 GB minimum for the full community stack, so a full feed-backed deployment was not started. No other host was probed and no network scan was run.
+The follow-up inventory found no OpenVAS/GVM containers (active or stopped), Compose project, labeled volume/network, or deployment directory on the TLS Scan integration VM. The local SSH configuration contained only the `vm-integrations` alias, but internal DNS did resolve `VM-OpenVAS.home` to `192.168.1.28` plus IPv6 records. That VM was checked directly: the IPv4 neighbor entry was `FAILED`, SSH returned `No route to host`, and targeted SSH/GMP (9390)/GSA (9392) TCP checks to the published addresses timed out or were unreachable. No network scan was run.
+
+The API container's Greenbone configuration was also inspected without printing secrets: its allowed-host list was empty, the username was unset, and the CA, password, client certificate and client key paths were not present as non-empty files. Compose mount declarations existed, but they did not provide usable secret files. Therefore TLS Scan could not initiate a real GMP request even if the manager host were reachable.
+
+The Docker host originally had three unreferenced Greenbone images: `gvmd:stable` (manager, 735,485,753 bytes), `pg-gvm:stable` (Greenbone PostgreSQL database, 509,637,033 bytes), and `pg-gvm-migrator:stable` (database migration helper, 685,058,018 bytes). At the operator's request, the two support images were removed and `gvmd:stable` was retained. No containers, volumes, or networks were removed. About 1.1 GB was freed; the disk then had about 23 GB available. Reusing those support roles in a future manager stack will require pulling those two images again.
 
 The Sandbox itself was not changed by the OpenVAS rehearsal: no GMP endpoint was configured, no import was submitted, and no target or schedule was created or edited. Post-deployment inventory counts were 4 scan runs, 2 schedules, 0 endpoint exposure records, and 0 DNS lookalike monitors. The TLS Scan API, PostgreSQL, WebUI, worker, and scheduler were healthy; WebUI, readiness, and auth-provider endpoints returned HTTP 200. The live GMP connection, persistent target baseline, preview, import, idempotence, source-removal, and authenticated import WebUI scenarios remain **NOT EXECUTED**.
 
@@ -75,10 +79,13 @@ Run these read-only checks from the authorized integration host before schedulin
 ```sh
 ssh vm-integrations 'docker ps -a --format "{{.Names}} {{.Status}}"'
 ssh vm-integrations 'docker volume ls --format "{{.Name}}"'
+ssh vm-integrations 'getent ahostsv4 VM-OpenVAS.home; getent ahostsv6 VM-OpenVAS.home'
+ssh vm-integrations 'docker network ls --format "{{.Name}} {{.Labels}}"'
 ssh vm-integrations 'docker image ls --format "{{.Repository}}:{{.Tag}} {{.Size}}" | grep -Ei "greenbone|openvas|gvm"'
+ssh vm-integrations 'timeout 3 bash -c "</dev/tcp/192.168.1.28/9390"'
 ```
 
-Then identify or provision the authorized **test-only** Greenbone manager and expose only its GMP TLS endpoint to the TLS Scan API container. A current manager/credential/CA is required: the TLS Scan connector supports certificate-verified GMP over TLS, not the Greenbone WebUI API or a Unix socket. Keep the GMP user read-only for Targets, mount the password and CA as secrets, configure the exact allowlisted hostname, and take the required TLS Scan database/inventory baseline before any import. Do not enable feeds/scanning or contact another LAN host until the test manager is available and the selected targets are confirmed in scope. Follow the E2E sequence above and update Jira with per-scenario evidence; do not infer a persistent import result from the previous disposable rehearsal.
+Once the named manager is reachable, inspect its Docker containers, volumes and networks before changing it. The TLS Scan connector requires certificate-verified GMP over TLS, not the Greenbone WebUI API or a Unix socket. Verify the API allowlist is exact, mount the CA/password (and optional client cert/key) as non-empty secret files, and use a read-only GMP account for Targets. Take the Sandbox backup and inventory baseline before any import. Do not enable feeds/scanning or contact any other LAN host. Follow the E2E sequence above and record each scenario in Jira; do not infer a persistent import result from the previous disposable rehearsal.
 
 ### Recorded status
 
@@ -87,9 +94,9 @@ Then identify or provision the authorized **test-only** Greenbone manager and ex
 | LST-24 schedule edit code/test from PR #36 | PASS | Jira comment 10762; PR #36 merged at `985d553b9eb6f52480d54330ed1a23bbc2752ace` |
 | Current TLS Scan Sandbox Docker health | PASS | API/DB/WebUI healthy; worker/scheduler running; restart count 0; readiness HTTP 200 |
 | Current Sandbox login page visual check | PASS, login page only | Playwright response HTTP 200; self-signed HTTPS exception limited to the test context |
-| Current real Docker TLS Scan → GMP connection | NOT EXECUTED | No manager container/volume/service or host alias was available |
+| Current real Docker TLS Scan → GMP connection | NOT EXECUTED | `VM-OpenVAS.home` resolves to 192.168.1.28, but its SSH/GMP/GSA endpoints are unreachable; Sandbox allowlist and secret files are unusable |
 | Persistent Sandbox inventory baseline, preview and import | NOT EXECUTED | No GMP source; no inventory mutation was made |
 | Persistent idempotence/source-removal and authenticated WebUI flow | NOT EXECUTED | Depends on a real test manager and test account |
 | Confluence architecture page update | NOT EXECUTED | Search returned no accessible matching Scan TLS/Greenbone pages |
 
-Evidence time: 2026-11-18 20:45 Europe/Paris. Greenbone image digests available locally were `gvmd:stable` `sha256:6c472ffc3e6eb6d806b43ffbbe3fb6b003e986dbe4dc562ad12f4b2cda38ba98`, `pg-gvm:stable` `sha256:44bd4582dc686eb59f4a8450782acb9c1b0d1bfe107231f9625bd7dea8343b66`, and `pg-gvm-migrator:stable` `sha256:87a3309535fba950c1eb3ddd11375ff1545b33bf8c92499b6e1c51798efe214a`. Greenbone's [container guide](https://greenbone.github.io/docs/latest/22.4/container/) documents 20 GB minimum storage for the full community stack; the measured free space was 22 GB. No full stack/feed synchronization was attempted.
+Evidence time: 2026-11-18 22:50 Europe/Paris. The sanitized inventory report attached to Jira comment 10801 has SHA-256 `11c37689899836b67b77425240d2bf518648a880970feda1c188fc7fab32bba1`. Before cleanup the cached image digests were `gvmd:stable` `sha256:6c472ffc3e6eb6d806b43ffbbe3fb6b003e986dbe4dc562ad12f4b2cda38ba98`, `pg-gvm:stable` `sha256:44bd4582dc686eb59f4a8450782acb9c1b0d1bfe107231f9625bd7dea8343b66`, and `pg-gvm-migrator:stable` `sha256:87a3309535fba950c1eb3ddd11375ff1545b33bf8c92499b6e1c51798efe214a`. Greenbone's [container guide](https://greenbone.github.io/docs/latest/22.4/container/) documents 20 GB minimum storage for the full community stack; no full stack/feed synchronization was attempted.
