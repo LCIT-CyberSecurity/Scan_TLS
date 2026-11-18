@@ -40,6 +40,19 @@ discovery has seen, and the **DNS** badge (green = created by a discovery, grey 
 methods, first and last observation, addresses and aliases. A DNS name does not prove that the host is reachable or serves
 TLS: only a scan tells. Manually created targets are unchanged and show nothing extra.
 
+## Import missing endpoints from a scan
+
+When creating or editing a scan definition, operators and administrators can choose one of their completed DNS discoveries
+in **Add DNS discovery endpoints**. The list compares each discovered FQDN with Targets: existing names are shown but
+cannot be selected again; only in-scope, non-wildcard, non-historical names missing from Targets can be selected. You can
+select names individually or select all missing names (up to 500 per import), and choose the target port list.
+
+**Preview import** calls the same reconciliation API as the Targets discovery workflow and shows creates, reuses and
+conflicts. The separate **Confirm and add to Targets** action is required before any inventory change. Once confirmed,
+the imported target IDs are selected in the scan form; save the scan definition to add them to its scope. This does not
+start a scan. Closing the form before saving leaves the explicitly imported Targets in the inventory but does not change
+the scan definition. Existing definition targets are preserved and duplicate IDs are removed.
+
 ## Methods (independent, each can fail without affecting the others)
 
 | Method | What it does |

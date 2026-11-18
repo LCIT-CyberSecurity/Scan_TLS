@@ -17,6 +17,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs"
 import { useI18n } from "../i18n";
 import { formatDate, formatDuration } from "../lib/utils";
 import Reports from "./Reports";
+import { DnsScanTargetImport } from "../components/DnsScanTargetImport";
 
 const DEFAULT_MAIL_SECURITY: MailSecurityConfig = { enabled: false, checks: { spf: true, dmarc: true, dkim: false, mta_sts: true, tls_rpt: true, dane: false }, dkim_selectors: [] };
 const MAIL_CHECKS = ["spf", "dmarc", "dkim", "mta_sts", "tls_rpt", "dane"] as const;
@@ -26,6 +27,7 @@ const blank: DefinitionForm = { name: "", description: "", control_type: "tls", 
 
 function DefinitionDialog({ initial, onClose, onSaved }: { initial?: Definition; onClose: () => void; onSaved: () => void }) {
   const { t } = useI18n();
+  const { atLeast } = useAuth();
   const [form, setForm] = useState<DefinitionForm>(initial ? { ...blank, ...initial, control_type: initial.control_type === "ipsec" ? "ipsec" : "tls", enabled_controls: initial.enabled_controls?.filter((x): x is Technology => x === "tls" || x === "ipsec" || x === "ssh") ?? undefined, service_identification_enabled: initial.service_identification_enabled ?? false, report_template_id: initial.report_template_id ?? "" } : blank);
   const [error, setError] = useState<unknown>();
   const { data: targets, reload: reloadTargets } = useLoad(() => api<Target[]>("/targets"));
@@ -77,6 +79,10 @@ function DefinitionDialog({ initial, onClose, onSaved }: { initial?: Definition;
         </fieldset>
         <Field label={t("col.description")}><Textarea value={form.description} onChange={(e) => set("description", e.target.value)} /></Field>
         <Field label={t("def.targets")}><CheckList items={(targets ?? []).map((x) => ({ id: x.id, label: x.name || x.value, sub: [x.name ? x.value : "", x.ports].filter(Boolean).join(" · ") }))} selected={form.target_ids} onChange={(v) => set("target_ids", v)} empty={t("def.noTargets")} /></Field>
+        {atLeast("OPERATOR") && <DnsScanTargetImport onImported={(imported) => {
+          void reloadTargets();
+          setForm((f) => ({ ...f, target_ids: [...new Set([...f.target_ids, ...imported.map((target) => target.id)])] }));
+        }} />}
         <div><Button type="button" variant="outline" size="sm" onClick={() => setNewTarget(true)}><Plus />{t("target.new")}</Button></div>
         <Field label={t("def.groups")}><CheckList items={(groups ?? []).map((x) => ({ id: x.id, label: x.name, sub: `${x.target_ids.length}` }))} selected={form.group_ids} onChange={(v) => set("group_ids", v)} empty={t("def.noGroups")} /></Field>
         <Field label={t("excl.label")} hint={t("excl.hint")}><Textarea rows={3} value={exclText} onChange={(e) => setExclText(e.target.value)} placeholder={"10.20.0.0/24\nlegacy.example.org\n*.test.example.org"} className="font-mono text-xs" /></Field>
