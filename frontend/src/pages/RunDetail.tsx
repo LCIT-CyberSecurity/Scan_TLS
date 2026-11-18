@@ -25,6 +25,7 @@ function endpointColumns(t: (key: never) => string): Column<Endpoint>[] {
     { key: "endpoint", header: "Endpoint", values: (e) => [e.hostname || e.ip_address], sort: endpointLabel, render: (e) => <span className="row-link">{endpointLabel(e)}</span> },
     { key: "tags", header: tr("col.tags"), values: (e) => e.tags ?? [], render: (e) => (e.tags?.length ? <TagList tags={e.tags} /> : "—") },
     { key: "grade", header: tr("run.grade"), values: (e) => [e.grade], render: (e) => e.grade },
+    { key: "exposure", header: tr("exposure.state"), values: (e) => [e.exposure?.state ?? "unknown"], render: (e) => <span className="text-xs" title={[e.exposure?.source, e.exposure?.evidence_method, e.exposure?.justification].filter(Boolean).join(" · ")}>{tr(`exposure.${e.exposure?.state ?? "unknown"}`)}{e.exposure?.validated ? ` · ${tr("exposure.validated")}` : ""}</span> },
     { key: "status", header: tr("col.status"), values: (e) => [e.compliance_status], render: (e) => e.compliance_status },
     { key: "tls", header: "TLS", values: (e) => e.tls_versions, sort: (e) => e.tls_versions.join(", "), render: (e) => e.tls_versions.join(", ") },
     { key: "cert", header: tr("run.certificate"), values: (e) => [String(e.certificate.subject ?? "")], sort: (e) => String(e.certificate.valid_until ?? ""),
@@ -51,7 +52,7 @@ function findingColumns(t: (key: never) => string, endpoints: Endpoint[]): Colum
   return [
     { key: "severity", header: tr("run.severity"), values: (f) => [f.severity], sort: (f) => SEVERITY_RANK[f.severity.toLowerCase()] ?? 0, render: (f) => <SeverityBadge severity={f.severity} /> },
     { key: "finding", header: tr("run.finding"), sort: (f) => f.title, values: (f) => [f.title],
-      render: (f) => <><div className="font-medium">{f.title}</div><div className="text-xs text-muted">{f.evidence}</div><div className="mt-1 text-xs">{f.remediation}</div></> },
+      render: (f) => <><div className="font-medium">{f.title}</div><div className="text-xs text-muted">{f.evidence}</div><div className="mt-1 text-xs">{f.remediation}</div><ul className="mt-2 space-y-1 text-xs">{f.affected_endpoint_ids.map((id) => { const risk = f.contextual_risk_by_endpoint?.[id]; const endpoint = byId.get(id); return <li key={id} title={[risk?.reason, risk?.source, risk?.evidence_method, risk?.justification].filter(Boolean).join(" · ")}>{endpoint ? endpointLabel(endpoint) : id} · {tr("exposure.contextualRisk")}: {risk?.contextual_severity ?? tr("exposure.notEvaluated")}</li>; })}</ul></> },
     { key: "category", header: "Category", values: (f) => [f.category], render: (f) => f.category || "—" },
     { key: "affected", header: tr("run.affected"), values: (f) => f.affected_endpoint_ids.map((id) => { const e = byId.get(id); return e ? endpointLabel(e) : id; }), sort: (f) => f.affected_endpoint_ids.map((id) => { const e = byId.get(id); return e ? endpointLabel(e) : id; }).join(", "), render: (f) => (
       <span className="text-xs">
@@ -138,7 +139,7 @@ export default function RunDetail() {
       {cmp && run.control_type !== "ipsec" && <div className="mb-6"><ComparisonView runId={id} withRun={withRun} /></div>}
       {run.reports.length > 0 && (
         <Card className="mb-6"><CardHeader><CardTitle>{t("nav.reports")}</CardTitle></CardHeader><CardContent className="flex flex-wrap gap-2">
-          {run.reports.filter((r) => ["html", "md", "csv", "cbom", "findings_csv", "mail_security_csv", "service_csv", "ipsec_html", "ipsec_md", "ipsec_csv", "ssh_html", "ssh_md", "ssh_csv"].includes(r.format)).map((r) => <Button key={r.format} asChild variant="outline" size="sm"><a href={downloadUrl(id, r.format)}><Download />{r.format === "service_csv" ? "SERVICES CSV" : r.format === "mail_security_csv" ? "MAIL CSV" : r.format.replaceAll("_", " ").toUpperCase()}</a></Button>)}
+      {run.reports.filter((r) => ["html", "md", "csv", "cbom", "findings_csv", "contextual_risk_csv", "mail_security_csv", "service_csv", "ipsec_html", "ipsec_md", "ipsec_csv", "ssh_html", "ssh_md", "ssh_csv"].includes(r.format)).map((r) => <Button key={r.format} asChild variant="outline" size="sm"><a href={downloadUrl(id, r.format)}><Download />{r.format === "service_csv" ? "SERVICES CSV" : r.format === "mail_security_csv" ? "MAIL CSV" : r.format === "contextual_risk_csv" ? "CONTEXTUAL RISK CSV" : r.format.replaceAll("_", " ").toUpperCase()}</a></Button>)}
           {run.reports.filter((r) => ["html", "ipsec_html", "ssh_html"].includes(r.format)).map((r) => <Button key={`${r.format}-open`} asChild size="sm"><a href={downloadUrl(id, r.format, true)} target="_blank" rel="noreferrer">{t("run.openHtml")} · {r.format.replace("_html", "").toUpperCase()}</a></Button>)}
         </CardContent></Card>
       )}

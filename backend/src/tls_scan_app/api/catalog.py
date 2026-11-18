@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import uuid
-
 from datetime import UTC, datetime
 from typing import Literal
 
@@ -13,14 +12,38 @@ from sqlalchemy import delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DbSession
 
-from tls_scan_app.api.common import classification_of, get_or_404, ids_matching_filter, require_modify, set_classification
+from tls_scan_app.api.common import (
+    classification_of,
+    get_or_404,
+    ids_matching_filter,
+    require_modify,
+    set_classification,
+)
 from tls_scan_app.deps import get_db, require_role
 from tls_scan_app.models import (
-    DefinitionGroup, DnsDiscovery, DefinitionTarget, InformationSystem, ResourceSI, ResourceTag, Role, Tag, Target, TargetGroup,
-    TargetDnsObservation, TargetGroupMember, User,
+    DefinitionGroup,
+    DefinitionTarget,
+    DnsDiscovery,
+    EndpointExposure,
+    InformationSystem,
+    ResourceSI,
+    ResourceTag,
+    Role,
+    Tag,
+    Target,
+    TargetDnsObservation,
+    TargetGroup,
+    TargetGroupMember,
+    User,
 )
 from tls_scan_app.services import audit
-from tls_scan_app.services.dns_discovery import DiscoveryError, coverage, normalize_domain, policy as dns_policy, reconcile
+from tls_scan_app.services.dns_discovery import (
+    DiscoveryError,
+    coverage,
+    normalize_domain,
+    reconcile,
+)
+from tls_scan_app.services.dns_discovery import policy as dns_policy
 from tls_scan_app.services.targets import TargetError, normalize_ports, normalize_target
 
 router = APIRouter(prefix="/api", tags=["catalog"])
@@ -109,6 +132,94 @@ class TargetBody(BaseModel):
 def target_out(t: Target, cls: dict | None = None) -> dict:
     return {"id": str(t.id), "name": t.name, "value": t.value, "kind": t.kind, "ports": t.ports, "description": t.description,
             "owner_id": str(t.owner_id) if t.owner_id else None, "tags": (cls or {}).get("tags", []), "si_ids": (cls or {}).get("si", [])}
+
+
+def exposure_out(row: EndpointExposure) -> dict:
+    return {"id": str(row.id), "target_id": str(row.target_id), "protocol": row.protocol, "port": row.port, "sni": row.sni,
+            "state": row.state, "zone_context": row.zone_context, "evidence_method": row.evidence_method, "source": row.source,
+            "justification": row.justification, "confidence": row.confidence, "validated": row.validated,
+            "observed_at": row.observed_at, "validated_at": row.validated_at}
+
+
+class ExposureBody(BaseModel):
+    protocol: Literal["tls", "ipsec", "ssh"]
+    port: int = Field(ge=1, le=65535)
+    sni: str = Field(default="", max_length=253)
+    state: Literal["unknown", "internet_confirmed", "not_internet_confirmed"] = "unknown"
+    zone_context: Literal["unknown", "dmz", "internal_wide", "segmented"] = "unknown"
+    evidence_method: Literal["", "admin_attested", "external_probe", "network_rule_review", "other"] = ""
+    source: str = Field(default="", max_length=255)
+    justification: str = Field(default="", max_length=2000)
+    confidence: Literal["unknown", "low", "medium", "high"] = "unknown"
+    validated: bool = False
+
+
+def _validate_exposure(body: ExposureBody, user: User, existing: EndpointExposure | None = None) -> dict:
+    if body.sni:
+        from tls_scan_app.services.dns_discovery.policy import valid_host
+        if valid_host(body.sni) != body.sni.lower().rstrip("."):
+            raise HTTPException(422, "SNI must be a valid DNS hostname")
+    if body.state != "unknown" and (not body.justification.strip() or not body.evidence_method or not body.source.strip()):
+        raise HTTPException(422, "Confirmed exposure needs a method, source and justification")
+    if body.validated and body.state == "unknown":
+        raise HTTPException(422, "Unknown exposure cannot be validated as a confirmed state")
+    if body.validated and user.role != Role.ADMIN:
+        raise HTTPException(403, "Only an administrator can validate exposure evidence")
+    if existing and existing.validated and user.role != Role.ADMIN:
+        raise HTTPException(403, "Only an administrator can change validated exposure evidence")
+    now = datetime.now(UTC)
+    return {"protocol": body.protocol, "port": body.port, "sni": body.sni.lower().rstrip("."), "state": body.state,
+            "zone_context": body.zone_context, "evidence_method": body.evidence_method, "source": body.source.strip(),
+            "justification": body.justification.strip(), "confidence": body.confidence,
+            "validated": body.validated, "recorded_by": user.id,
+            "validated_by": user.id if body.validated else None,
+            "observed_at": now if body.state != "unknown" else None,
+            "validated_at": now if body.validated else None}
+
+
+@router.get("/targets/{target_id}/exposures")
+def target_exposures(target_id: uuid.UUID, db: DbSession = Depends(get_db), _: User = Depends(reader)) -> list[dict]:
+    get_or_404(db, Target, target_id, "Target")
+    rows = db.execute(select(EndpointExposure).where(EndpointExposure.target_id == target_id)
+                      .order_by(EndpointExposure.protocol, EndpointExposure.port, EndpointExposure.sni)).scalars()
+    return [exposure_out(row) for row in rows]
+
+
+@router.post("/targets/{target_id}/exposures", status_code=201)
+def create_target_exposure(target_id: uuid.UUID, body: ExposureBody, db: DbSession = Depends(get_db), user: User = Depends(operator)) -> dict:
+    target = get_or_404(db, Target, target_id, "Target")
+    if db.scalar(select(EndpointExposure.id).where(EndpointExposure.target_id == target.id,
+                                                    EndpointExposure.protocol == body.protocol,
+                                                    EndpointExposure.port == body.port, EndpointExposure.sni == body.sni.lower().rstrip("."))):
+        raise HTTPException(409, "Exposure evidence already exists for this endpoint")
+    row = EndpointExposure(target_id=target.id, **_validate_exposure(body, user))
+    db.add(row)
+    db.flush()
+    audit.record(db, "endpoint.exposure.create", actor=user, resource_type="endpoint_exposure", resource_id=row.id,
+                 detail={"protocol": row.protocol, "port": row.port, "state": row.state, "validated": row.validated})
+    db.commit()
+    return exposure_out(row)
+
+
+@router.put("/targets/{target_id}/exposures/{exposure_id}")
+def update_target_exposure(target_id: uuid.UUID, exposure_id: uuid.UUID, body: ExposureBody,
+                           db: DbSession = Depends(get_db), user: User = Depends(operator)) -> dict:
+    get_or_404(db, Target, target_id, "Target")
+    row = db.get(EndpointExposure, exposure_id)
+    if row is None or row.target_id != target_id:
+        raise HTTPException(404, "Endpoint exposure not found")
+    clash = db.scalar(select(EndpointExposure.id).where(EndpointExposure.target_id == target_id,
+                                                        EndpointExposure.protocol == body.protocol,
+                                                        EndpointExposure.port == body.port, EndpointExposure.sni == body.sni.lower().rstrip("."),
+                                                        EndpointExposure.id != exposure_id))
+    if clash:
+        raise HTTPException(409, "Exposure evidence already exists for this endpoint")
+    for key, value in _validate_exposure(body, user, row).items():
+        setattr(row, key, value)
+    audit.record(db, "endpoint.exposure.update", actor=user, resource_type="endpoint_exposure", resource_id=row.id,
+                 detail={"protocol": row.protocol, "port": row.port, "state": row.state, "validated": row.validated})
+    db.commit()
+    return exposure_out(row)
 
 
 def _validated(body: TargetBody) -> tuple[str, str, str]:

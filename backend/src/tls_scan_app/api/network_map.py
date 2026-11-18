@@ -15,8 +15,24 @@ from sqlalchemy.orm import Session as DbSession
 from tls_scan_app.api.common import get_or_404
 from tls_scan_app.deps import get_db, require_role
 from tls_scan_app.models import (
-    InformationSystem, NetworkDevice, NetworkLink, NetworkZone, NetworkZoneSystem, NetworkZoneTarget, SnmpDiscovery,
-    ResourceSI, ResourceTag, Role, RunEndpoint, RunFinding, ScanRun, Tag, Target, TargetGroup, TargetGroupMember, User,
+    InformationSystem,
+    NetworkDevice,
+    NetworkLink,
+    NetworkZone,
+    NetworkZoneSystem,
+    NetworkZoneTarget,
+    ResourceSI,
+    ResourceTag,
+    Role,
+    RunEndpoint,
+    RunFinding,
+    ScanRun,
+    SnmpDiscovery,
+    Tag,
+    Target,
+    TargetGroup,
+    TargetGroupMember,
+    User,
 )
 from tls_scan_app.services import audit
 from tls_scan_app.services.snmp_discovery import MAX_TARGETS
@@ -370,7 +386,9 @@ def _target_latest(db: DbSession, target_values: set[str]) -> dict[str, dict]:
                                           "highest_severity": endpoint.highest_severity or None,
                                           "tls_versions": endpoint.supported_tls_versions or [], "cipher_suites": endpoint.cipher_suites or [],
                                           "certificate": endpoint.certificate or None, "errors": endpoint.errors or [],
-                                          "untested_checks": endpoint.untested_checks or [], "tls_checks": endpoint.tls_checks or []})
+                                          "untested_checks": endpoint.untested_checks or [], "tls_checks": endpoint.tls_checks or [],
+                                          "exposure": endpoint.exposure_snapshot or {"state": "unknown", "validated": False},
+                                          "contextual_risk": endpoint.contextual_risk or {}})
                 severity = endpoint.highest_severity
                 if severity in result["severity"]:
                     result["severity"][severity] += 1

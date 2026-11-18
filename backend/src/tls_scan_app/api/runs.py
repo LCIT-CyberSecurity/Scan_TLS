@@ -27,7 +27,7 @@ from tls_scan_app.services.trust_stores import public_snapshot
 router = APIRouter(prefix="/api", tags=["runs"])
 auditor = require_role(Role.AUDITOR)
 user_only = require_role(Role.USER)
-MEDIA = {"html": "text/html", "md": "text/markdown", "csv": "text/csv", "findings_csv": "text/csv", "mail_security_csv": "text/csv", "service_csv": "text/csv", "quic_csv": "text/csv", "ipsec_html": "text/html", "ipsec_md": "text/markdown", "ipsec_csv": "text/csv", "ssh_html": "text/html", "ssh_md": "text/markdown", "ssh_csv": "text/csv", "cbom": "application/json", "metadata": "application/json"}
+MEDIA = {"html": "text/html", "md": "text/markdown", "csv": "text/csv", "findings_csv": "text/csv", "contextual_risk_csv": "text/csv", "mail_security_csv": "text/csv", "service_csv": "text/csv", "quic_csv": "text/csv", "ipsec_html": "text/html", "ipsec_md": "text/markdown", "ipsec_csv": "text/csv", "ssh_html": "text/html", "ssh_md": "text/markdown", "ssh_csv": "text/csv", "cbom": "application/json", "metadata": "application/json"}
 
 
 def run_plan(snapshot: dict | None) -> dict | None:

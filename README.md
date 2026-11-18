@@ -31,7 +31,7 @@ WebUI documentation: [architecture](docs/architecture/overview.md) ·
 [data model](docs/architecture/data-model.md) · [installation](docs/admin/install.md) ·
 [operations](docs/admin/operations.md) · [authentication](docs/admin/authentication.md) · [user guide](docs/user/guide.md) · [Network Exposure Map](docs/user/network-map.md) ·
 [policies and profiles](docs/user/policies-and-profiles.md) · [mail security checks](docs/user/mail-security.md) · [reports](docs/user/reports.md) ·
-[Entra ID SSO](docs/integrations/entra-sso.md) · [directory connectors](docs/integrations/directory.md) · [Greenbone import](docs/integrations/greenbone-import.md) · [notifications](docs/integrations/notifications.md) ·
+[Entra ID SSO](docs/integrations/entra-sso.md) · [directory connectors](docs/integrations/directory.md) · [Greenbone import](docs/integrations/greenbone-import.md) · [notifications](docs/integrations/notifications.md) · [endpoint exposure and contextual risk](docs/user/endpoint-exposure-risk.md) ·
 [tests](docs/dev/testing.md) · [CrashTest](docs/dev/crashtest.md) · [contributing](docs/dev/contributing.md) ·
 [**limitations and V2**](docs/limitations.md).
 
