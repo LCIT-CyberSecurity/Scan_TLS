@@ -192,3 +192,17 @@ def test_monitor_configuration_requires_authorisation_and_keeps_optional_sources
     domain, options = _lookalike_options(LookalikeMonitorBody(domain="example.com", authorized=True), {"ct_enabled": True})
     assert domain == "example.com"
     assert options["ct_enabled"] is False and options["notifications_enabled"] is False
+
+
+def test_paused_monitor_does_not_generate_candidates_until_enabled(monkeypatch) -> None:
+    from tls_scan_app.api import catalog
+
+    calls = []
+    monkeypatch.setattr(catalog, "generate_candidates", lambda *args, **kwargs: calls.append((args, kwargs)))
+    paused = catalog.LookalikeMonitorBody(domain="example.com", authorized=True)
+    catalog._lookalike_options(paused, {})
+    assert calls == []
+
+    enabled = catalog.LookalikeMonitorBody(domain="example.com", authorized=True, enabled=True)
+    catalog._lookalike_options(enabled, {})
+    assert len(calls) == 1

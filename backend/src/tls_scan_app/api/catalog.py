@@ -582,7 +582,10 @@ def _lookalike_options(body: LookalikeMonitorBody, settings: dict) -> tuple[str,
         raise DiscoveryError("Lookalike monitoring is limited to explicitly authorised public domains")
     tlds = validate_tlds(body.tlds)
     exclusions = sorted({normalize_domain(item) for item in body.exclusions})
-    generate_candidates(domain, tlds=tlds, max_candidates=body.max_candidates, exclusions=exclusions, min_score=body.min_score)
+    # A paused monitor stores its validated configuration only. Candidate generation is deferred
+    # until the administrator explicitly enables it and a bounded discovery run is requested.
+    if body.enabled:
+        generate_candidates(domain, tlds=tlds, max_candidates=body.max_candidates, exclusions=exclusions, min_score=body.min_score)
     if body.ct_enabled and not settings.get("ct_enabled", True):
         raise DiscoveryError("Certificate Transparency monitoring is disabled by the administrator")
     validate_schedule(body.schedule_kind, body.schedule_params, body.timezone)
