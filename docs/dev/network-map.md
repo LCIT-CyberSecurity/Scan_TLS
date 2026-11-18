@@ -5,6 +5,11 @@ les zones, les hôtes, les équipements et les liens fournis par les API `/map`.
 Les données de scan TLS et les détails d'endpoints restent chargés depuis les
 API existantes lors de la sélection d'un hôte.
 
+Depuis une zone LAN, le fil d'Ariane permet de remonter vers son parent ; la
+touche `Échap` et le bouton `X` « Revenir à la vue parente » effectuent le même
+retour en conservant le système d'information sélectionné. Dans une zone imbriquée,
+le retour remonte d'un niveau.
+
 La découverte SNMPv3/LLDP est un complément séparé et optionnel. Elle ne s'exécute
 pas pendant un scan TLS : seuls des targets IP explicitement sélectionnés sont
 interrogés, et les résultats passent par une prévisualisation avant toute écriture.

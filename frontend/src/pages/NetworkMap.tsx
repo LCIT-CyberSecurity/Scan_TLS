@@ -106,6 +106,17 @@ export default function NetworkMap() {
     zoneTrail.unshift(trailItem);
     trailItem = trailItem.parent_zone_id ? zones.find((item) => item.id === trailItem?.parent_zone_id) : undefined;
   }
+  const backToParentView = useCallback(() => {
+    if (zoneId) {
+      const parentZoneId = zones.find((item) => item.id === zoneId)?.parent_zone_id ?? "";
+      setZoneId(parentZoneId);
+    } else if (groupId) {
+      setGroupId("");
+    }
+    setFocusTargetId("");
+    setSelected(undefined);
+    setHost(undefined);
+  }, [groupId, zoneId, zones]);
   const chooseNode = useCallback((node: MapNode) => {
     if (node.id) graph.current?.setElementState(node.id, "selected");
     setSelected(node);
@@ -228,11 +239,11 @@ export default function NetworkMap() {
 
   useEffect(() => {
     function escape(event: KeyboardEvent) {
-      if (event.key === "Escape") { setSelected(undefined); setHost(undefined); }
+      if (event.key === "Escape") backToParentView();
     }
     window.addEventListener("keydown", escape);
     return () => window.removeEventListener("keydown", escape);
-  }, []);
+  }, [backToParentView]);
 
   async function refreshMap() { await reload(); setRevision((value) => value + 1); }
   async function ensureTargets() {
@@ -363,6 +374,7 @@ export default function NetworkMap() {
           {si && <><span>/</span><button type="button" onClick={() => { setZoneId(""); setGroupId(""); setSelected(undefined); }}>{si.name}</button></>}
           {group && <><span>/</span><button type="button" className="is-current">{group.name}</button></>}
           {zoneTrail.map((item, index) => <Fragment key={item.id}><span>/</span><button type="button" className={index === zoneTrail.length - 1 ? "is-current" : ""} onClick={() => { setZoneId(item.id); setGroupId(""); }}>{item.name}</button></Fragment>)}
+          {(zoneId || groupId) && <Button type="button" variant="ghost" size="icon" aria-label={t("map.backToParent" as never)} title={t("map.backToParent" as never)} onClick={backToParentView}><X size={16} /></Button>}
         </div>
         <div className="network-map-tools">
           <label className="network-map-search"><Search size={16} /><input value={searchText} placeholder={t("map.search")} onChange={(event) => setSearchText(event.target.value)} onKeyDown={(event) => event.key === "Enter" && void runSearch()} /><button type="button" aria-label={t("action.search")} onClick={() => void runSearch()}><Search size={15} /></button></label>
