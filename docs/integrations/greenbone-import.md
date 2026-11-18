@@ -2,7 +2,7 @@
 
 Administration → Imports synchronizes **target addresses only** into the TLS Scan inventory. The connector is read-only: it never starts or changes a Greenbone scan and it does not import Tasks, Groups, Port Lists, Scan Configurations, Schedules, tags, reports, NVTs or credentials. TLS Scan remains responsible for ports, profiles, policies, scan definitions and schedules.
 
-The workflow remains **Configure → Test → Retrieve / Upload → Preview → Select → Import → History**. Every import is explicit and auditable; a dry run does not mutate the inventory.
+The workflow remains **Configure → Test → Retrieve / Upload → Preview → Select → Import → History**. Every import is explicit and auditable; a dry run does not mutate the inventory. TLS Scan schedule definitions remain separate and editable in **Planifications**; Greenbone schedules are never imported or changed.
 
 ## GMP access and secrets
 
@@ -50,4 +50,10 @@ The preview compares normalized target addresses with the most recent snapshot o
 
 ## Verification
 
-Automated tests exercise XML validation and XXE protection, target-only GMP requests with a mocked `python-gvm` connection, IP/FQDN/CIDR normalization, matching independent of ports and source UUID, unchanged existing inventory, historical ambiguous rows, repeat-import idempotence and the ADMIN-only API boundary. A live Greenbone instance is optional for CI. Consult the official [python-gvm connection API](https://greenbone.github.io/python-gvm/api/connections.html) and [gvm-tools CLI](https://greenbone.github.io/gvm-tools/tools.html) documentation for release-specific behavior.
+The Docker backend suite exercises XML validation and XXE protection, target-only GMP requests with a mocked `python-gvm` connection, IP/FQDN/CIDR normalization, matching independent of ports and source UUID, unchanged existing inventory, historical ambiguous rows, repeat-import idempotence and the ADMIN-only API boundary. It also verifies that an existing DNS schedule is updated in place by an operator while a regular user is denied.
+
+For a live GMP rehearsal, use a separate test-only TLS Scan database and Docker network, a Greenbone account with read-only visibility of only the disposable Targets, and a mounted CA/password file. Seed one Target matching an existing TLS Scan record and one new in-scope address. Do not start a Greenbone scanner or task. Verify the connection steps, preview and dry-run, selectively import the new address, confirm the existing record and its group/SI links are unchanged, repeat retrieval/import, then remove only the disposable source Target and confirm the TLS Scan target remains. Record the target counts and result without exporting secrets. Never attach the live rehearsal to the persistent Sandbox database. The repository's isolated backend tests can be run with `ops/dev/test-stack.sh`.
+
+Regression check for schedule editing: in **Planifications**, edit a TLS schedule and save a changed frequency or time; confirm the same schedule is updated and keeps its definition, timezone and active state. For DNS schedules, use an operator account, re-confirm authorization, and verify the options and frequency are saved to the same schedule. A Greenbone import or a missing Greenbone Target must not change any TLS Scan schedule.
+
+Consult the official [python-gvm connection API](https://greenbone.github.io/python-gvm/api/connections.html) and [gvm-tools CLI](https://greenbone.github.io/gvm-tools/tools.html) documentation for release-specific behavior.

@@ -468,6 +468,7 @@ export const fr: Messages = {
   "sched.cronHint": "5 champs ; au plus une exécution toutes les 5 minutes.",
   "sched.day": "Jour du mois (1-28)",
   "sched.definition": "Définition de scan",
+  "sched.edit": "Modifier la planification",
   "sched.dueAt": "Prévue le",
   "sched.frequency": "Fréquence",
   "sched.history": "Historique",

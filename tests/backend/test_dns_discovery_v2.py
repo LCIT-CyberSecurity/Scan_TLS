@@ -143,6 +143,29 @@ def test_dns_discovery_schedule_uses_worker_and_never_changes_inventory(operator
         assert admin.put("/api/admin/settings/dns_discovery", json={"value": saved_settings}).status_code == 200
 
 
+def test_existing_dns_schedule_can_be_edited_without_creating_a_new_schedule(operator, user):
+    created = operator.post("/api/schedules", json={"task_type": "dns_discovery", "domain": "client.test", "authorized": True,
+        "dns_options": {"mode": "fast", "methods": ["dns"]}, "kind": "daily", "params": {"time": "03:00"}, "timezone": "UTC"})
+    assert created.status_code == 201, created.text
+    schedule_id = created.json()["id"]
+    before_count = len(operator.get("/api/schedules").json())
+
+    assert user.put(f"/api/schedules/{schedule_id}", json={"task_type": "dns_discovery", "domain": "other.test", "authorized": True,
+        "dns_options": {"mode": "fast", "methods": ["dns"]}, "kind": "daily", "params": {"time": "04:00"}, "timezone": "UTC"}).status_code == 403
+
+    updated = operator.put(f"/api/schedules/{schedule_id}", json={"task_type": "dns_discovery", "domain": "client.test", "authorized": True,
+        "dns_options": {"mode": "advanced", "methods": ["dns", "axfr"], "timeout_seconds": 7, "concurrency": 8,
+                         "max_duration_seconds": 120}, "kind": "weekly", "params": {"time": "05:30", "weekday": 2}, "timezone": "Europe/Paris"})
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["id"] == schedule_id
+    assert updated.json()["task_config"] == {"domain": "client.test", "options": {
+        "mode": "advanced", "methods": ["dns", "axfr"], "dictionary": "small", "timeout_seconds": 7,
+        "concurrency": 8, "max_duration_seconds": 120, "axfr_servers": []}}
+    assert updated.json()["kind"] == "weekly" and updated.json()["params"] == {"time": "05:30", "weekday": 2}
+    assert updated.json()["timezone"] == "Europe/Paris" and updated.json()["active"] is True
+    assert len(operator.get("/api/schedules").json()) == before_count
+
+
 def test_A_grouped_import_creates_the_targets_and_is_idempotent(operator, admin):
     job = discover(operator, "client.test", methods=["dns", "axfr"])
     names = ["srv01.client.test", "gitlab.client.test"]
