@@ -40,7 +40,7 @@ def make_app(settings: Settings | None = None, bootstrap: bool = True) -> FastAP
     app = FastAPI(title="TLS Scan", docs_url=None, redoc_url=None, openapi_url=None, lifespan=lifespan)
     app.router.redirect_slashes = False  # /mcp must answer exactly, a redirect could drop the Authorization header
     app.state.settings = settings
-    app.state.engine = make_engine(settings.database_url)
+    app.state.engine = make_engine(settings.database_url, settings.database_password_file)
     app.state.session_factory = make_session_factory(app.state.engine)
     app.state.limiter = SlidingWindowLimiter()
 
