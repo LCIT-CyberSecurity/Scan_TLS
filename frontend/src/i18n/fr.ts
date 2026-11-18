@@ -416,6 +416,7 @@ export const fr: Messages = {
   "sched.last": "Dernière exécution",
   "sched.mineSubtitle": "Vos planifications",
   "sched.new": "Nouvelle planification",
+  "sched.edit": "Modifier la planification",
   "sched.next": "Prochaine exécution",
   "sched.none": "Aucune planification.",
   "sched.outcome": "Résultat",
