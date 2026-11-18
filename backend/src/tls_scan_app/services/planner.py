@@ -50,7 +50,12 @@ def validate_profile_content(content: dict[str, Any]) -> None:
         # `private_stores` (administered store ids) is resolved at launch time; the engine only sees the stores inlined by the planner
         engine_checks = copy.deepcopy(checks)
         ((engine_checks.get("certificate") or {}).get("trust") or {}).pop("private_stores", None)
-        build_job_from_sections(content.get("scan", {}), {}, {}, ["192.0.2.1"], None, engine_checks)
+        engine_scan = copy.deepcopy(content.get("scan", {}))
+        quic = engine_scan.pop("quic", None)
+        if quic is not None:
+            from tls_scan_app.services.quic_scan import validate_profile
+            validate_profile(quic)
+        build_job_from_sections(engine_scan, {}, {}, ["192.0.2.1"], None, engine_checks)
     except ConfigError as error:
         raise PlanError(str(error)) from error
     if "service_identification" in content:
@@ -166,6 +171,9 @@ def build_snapshot(db: DbSession, definition: ScanDefinition, max_addresses: int
         ipsec_profile = profile_content if definition.control_type == "ipsec" else {}
         ssh_profile = {}
     scan_cfg = copy.deepcopy(tls_profile.get("scan", {}))
+    quic_profile = scan_cfg.pop("quic", {})
+    from tls_scan_app.services.quic_scan import effective_config
+    quic_config = effective_config(quic_profile, definition.quic_enabled) if "tls" in selected else None
     default_ports = scan_cfg.get("ports", "fast")
     service_identification = _service_identification_snapshot(definition, profile_content)
 
@@ -242,6 +250,7 @@ def build_snapshot(db: DbSession, definition: ScanDefinition, max_addresses: int
             "control_type": "ipsec", "definition": {"id": str(definition.id), "name": definition.name},
             "profile": {"id": str(definition.profile_id), "version_id": str(profile_version.id), "version": profile_version.version},
             "ike": ike, "scan": scan_cfg, "service_identification": service_identification,
+            "quic": None,
             "passes": [{"targets": sorted(set(probe_targets)), "ports": str(default_ports)}], "policies": policy_bundles["ipsec"],
             "policy_mode": definition.policy_mode, "export_formats": [f for f in formats if f in {"html", "md", "csv"}], "branding": (template.branding if template else None) or {},
             "limitations": ["Unauthenticated IKE exchange only", "ESP/Child SA, authentication, PFS and tunnel operation are not evaluated"],
@@ -279,6 +288,7 @@ def build_snapshot(db: DbSession, definition: ScanDefinition, max_addresses: int
         "checks": checks,
         "mail_security": mail_security,
         "service_identification": service_identification,
+        "quic": quic_config,
         "enabled_controls": selected,
         "ipsec": ({"ike": copy.deepcopy(ipsec_profile["ike"]), "policies": policy_bundles["ipsec"],
                     "targets": sorted({str(address) for target in targets
@@ -323,6 +333,8 @@ def fingerprint(snapshot: dict[str, Any]) -> str:
         material["mail_security"] = mail_security
     if (snapshot.get("service_identification") or {}).get("enabled"):
         material["service_identification"] = snapshot["service_identification"]
+    if snapshot.get("quic"):
+        material["quic"] = snapshot["quic"]
     return hashlib.sha256(json.dumps(material, sort_keys=True, default=str).encode()).hexdigest()
 
 

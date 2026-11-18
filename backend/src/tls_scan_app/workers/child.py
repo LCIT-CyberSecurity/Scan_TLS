@@ -6,21 +6,22 @@ started are skipped and the partial results are still written.
 """
 from __future__ import annotations
 
+import csv
+import html
+import io
 import json
 import signal
 import sys
 import threading
 from pathlib import Path
 
-from tls_scan_app.services.planner import job_from_snapshot
-from tls_scanner.runner import execute_scan
 from tls_scan_app.services.ipsec import evaluate_policy, probe
+from tls_scan_app.services.planner import job_from_snapshot
+from tls_scan_app.services.quic_scan import scan as scan_quic, write_csv as write_quic_report
+from tls_scan_app.services.service_identification import identify_services
+from tls_scan_app.services.service_identification import write_report as write_service_report
 from tls_scan_app.services.ssh_audit import audit_target, evaluate_ssh_policy
-from tls_scan_app.services.service_identification import identify_services, write_report as write_service_report
-import csv
-import html
-import io
-from datetime import UTC, datetime
+from tls_scanner.runner import execute_scan
 
 
 def emit(name: str, data: dict) -> None:
@@ -71,7 +72,6 @@ def write_ssh_reports(observations: list[dict], export_dir: Path, run_id: str, f
                  "fingerprints": json.dumps(x.get("fingerprints") or {}, sort_keys=True)}
                 for x in observations]
         if fmt == "csv":
-            import csv, io
             stream = io.StringIO(newline="")
             writer = csv.DictWriter(stream, fieldnames=fields); writer.writeheader(); writer.writerows(rows)
             path.write_text(stream.getvalue(), encoding="utf-8")
@@ -163,6 +163,14 @@ def main(argv: list[str]) -> int:
         observations, _metadata = identify_services(passes, config, open_ports=open_ports,
                                                      scope_names_by_ip=scope_names_by_ip, cancel=cancel)
         files = write_service_report(observations, Path(payload["export_dir"]), payload["run_id"], snapshot["export_formats"])
+        return observations, files
+    def scan_quic_for_snapshot(snapshot: dict):
+        config = snapshot.get("quic")
+        if not config or not config.get("enabled") or cancel.is_set():
+            return [], []
+        emit("phase", {"phase": "quic_probe", "hosts": sorted({t for p in snapshot["passes"] for t in p["targets"]})})
+        observations = scan_quic(config, snapshot["passes"], snapshot.get("tls_policies") or snapshot.get("policies") or [], cancel)
+        files = write_quic_report(observations, Path(payload["export_dir"]), payload["run_id"], snapshot["export_formats"])
         return observations, files
     if payload["snapshot"].get("control_type") == "ssh":
         snapshot = payload["snapshot"]
@@ -267,6 +275,10 @@ def main(argv: list[str]) -> int:
         outcome.report_model["statistics"]["service_observations"] = len(service_observations)
         outcome.written_files.extend(service_files)
         outcome.service_observations = service_observations
+    quic_observations, quic_files = scan_quic_for_snapshot(payload["snapshot"])
+    if quic_observations:
+        outcome.written_files.extend(quic_files)
+        outcome.quic_observations = quic_observations
     ipsec_config = payload["snapshot"].get("ipsec")
     if ipsec_config and "ipsec" in payload["snapshot"].get("enabled_controls", []):
         targets = ipsec_config.get("targets") or sorted({target for item in payload["snapshot"]["passes"] for target in item["targets"]})
@@ -299,6 +311,7 @@ def main(argv: list[str]) -> int:
         "ipsec_observations": getattr(outcome, "ipsec_observations", []),
         "ssh_observations": getattr(outcome, "ssh_observations", []),
         "service_observations": getattr(outcome, "service_observations", service_observations),
+        "quic_observations": getattr(outcome, "quic_observations", quic_observations),
     }, default=str))
     return 0
 

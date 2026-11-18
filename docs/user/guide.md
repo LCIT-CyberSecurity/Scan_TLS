@@ -1,5 +1,7 @@
 # User guide (WebUI)
 
+For optional QUIC / HTTP/3 scans and interpretation limits, see [QUIC / HTTP/3](quic-http3.md).
+
 ## Roles (global, not per SI)
 | Role | Can |
 |---|---|

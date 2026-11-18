@@ -40,6 +40,7 @@ class DefinitionBody(BaseModel):
     exclusions: list[str] = Field(default_factory=list, max_length=500)  # IP, CIDR, FQDN or *.domain that this scan never touches
     mail_security: dict | None = None
     service_identification_enabled: bool = False
+    quic_enabled: bool | None = None
 
 
 def out(db: DbSession, d: ScanDefinition) -> dict:
@@ -49,6 +50,7 @@ def out(db: DbSession, d: ScanDefinition) -> dict:
         "profile_id": str(d.profile_id), "control_type": d.control_type, "report_template_id": str(d.report_template_id) if d.report_template_id else None,
         "enabled_controls": d.enabled_controls,
         "service_identification_enabled": bool(d.service_identification_enabled),
+        "quic_enabled": d.quic_enabled,
         "policy_mode": d.policy_mode, "exclusions": d.exclusions or [], "tags": cls["tags"], "si_ids": cls["si"],
         "mail_security": d.mail_security or {"enabled": False, "checks": {}, "dkim_selectors": []},
         "target_ids": [str(x) for x in db.execute(select(DefinitionTarget.target_id).where(DefinitionTarget.definition_id == d.id)).scalars()],
@@ -89,6 +91,10 @@ def _apply(db: DbSession, d: ScanDefinition, body: DefinitionBody) -> None:
     effective_controls = set(enabled_controls or [body.control_type])
     if not isinstance(body.service_identification_enabled, bool):
         raise HTTPException(422, "service_identification_enabled must be a boolean")
+    if body.quic_enabled is not None and not isinstance(body.quic_enabled, bool):
+        raise HTTPException(422, "quic_enabled must be a boolean or null")
+    if body.quic_enabled is True and "tls" not in effective_controls:
+        raise HTTPException(422, "QUIC checks are available only for TLS scan definitions")
     if enabled and "tls" not in effective_controls:
         raise HTTPException(422, "Mail security checks are available only for TLS scan definitions")
     if enabled and not any(selected_checks.values()):
@@ -113,6 +119,8 @@ def _apply(db: DbSession, d: ScanDefinition, body: DefinitionBody) -> None:
     d.control_type = "tls" if "tls" in effective_controls else "ipsec"
     d.enabled_controls = list(enabled_controls) if generic else None
     d.service_identification_enabled = body.service_identification_enabled
+    if "quic_enabled" in body.model_fields_set:
+        d.quic_enabled = body.quic_enabled
     d.mail_security = {"enabled": enabled, "checks": {key: bool(selected_checks.get(key, False)) for key in allowed_mail_checks},
                        "dkim_selectors": list(dict.fromkeys(item.strip() for item in selectors))}
     d.report_template_id, d.policy_mode = body.report_template_id, body.policy_mode
