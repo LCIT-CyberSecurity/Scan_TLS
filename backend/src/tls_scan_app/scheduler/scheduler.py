@@ -122,7 +122,7 @@ def _fire_dns(db, schedule):
 def main() -> None:
     settings = get_settings()
     configure_logging(settings, "scheduler")
-    factory = make_session_factory(make_engine(settings.database_url))
+    factory = make_session_factory(make_engine(settings.database_url, settings.database_password_file))
     logger.info("scheduler started")
     while True:
         try:
