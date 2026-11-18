@@ -14,18 +14,29 @@ from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DbSession
+from tls_scanner.config import build_job_from_sections
+from tls_scanner.constants import ALLOWED_EXPORT_FORMATS
+from tls_scanner.exclusions import Exclusions
+from tls_scanner.exclusions import parse_entries as parse_exclusions
+from tls_scanner.models import ConfigError, EncryptionPolicy
 
 from tls_scan_app.models import (
-    SystemSetting, DefinitionGroup, DefinitionPolicy, DefinitionTarget, PolicyVersion, ReportTemplate, ScanDefinition,
-    ScanProfile, ScanProfileVersion, Target, TargetGroupMember,
+    DefinitionGroup,
+    DefinitionPolicy,
+    DefinitionTarget,
+    EndpointExposure,
+    PolicyVersion,
+    ReportTemplate,
+    ScanDefinition,
+    ScanProfile,
+    ScanProfileVersion,
+    SystemSetting,
+    Target,
+    TargetGroupMember,
 )
 from tls_scan_app.models.policy import PUBLISHED
 from tls_scan_app.services.targets import address_count
 from tls_scan_app.services.trust_stores import TrustStoreError, resolve_for_snapshot
-from tls_scanner.config import build_job_from_sections
-from tls_scanner.exclusions import Exclusions, parse_entries as parse_exclusions
-from tls_scanner.constants import ALLOWED_EXPORT_FORMATS
-from tls_scanner.models import ConfigError, EncryptionPolicy
 
 DEFAULT_FORMATS = ["html", "md", "csv", "cbom"]
 POLICY_KEYS = ("allowed_versions", "allowed_cipher_algorithms", "allowed_signature_hashes", "minimum_rsa_bits")
@@ -147,6 +158,23 @@ def resolve_targets(db: DbSession, definition: ScanDefinition) -> list[Target]:
     return sorted(unique.values(), key=lambda t: (t.value, t.ports))
 
 
+def exposure_snapshot(db: DbSession, targets: list[Target]) -> list[dict[str, Any]]:
+    """Capture endpoint context at queue time; no address inference or live lookups are performed."""
+    ids = [target.id for target in targets]
+    if not ids:
+        return []
+    values = {target.id: target.value for target in targets}
+    return [{"target_value": values[row.target_id], "protocol": row.protocol, "port": row.port, "sni": row.sni,
+             "state": row.state if row.validated else "unknown",
+             "proposed_state": row.state if not row.validated and row.state != "unknown" else None,
+             "zone_context": row.zone_context, "evidence_method": row.evidence_method,
+             "source": row.source, "justification": row.justification, "confidence": row.confidence,
+             "validated": row.validated, "observed_at": row.observed_at.isoformat() if row.observed_at else None,
+             "validated_at": row.validated_at.isoformat() if row.validated_at else None}
+            for row in db.execute(select(EndpointExposure).where(EndpointExposure.target_id.in_(ids))
+                                  .order_by(EndpointExposure.target_id, EndpointExposure.protocol, EndpointExposure.port, EndpointExposure.sni)).scalars()]
+
+
 def build_snapshot(db: DbSession, definition: ScanDefinition, max_addresses: int) -> dict[str, Any]:
     profile_version = latest_published(db, ScanProfileVersion, ScanProfileVersion.profile_id, definition.profile_id)
     if profile_version is None:
@@ -206,6 +234,7 @@ def build_snapshot(db: DbSession, definition: ScanDefinition, max_addresses: int
     for target in targets:
         by_ports.setdefault(target.ports or str(default_ports), []).append(target.value)
     passes = [{"ports": ports, "targets": sorted(set(values))} for ports, values in sorted(by_ports.items())]
+    exposures_snapshot = exposure_snapshot(db, targets)
 
     policy_ids = db.execute(
         select(DefinitionPolicy.policy_id).where(DefinitionPolicy.definition_id == definition.id)
@@ -250,6 +279,7 @@ def build_snapshot(db: DbSession, definition: ScanDefinition, max_addresses: int
             "control_type": "ipsec", "definition": {"id": str(definition.id), "name": definition.name},
             "profile": {"id": str(definition.profile_id), "version_id": str(profile_version.id), "version": profile_version.version},
             "ike": ike, "scan": scan_cfg, "service_identification": service_identification,
+            "exposure_snapshot": exposures_snapshot,
             "quic": None,
             "passes": [{"targets": sorted(set(probe_targets)), "ports": str(default_ports)}], "policies": policy_bundles["ipsec"],
             "policy_mode": definition.policy_mode, "export_formats": [f for f in formats if f in {"html", "md", "csv"}], "branding": (template.branding if template else None) or {},
@@ -303,6 +333,7 @@ def build_snapshot(db: DbSession, definition: ScanDefinition, max_addresses: int
                                      if exclusions.classify_target(str(address)) != "excluded"})}
                 if "ssh" in selected else None),
         "trust_stores": trust_stores,
+        "exposure_snapshot": exposures_snapshot,
         "passes": passes,
         "policy_mode": definition.policy_mode,
         "policies": policy_bundles["tls"],
@@ -327,6 +358,7 @@ def fingerprint(snapshot: dict[str, Any]) -> str:
         "ike": snapshot.get("ike", (snapshot.get("ipsec") or {}).get("ike")),
         "ipsec": snapshot.get("ipsec"),
         "ssh": snapshot.get("ssh"),
+        "exposure_snapshot": snapshot.get("exposure_snapshot", []),
     }
     mail_security = snapshot.get("mail_security") or {}
     if mail_security.get("enabled"):

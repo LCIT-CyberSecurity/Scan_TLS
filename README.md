@@ -21,6 +21,7 @@ The web UI provides target management, multiprotocol scans, policies and profile
 - [Architecture overview](docs/architecture/overview.md)
 - [Data model](docs/architecture/data-model.md)
 - [DNS lookalike monitoring](docs/user/dns-lookalike-monitoring.md)
+- [Endpoint exposure and contextual risk](docs/user/endpoint-exposure-risk.md)
 - [Developer setup and tests](docs/dev/contributing.md)
 - [Docker and integration testing](docs/dev/testing.md)
 

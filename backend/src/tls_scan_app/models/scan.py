@@ -4,7 +4,20 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func, text
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from tls_scan_app.database import Base, JsonType
@@ -170,6 +183,8 @@ class RunEndpoint(Base):
     untested_checks: Mapped[list] = mapped_column(JsonType, default=list)
     # complementary TLS checks (tls_scanner.checks): [{check_id, status, message, observations, evidence, duration_ms}]
     tls_checks: Mapped[list] = mapped_column(JsonType, default=list)
+    exposure_snapshot: Mapped[dict] = mapped_column(JsonType, default=dict)  # immutable endpoint context captured when this run was queued
+    contextual_risk: Mapped[dict] = mapped_column(JsonType, default=dict)  # versioned assessment; never changes the crypto grade
 
 
 class RunFinding(Base):
@@ -185,6 +200,7 @@ class RunFinding(Base):
     evidence: Mapped[str] = mapped_column(Text, default="")
     remediation: Mapped[str] = mapped_column(Text, default="")
     affected_endpoint_ids: Mapped[list] = mapped_column(JsonType, default=list)
+    contextual_risk_by_endpoint: Mapped[dict] = mapped_column(JsonType, default=dict)
 
 
 class RunIpsecObservation(Base):

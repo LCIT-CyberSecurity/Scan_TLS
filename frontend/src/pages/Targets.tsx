@@ -8,6 +8,7 @@ import { useAuth } from "../auth/AuthContext";
 import { DiscoveriesTab, DnsDiscoveryDialog } from "../components/DnsDiscovery";
 import { DnsLookalikeMonitors } from "../components/DnsLookalikeMonitors";
 import { NetworkDiscovery } from "../components/NetworkDiscovery";
+import { EndpointExposureEditor } from "../components/EndpointExposureEditor";
 import { CheckList, ConfirmButton, Empty, ErrorNote, PageHeader, TagList, TagsInput, useLoad } from "../components/common";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
@@ -69,6 +70,7 @@ export function TargetDialog({ initial, systems, onClose, onSaved }: { initial?:
         <Field label={t("col.description")}><Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
         <Field label={t("col.tags")} hint={t("hint.commaSeparated")}><TagsInput value={form.tags} onChange={(tags) => setForm({ ...form, tags })} /></Field>
         <Field label={t("col.si")}><CheckList items={systems.map((s) => ({ id: s.id, label: (s.parent_id ? "↳ " : "") + s.name }))} selected={form.si_ids} onChange={(si_ids) => setForm({ ...form, si_ids })} /></Field>
+        {initial && <EndpointExposureEditor targetId={initial.id} />}
         <ErrorNote error={error} />
         <div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>{t("action.cancel")}</Button><Button onClick={() => void save()}>{t("action.save")}</Button></div>
       </div>
