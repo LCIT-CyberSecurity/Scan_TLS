@@ -121,7 +121,7 @@ describe("Network Exposure Map", () => {
     expect(await screen.findByText("No TLS scan result is associated with this target.")).toBeInTheDocument();
   });
 
-  it("returns from a LAN to its parent view with Escape or the visible close control", async () => {
+  it("returns from a LAN to its parent view with Escape", async () => {
     render(<MemoryRouter><I18nProvider initial="en"><NetworkMap /></I18nProvider></MemoryRouter>);
     await screen.findByText("Network exposure map");
     await waitFor(() => expect(graphState.data?.nodes[0]?.id).toBe("si:si-1"));
@@ -129,15 +129,29 @@ describe("Network Exposure Map", () => {
     act(() => graphState.handlers["node:click"]?.({ target: { id: "si:si-1" } }));
     await waitFor(() => expect(graphState.data?.nodes[0]?.id).toBe("zone:zone-1"));
     act(() => graphState.handlers["node:click"]?.({ target: { id: "zone:zone-1" } }));
+    await waitFor(() => expect(calls.some((item) => item.path === "/map/graph" && item.params?.zone_id === "zone-1")).toBe(true));
     expect(await screen.findByRole("button", { name: "Back to parent view" })).toBeInTheDocument();
     const parentRequestsBeforeEscape = calls.filter((item) => item.path === "/map/graph" && item.params?.si_id === "si-1" && !item.params?.zone_id).length;
     fireEvent.keyDown(window, { key: "Escape" });
     await waitFor(() => expect(calls.filter((item) => item.path === "/map/graph" && item.params?.si_id === "si-1" && !item.params?.zone_id).length).toBeGreaterThan(parentRequestsBeforeEscape));
-
-    act(() => graphState.handlers["node:click"]?.({ target: { id: "zone:zone-1" } }));
-    fireEvent.click(await screen.findByRole("button", { name: "Back to parent view" }));
     await waitFor(() => expect(graphState.data?.nodes[0]?.id).toBe("zone:zone-1"));
-    expect(calls.filter((item) => item.path === "/map/graph" && item.params?.si_id === "si-1" && !item.params?.zone_id)).toHaveLength(parentRequestsBeforeEscape + 2);
+    expect(screen.queryByRole("button", { name: "Back to parent view" })).not.toBeInTheDocument();
+  });
+
+  it("shows a visible close control to return from a LAN to its parent view", async () => {
+    render(<MemoryRouter><I18nProvider initial="en"><NetworkMap /></I18nProvider></MemoryRouter>);
+    await screen.findByText("Network exposure map");
+    await waitFor(() => expect(graphState.data?.nodes[0]?.id).toBe("si:si-1"));
+    act(() => graphState.handlers["node:click"]?.({ target: { id: "si:si-1" } }));
+    await waitFor(() => expect(graphState.data?.nodes[0]?.id).toBe("zone:zone-1"));
+    act(() => graphState.handlers["node:click"]?.({ target: { id: "zone:zone-1" } }));
+    await waitFor(() => expect(calls.some((item) => item.path === "/map/graph" && item.params?.zone_id === "zone-1")).toBe(true));
+    const closeButton = await screen.findByRole("button", { name: "Back to parent view" });
+    const parentRequestsBeforeClose = calls.filter((item) => item.path === "/map/graph" && item.params?.si_id === "si-1" && !item.params?.zone_id).length;
+    fireEvent.click(closeButton);
+    await waitFor(() => expect(calls.filter((item) => item.path === "/map/graph" && item.params?.si_id === "si-1" && !item.params?.zone_id).length).toBeGreaterThan(parentRequestsBeforeClose));
+    await waitFor(() => expect(graphState.data?.nodes[0]?.id).toBe("zone:zone-1"));
+    expect(screen.queryByRole("button", { name: "Back to parent view" })).not.toBeInTheDocument();
   });
 
   it("supports a global search that opens the actual target detail", async () => {
