@@ -32,6 +32,7 @@ class ScanDefinition(Base):
     # Optional technology switches. NULL preserves the pre-multiprotocol control_type semantics.
     enabled_controls: Mapped[list | None] = mapped_column(JsonType)
     service_identification_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"), nullable=False)
+    quic_enabled: Mapped[bool | None] = mapped_column(Boolean, nullable=True)  # NULL inherits the selected profile version
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     updated_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
@@ -122,6 +123,7 @@ class ScanRun(Base):
     config_snapshot: Mapped[dict] = mapped_column(JsonType)
     mail_security_results: Mapped[list | None] = mapped_column(JsonType)
     service_observations: Mapped[list | None] = mapped_column(JsonType)
+    quic_observations: Mapped[list | None] = mapped_column(JsonType)
     policy_versions: Mapped[list] = mapped_column(JsonType, default=list)
     queued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

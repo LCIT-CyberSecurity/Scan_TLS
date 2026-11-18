@@ -23,6 +23,23 @@ controls are listed and pre-selected **for new profiles only**; untick one to re
 implemented checks are offered. Reference, statuses, limits and YAML: [Complementary TLS checks](tls-checks.md). Their results do not
 change the grade, and PKI trust / revocation stay in their own options above.
 
+## QUIC / HTTP/3
+
+TLS profiles may opt in to a bounded QUIC handshake probe. It is disabled when the profile has no `scan.quic` section
+(including existing profiles) and is disabled in newly created profiles. The profile can choose explicit UDP ports
+(443 by default), a 1–10 second handshake timeout, 0–1 retry, up to 64 targets, up to 8 concurrent probes, and a
+1–120 second total budget. No UDP port sweep or HTTP request is made.
+
+When defining a scan, the QUIC checkbox inherits the published TLS profile. An explicit per-scan override does not
+create or publish a new profile version. Results distinguish a completed QUIC/TLS 1.3 handshake from an inconclusive
+timeout or network/protocol error; silence is not reported as proof of absence. The result includes negotiated QUIC
+version, ALPN (`h3` when negotiated), TLS 1.3 cipher suite, and certificate identifiers when exposed by aioquic.
+It never adds a UDP probe to the TCP endpoint inventory or changes a TLS grade.
+
+The existing TLS policy is evaluated only for the TLS 1.3 version and cipher family when those values were observed.
+The overall policy verdict remains **not evaluated**; QUIC certificate chain, hostname, expiry, and revocation checks
+are not claimed by this probe. See [QUIC / HTTP/3 observations and limitations](quic-http3.md).
+
 ## Lifecycle
 `draft → published → archived`. Editing a published item creates a **new draft**; publishing archives the previous
 version. Published versions are never modified: each run stores the exact version ids it used and the snapshot of

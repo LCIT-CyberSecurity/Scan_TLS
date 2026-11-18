@@ -129,6 +129,7 @@ def get_result(run_id: uuid.UUID, request: Request, db: DbSession = Depends(get_
         "skipped_hosts": r.skipped_hosts or [], "reports": _reports(r, Path(request.app.state.settings.storage_root)),
         "mail_security_results": r.mail_security_results or [],
         "service_observations": r.service_observations or [],
+        "quic_observations": r.quic_observations or [],
         "ssh_observations": [
             {"target": x.target, "port": x.port, "status": x.status, "verdict": x.verdict, "banner": x.banner,
              "algorithms": x.algorithms, "host_keys": x.host_keys, "fingerprints": x.fingerprints, "evidence": x.evidence}

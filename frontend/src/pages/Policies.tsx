@@ -122,6 +122,8 @@ function ProfileForm({ value, onChange, includeServiceSettings = true }: { value
   const setScan = (k: string, v: unknown) => onChange({ ...value, scan: { ...scan, [k]: v } });
   const setCert = (patch: Content) => onChange({ ...value, checks: { ...value.checks, certificate: { ...cert, ...patch } } });
   const rev = cert.revocation ?? {};
+  const quic = scan.quic ?? {};
+  const setQuic = (patch: Content) => setScan("quic", { ...quic, ...patch });
   const check = (label: string, checked: boolean, on: (b: boolean) => void) => <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={checked} onChange={(e) => on(e.target.checked)} />{label}</label>;
   return (
     <div className="space-y-4">
@@ -132,6 +134,21 @@ function ProfileForm({ value, onChange, includeServiceSettings = true }: { value
         <Field label={t("prof.expires")}><Input type="number" min={1} value={cert.expires_within_days ?? 30} onChange={(e) => setCert({ expires_within_days: Number(e.target.value) })} /></Field>
       </div>
       {check(t("prof.dns"), scan.resolve_dns ?? true, (b) => setScan("resolve_dns", b))}
+      <fieldset className="space-y-3 rounded-sm border border-hairline p-3">
+        <legend className="px-1 text-sm font-medium">{t("quic.title" as never)}</legend>
+        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={quic.enabled ?? false} onChange={(e) => setQuic({ enabled: e.target.checked })} />{t("quic.profileEnable" as never)}</label>
+        {(quic.enabled ?? false) && <>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label={t("quic.ports" as never)} hint={t("quic.portsHint" as never)}><Input value={list(quic.ports ?? [443])} onChange={(e) => setQuic({ ports: split(e.target.value).map(Number) })} placeholder="443" /></Field>
+            <Field label={t("quic.timeout" as never)}><Input type="number" min={1} max={10} value={quic.timeout_seconds ?? 3} onChange={(e) => setQuic({ timeout_seconds: Number(e.target.value) })} /></Field>
+            <Field label={t("quic.retries" as never)}><Input type="number" min={0} max={1} value={quic.retries ?? 0} onChange={(e) => setQuic({ retries: Number(e.target.value) })} /></Field>
+            <Field label={t("quic.targets" as never)}><Input type="number" min={1} max={64} value={quic.max_targets ?? 32} onChange={(e) => setQuic({ max_targets: Number(e.target.value) })} /></Field>
+            <Field label={t("quic.parallelism" as never)}><Input type="number" min={1} max={8} value={quic.max_parallelism ?? 4} onChange={(e) => setQuic({ max_parallelism: Number(e.target.value) })} /></Field>
+            <Field label={t("quic.budget" as never)}><Input type="number" min={1} max={120} value={quic.max_duration_seconds ?? 30} onChange={(e) => setQuic({ max_duration_seconds: Number(e.target.value) })} /></Field>
+          </div>
+          <p className="text-xs text-muted">{t("quic.limits" as never)}</p>
+        </>}
+      </fieldset>
       {check(t("prof.trust"), cert.trust?.enabled ?? true, (b) => setCert({ trust: { ...cert.trust, enabled: b } }))}
       {(cert.trust?.enabled ?? true) && <TrustAuthorities cert={cert} setCert={setCert} />}
       {check(t("prof.revocation"), rev.enabled ?? false, (b) => setCert({ revocation: { ...rev, enabled: b } }))}

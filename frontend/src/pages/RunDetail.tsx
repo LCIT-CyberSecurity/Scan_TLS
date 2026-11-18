@@ -2,7 +2,7 @@ import { Download, GitCompare, Trash2, XCircle } from "lucide-react";
 import { useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api, downloadUrl } from "../api/client";
-import type { Comparison, Endpoint, Finding, FindingBrief, RunDetail as Detail, ServiceObservation } from "../api/types";
+import type { Comparison, Endpoint, Finding, FindingBrief, RunDetail as Detail, ServiceObservation, QuicObservation } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { ConfirmButton, Empty, ErrorNote, Loading, Metric, Note, PageHeader, SeverityBadge, StatusBadge, TagList, useLoad } from "../components/common";
 import { Badge } from "../components/ui/badge";
@@ -204,6 +204,19 @@ export default function RunDetail() {
           { key: "service", header: t("service.name" as never), values: (r) => [r.service, r.product, r.version], render: (r) => <span>{r.service || "—"}{r.product && ` · ${r.product}`}{r.version && ` ${r.version}`}</span> },
           { key: "confidence", header: t("service.confidence" as never), values: (r) => [String(r.confidence)], render: (r) => `${Math.round(r.confidence * 100)}%` },
           { key: "status", header: t("col.status"), values: (r) => [r.status], render: (r) => <Badge tone={r.status === "observed" ? "success" : r.status === "probable" ? "warning" : "neutral"}>{r.status}</Badge> },
+        ]} />
+      </Card>}
+      {!!run.quic_observations?.length && <Card className="mb-6"><CardHeader><CardTitle>{t("quic.title" as never)}</CardTitle></CardHeader>
+        <p className="px-5 pb-3 text-xs text-muted">{t("quic.resultsHint" as never)}</p>
+        <DataTable rows={run.quic_observations} rowKey={(r: QuicObservation) => `${r.target}:${r.port ?? "none"}`} columns={[
+          { key: "target", header: "Target", values: (r) => [r.target], render: (r) => r.target || "—" },
+          { key: "port", header: "UDP", values: (r) => [String(r.port ?? "")], render: (r) => r.port ?? "—" },
+          { key: "status", header: t("col.status"), values: (r) => [r.status], render: (r) => <Badge tone={r.status === "observed" ? "success" : "warning"}>{r.status}</Badge> },
+          { key: "version", header: t("quic.version" as never), values: (r) => [r.quic_version ?? "", r.tls_version ?? ""], render: (r) => <span>{r.quic_version ?? "—"}{r.tls_version ? ` · ${r.tls_version}` : ""}</span> },
+          { key: "alpn", header: "ALPN / HTTP/3", values: (r) => [r.alpn ?? "", r.http3_status ?? ""], render: (r) => <span>{r.alpn ?? "—"}{r.http3_status ? ` · ${r.http3_status}` : ""}</span> },
+          { key: "cipher", header: t("quic.cipher" as never), values: (r) => [r.cipher_suite ?? ""], render: (r) => <code className="text-xs">{r.cipher_suite ?? "—"}</code> },
+          { key: "policy", header: t("quic.policy" as never), values: (r) => (r.policy_evaluations ?? []).map((p) => p.policy), render: (r) => <span className="text-xs">{(r.policy_evaluations ?? []).map((p) => `${p.policy}: ${p.checks.map((c) => `${c.control}=${c.status}`).join(", ")}`).join(" · ") || "—"}</span> },
+          { key: "observation", header: t("run.tlsCheck"), values: (r) => [r.reason ?? "", r.certificate?.sha256_fingerprint ?? ""], render: (r) => <span className="break-all text-xs">{r.reason ?? r.certificate?.sha256_fingerprint ?? "—"}</span> },
         ]} />
       </Card>}
       {run.control_type !== "ipsec" && <Card><CardHeader><CardTitle>{t("run.findings")}</CardTitle></CardHeader>

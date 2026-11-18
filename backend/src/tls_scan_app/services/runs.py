@@ -185,6 +185,7 @@ def persist_results(db: DbSession, run: ScanRun, outcome: dict[str, Any], status
     run.scanned_hosts, run.skipped_hosts = outcome.get("scanned_hosts", []), outcome.get("skipped_hosts", [])
     run.mail_security_results = outcome.get("mail_security_results") or None
     run.service_observations = outcome.get("service_observations") or None
+    run.quic_observations = outcome.get("quic_observations") or None
     if run.mail_security_results:
         attach_smtp_observations(run.mail_security_results, model.get("endpoints", []))
     run.summary, run.status, run.finished_at = model.get("statistics"), status, datetime.now(UTC)
@@ -253,6 +254,8 @@ def _format_of(path: Path, run: ScanRun | None = None) -> str:
         return "mail_security_csv"
     if name == "service-identification.csv":
         return "service_csv"
+    if name == "quic-results.csv":
+        return "quic_csv"
     if name.endswith(".metadata.json"):
         return "metadata"
     return {".html": "html", ".md": "md", ".csv": "csv"}.get(path.suffix, path.suffix.lstrip("."))
