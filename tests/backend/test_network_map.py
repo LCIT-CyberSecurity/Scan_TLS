@@ -120,9 +120,18 @@ def test_global_map_surfaces_unassigned_targets_without_fabricating_a_system(ope
         assert aggregate["count"] >= len(created)
         assert all(node["kind"] == "si" for node in global_graph.json()["nodes"] if node["kind"] != "unassigned")
 
-        expanded = operator.get("/api/map/graph", params={"expand_unassigned": "true"})
-        assert expanded.status_code == 200, expanded.text
-        expanded_ids = {node.get("target_id") for node in expanded.json()["nodes"]}
+        expanded_ids: set[str | None] = set()
+        offset = 0
+        while True:
+            expanded = operator.get("/api/map/graph", params={
+                "expand_unassigned": "true", "offset": offset,
+            })
+            assert expanded.status_code == 200, expanded.text
+            page = expanded.json()
+            expanded_ids.update(node.get("target_id") for node in page["nodes"])
+            if not page["truncated"]:
+                break
+            offset = page["next_offset"]
         assert set(created).issubset(expanded_ids)
 
         focused = operator.get("/api/map/graph", params={"focus_target_id": created[0]})
