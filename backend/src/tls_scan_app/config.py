@@ -22,6 +22,7 @@ class Settings(BaseSettings):
     public_base_url: str = "http://localhost:8000"
 
     session_secret: str = Field(default="dev-only-insecure-secret-change-me", repr=False)
+    session_secret_required: bool = True
     cookie_secure: bool = True
     session_idle_timeout_minutes: int = 60
     session_absolute_timeout_hours: int = 12
@@ -114,7 +115,7 @@ class Settings(BaseSettings):
         if self.environment != "production":
             return self
         problems = []
-        if self.session_secret in _DEV_SECRETS or len(self.session_secret) < MIN_SECRET:
+        if self.session_secret_required and (self.session_secret in _DEV_SECRETS or len(self.session_secret) < MIN_SECRET):
             problems.append(f"TLS_SCAN_SESSION_SECRET is empty, short (< {MIN_SECRET}) or a development value")
         if not self.cookie_secure:
             problems.append("TLS_SCAN_COOKIE_SECURE must be true")
