@@ -6,6 +6,7 @@ import type { Group, SI, Tag, Target } from "../api/types";
 import { formatDate } from "../lib/utils";
 import { useAuth } from "../auth/AuthContext";
 import { DiscoveriesTab, DnsDiscoveryDialog } from "../components/DnsDiscovery";
+import { DnsLookalikeMonitors } from "../components/DnsLookalikeMonitors";
 import { NetworkDiscovery } from "../components/NetworkDiscovery";
 import { CheckList, ConfirmButton, Empty, ErrorNote, PageHeader, TagList, TagsInput, useLoad } from "../components/common";
 import { Badge } from "../components/ui/badge";
@@ -210,7 +211,7 @@ export default function Targets() {
                 <Td>{own(g.owner_id) && <div className="flex justify-end gap-2"><Button size="sm" variant="outline" aria-label={t("action.edit")} onClick={() => { setEditG(g); setDialog("group"); }}><Pencil /></Button><ConfirmButton variant="outline" label={<Trash2 className="size-4" />} confirm={t("confirm.delete")} onConfirm={remove(`/target-groups/${g.id}`, groups.reload)} /></div>}</Td></tr>)}</tbody></Table>
           ) : <Empty>{t("group.none")}</Empty>}</Card>
         </TabsContent>
-        <TabsContent value="dns"><DiscoveriesTab reloadKey={discoveries} onNew={() => { setDiscoverId(undefined); setDialog("discover"); }} onOpen={(id) => { setDiscoverId(id); setDialog("discover"); }} /></TabsContent>
+        <TabsContent value="dns"><div className="space-y-5"><DiscoveriesTab reloadKey={discoveries} onNew={() => { setDiscoverId(undefined); setDialog("discover"); }} onOpen={(id) => { setDiscoverId(id); setDialog("discover"); }} /><DnsLookalikeMonitors /></div></TabsContent>
         {atLeast("OPERATOR") && <TabsContent value="network-discovery"><NetworkDiscovery /></TabsContent>}
         <TabsContent value="si">
           <Card className="mb-4 p-4"><div className="flex flex-wrap items-end gap-3">

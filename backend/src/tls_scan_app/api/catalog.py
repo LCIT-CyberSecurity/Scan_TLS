@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import uuid
-
 from datetime import UTC, datetime
 from typing import Literal
 
@@ -13,20 +12,54 @@ from sqlalchemy import delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DbSession
 
-from tls_scan_app.api.common import classification_of, get_or_404, ids_matching_filter, require_modify, set_classification
+from tls_scan_app.api.common import (
+    classification_of,
+    get_or_404,
+    ids_matching_filter,
+    require_modify,
+    set_classification,
+)
 from tls_scan_app.deps import get_db, require_role
 from tls_scan_app.models import (
-    DefinitionGroup, DnsDiscovery, DefinitionTarget, InformationSystem, ResourceSI, ResourceTag, Role, Tag, Target, TargetGroup,
-    TargetDnsObservation, TargetGroupMember, User,
+    DefinitionGroup,
+    DefinitionTarget,
+    DnsDiscovery,
+    DnsLookalikeMonitor,
+    InformationSystem,
+    ResourceSI,
+    ResourceTag,
+    Role,
+    ScanSchedule,
+    Tag,
+    Target,
+    TargetDnsObservation,
+    TargetGroup,
+    TargetGroupMember,
+    User,
 )
 from tls_scan_app.services import audit
-from tls_scan_app.services.dns_discovery import DiscoveryError, coverage, normalize_domain, policy as dns_policy, reconcile
+from tls_scan_app.services.dns_discovery import (
+    DiscoveryError,
+    coverage,
+    normalize_domain,
+    reconcile,
+)
+from tls_scan_app.services.dns_discovery import policy as dns_policy
+from tls_scan_app.services.dns_discovery.lookalike import (
+    MAX_CANDIDATES,
+    MAX_TLDS,
+    generate_candidates,
+    validate_tlds,
+)
+from tls_scan_app.services.schedule_calc import ScheduleError, next_after
+from tls_scan_app.services.schedule_calc import validate as validate_schedule
 from tls_scan_app.services.targets import TargetError, normalize_ports, normalize_target
 
 router = APIRouter(prefix="/api", tags=["catalog"])
 reader = require_role(Role.AUDITOR)
 user_only = require_role(Role.USER)
 operator = require_role(Role.OPERATOR)
+administrator = require_role(Role.ADMIN)
 
 
 # ---------- SI / sub-SI ----------
@@ -521,3 +554,177 @@ def target_dns(target_id: uuid.UUID, db: DbSession = Depends(get_db), _: User = 
     """DNS observations recorded for a target by discoveries (technical data, separate from the fields entered by hand)."""
     get_or_404(db, Target, target_id, "Target")
     return reconcile.target_observation_out(db.get(TargetDnsObservation, target_id))
+
+# ---------- DNS lookalike monitoring (ADMIN only; no network traffic unless explicitly enabled) ----------
+class LookalikeMonitorBody(BaseModel):
+    domain: str = Field(min_length=1, max_length=253)
+    authorized: bool = False
+    enabled: bool = False
+    tlds: list[str] = Field(default_factory=list, max_length=MAX_TLDS)
+    exclusions: list[str] = Field(default_factory=list, max_length=MAX_CANDIDATES)
+    max_candidates: int = Field(default=50, ge=1, le=MAX_CANDIDATES)
+    min_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    concurrency: int = Field(default=5, ge=1, le=10)
+    timeout_seconds: int = Field(default=3, ge=1, le=10)
+    ct_enabled: bool = False
+    max_ct: int = Field(default=5, ge=0, le=5)
+    notifications_enabled: bool = False
+    schedule_kind: Literal["daily", "weekly", "monthly", "cron"] = "daily"
+    schedule_params: dict = Field(default_factory=lambda: {"time": "03:00"})
+    timezone: str = "UTC"
+
+
+def _lookalike_options(body: LookalikeMonitorBody, settings: dict) -> tuple[str, dict]:
+    if not body.authorized:
+        raise DiscoveryError("Confirm that you are authorised to monitor this public domain")
+    domain = normalize_domain(body.domain)
+    if not dns_policy.is_public_domain(domain):
+        raise DiscoveryError("Lookalike monitoring is limited to explicitly authorised public domains")
+    tlds = validate_tlds(body.tlds)
+    exclusions = sorted({normalize_domain(item) for item in body.exclusions})
+    generate_candidates(domain, tlds=tlds, max_candidates=body.max_candidates, exclusions=exclusions, min_score=body.min_score)
+    if body.ct_enabled and not settings.get("ct_enabled", True):
+        raise DiscoveryError("Certificate Transparency monitoring is disabled by the administrator")
+    validate_schedule(body.schedule_kind, body.schedule_params, body.timezone)
+    return domain, {"tlds": tlds, "exclusions": exclusions, "max_candidates": body.max_candidates, "min_score": body.min_score,
+                    "concurrency": body.concurrency, "timeout_seconds": body.timeout_seconds,
+                    "ct_enabled": body.ct_enabled, "max_ct": body.max_ct,
+                    "notifications_enabled": body.notifications_enabled,
+                    "schedule_kind": body.schedule_kind, "schedule_params": body.schedule_params,
+                    "timezone": body.timezone}
+
+
+def _lookalike_schedule(db: DbSession, monitor: DnsLookalikeMonitor, options: dict) -> None:
+    kind, params, timezone = options["schedule_kind"], options["schedule_params"], options["timezone"]
+    nxt = next_after(kind, params, timezone, datetime.now(UTC))
+    if nxt is None:
+        raise DiscoveryError("A future monitoring occurrence is required")
+    config = {"domain": monitor.domain, "authorized": True, "options": {"lookalike_monitor_id": str(monitor.id)}}
+    schedule = db.get(ScanSchedule, monitor.schedule_id) if monitor.schedule_id else None
+    if schedule is None:
+        schedule = ScanSchedule(definition_id=None, task_type="dns_discovery", task_config=config, owner_id=monitor.owner_id,
+                                kind=kind, params=params, timezone=timezone, active=monitor.enabled, next_run_at=nxt)
+        db.add(schedule)
+        db.flush()
+        monitor.schedule_id = schedule.id
+    else:
+        schedule.task_type, schedule.task_config, schedule.owner_id = "dns_discovery", config, monitor.owner_id
+        schedule.kind, schedule.params, schedule.timezone = kind, params, timezone
+        schedule.active, schedule.next_run_at = monitor.enabled, nxt
+
+
+def _lookalike_out(db: DbSession, monitor: DnsLookalikeMonitor) -> dict:
+    schedule = db.get(ScanSchedule, monitor.schedule_id) if monitor.schedule_id else None
+    rows = db.execute(select(DnsDiscovery).where(DnsDiscovery.domain == monitor.domain)
+                      .order_by(DnsDiscovery.created_at.desc()).limit(100)).scalars().all()
+    history = [r for r in rows if str((r.options or {}).get("lookalike_monitor_id")) == str(monitor.id)][:20]
+    return {"id": str(monitor.id), "domain": monitor.domain, "enabled": monitor.enabled,
+            "deleted": monitor.deleted_at is not None, "options": monitor.options or {},
+            "schedule": ({"id": str(schedule.id), "kind": schedule.kind, "params": schedule.params,
+                          "timezone": schedule.timezone, "active": schedule.active, "next_run_at": schedule.next_run_at} if schedule else None),
+            "history": [{"id": str(r.id), "status": r.status, "created_at": r.created_at,
+                         "finished_at": r.finished_at, "error": r.error,
+                         "observations": len((r.result or {}).get("observations", [])),
+                         "new": sum(o.get("change") == "new" for o in (r.result or {}).get("observations", [])),
+                         "changed": sum(o.get("change") == "changed" for o in (r.result or {}).get("observations", []))} for r in history]}
+
+
+@router.get("/dns-lookalike-monitors")
+def list_lookalike_monitors(db: DbSession = Depends(get_db), user: User = Depends(administrator)) -> list[dict]:
+    return [_lookalike_out(db, m) for m in db.execute(select(DnsLookalikeMonitor).where(DnsLookalikeMonitor.deleted_at.is_(None))
+                                                        .order_by(DnsLookalikeMonitor.domain)).scalars()]
+
+
+@router.post("/dns-lookalike-monitors", status_code=201)
+def create_lookalike_monitor(body: LookalikeMonitorBody, db: DbSession = Depends(get_db), user: User = Depends(administrator)) -> dict:
+    try:
+        domain, options = _lookalike_options(body, dns_policy.load_settings(db))
+    except (DiscoveryError, ScheduleError) as error:
+        raise HTTPException(422, str(error)) from None
+    if db.scalar(select(DnsLookalikeMonitor.id).where(DnsLookalikeMonitor.domain == domain, DnsLookalikeMonitor.deleted_at.is_(None))):
+        raise HTTPException(409, "A lookalike monitor already exists for this domain")
+    monitor = DnsLookalikeMonitor(domain=domain, owner_id=user.id, enabled=body.enabled, options=options)
+    db.add(monitor)
+    db.flush()
+    if monitor.enabled:
+        try:
+            _lookalike_schedule(db, monitor, options)
+        except (DiscoveryError, ScheduleError) as error:
+            db.rollback()
+            raise HTTPException(422, str(error)) from None
+    audit.record(db, "dns.lookalike.create", actor=user, resource_type="dns_lookalike_monitor", resource_id=monitor.id,
+                 detail={"domain": domain, "enabled": monitor.enabled, "ct_enabled": options["ct_enabled"], "notifications_enabled": options["notifications_enabled"]})
+    db.commit()
+    return _lookalike_out(db, monitor)
+
+
+@router.put("/dns-lookalike-monitors/{monitor_id}")
+def update_lookalike_monitor(monitor_id: uuid.UUID, body: LookalikeMonitorBody, db: DbSession = Depends(get_db), user: User = Depends(administrator)) -> dict:
+    monitor = get_or_404(db, DnsLookalikeMonitor, monitor_id, "DNS lookalike monitor")
+    if monitor.deleted_at is not None:
+        raise HTTPException(410, "This monitor was deleted")
+    try:
+        domain, options = _lookalike_options(body, dns_policy.load_settings(db))
+    except (DiscoveryError, ScheduleError) as error:
+        raise HTTPException(422, str(error)) from None
+    clash = db.scalar(select(DnsLookalikeMonitor.id).where(DnsLookalikeMonitor.domain == domain,
+                         DnsLookalikeMonitor.id != monitor.id, DnsLookalikeMonitor.deleted_at.is_(None)))
+    if clash:
+        raise HTTPException(409, "A lookalike monitor already exists for this domain")
+    monitor.domain, monitor.options, monitor.enabled = domain, options, body.enabled
+    if body.enabled:
+        try:
+            _lookalike_schedule(db, monitor, options)
+        except (DiscoveryError, ScheduleError) as error:
+            db.rollback()
+            raise HTTPException(422, str(error)) from None
+    elif monitor.schedule_id:
+        schedule = db.get(ScanSchedule, monitor.schedule_id)
+        if schedule:
+            schedule.active = False
+    audit.record(db, "dns.lookalike.update", actor=user, resource_type="dns_lookalike_monitor", resource_id=monitor.id,
+                 detail={"domain": domain, "enabled": monitor.enabled, "ct_enabled": options["ct_enabled"], "notifications_enabled": options["notifications_enabled"]})
+    db.commit()
+    return _lookalike_out(db, monitor)
+
+
+@router.delete("/dns-lookalike-monitors/{monitor_id}", status_code=204)
+def delete_lookalike_monitor(monitor_id: uuid.UUID, db: DbSession = Depends(get_db), user: User = Depends(administrator)) -> None:
+    monitor = get_or_404(db, DnsLookalikeMonitor, monitor_id, "DNS lookalike monitor")
+    if monitor.deleted_at is None:
+        monitor.enabled, monitor.deleted_at = False, datetime.now(UTC)
+        if monitor.schedule_id:
+            schedule = db.get(ScanSchedule, monitor.schedule_id)
+            if schedule:
+                schedule.active = False
+        audit.record(db, "dns.lookalike.delete", actor=user, resource_type="dns_lookalike_monitor", resource_id=monitor.id,
+                     detail={"domain": monitor.domain})
+        db.commit()
+
+
+@router.post("/dns-lookalike-monitors/{monitor_id}/run", status_code=202)
+def run_lookalike_monitor(monitor_id: uuid.UUID, db: DbSession = Depends(get_db), user: User = Depends(administrator)) -> dict:
+    monitor = get_or_404(db, DnsLookalikeMonitor, monitor_id, "DNS lookalike monitor")
+    if not monitor.enabled or monitor.deleted_at is not None:
+        raise HTTPException(409, "Enable this domain monitor before running it")
+    busy = db.scalar(select(DnsDiscovery.id).where(DnsDiscovery.requested_by == user.id,
+                                                   DnsDiscovery.status.in_(("queued", "running"))).limit(1))
+    if busy:
+        raise HTTPException(409, "A DNS discovery is already running; wait for it to finish")
+    row = DnsDiscovery(domain=monitor.domain, requested_by=user.id, options={"lookalike_monitor_id": str(monitor.id)})
+    db.add(row)
+    db.flush()
+    audit.record(db, "dns.lookalike.run", actor=user, resource_type="dns_lookalike_monitor", resource_id=monitor.id,
+                 detail={"domain": monitor.domain, "discovery_id": str(row.id)})
+    db.commit()
+    return _discovery_out(row, with_result=False)
+
+
+@router.get("/dns-lookalike-monitors/{monitor_id}/results")
+def lookalike_monitor_results(monitor_id: uuid.UUID, db: DbSession = Depends(get_db), user: User = Depends(administrator)) -> list[dict]:
+    monitor = get_or_404(db, DnsLookalikeMonitor, monitor_id, "DNS lookalike monitor")
+    rows = db.execute(select(DnsDiscovery).where(DnsDiscovery.domain == monitor.domain)
+                      .order_by(DnsDiscovery.created_at.desc()).limit(100)).scalars().all()
+    return [{"id": str(r.id), "status": r.status, "created_at": r.created_at, "finished_at": r.finished_at,
+             "error": r.error, "result": r.result}
+            for r in rows if str((r.options or {}).get("lookalike_monitor_id")) == str(monitor.id)][:20]
