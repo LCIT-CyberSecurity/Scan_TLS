@@ -55,7 +55,9 @@ def test_mail_security_is_optional_per_scan_and_validated(user, operator, catalo
     updated = user.put(f"/api/scan-definitions/{created.json()['id']}", json={**payload, "mail_security": enabled})
     assert updated.status_code == 200, updated.text
     assert updated.json()["mail_security"]["enabled"] is True
-    version = operator.get(f"/api/profiles/{catalog['profile']}").json()["versions"][-1]
+    profile = next(item for item in operator.get("/api/profiles", params={"technology": "tls"}).json()
+                   if item["id"] == catalog["profile"])
+    version = profile["versions"][-1]
     assert "mail_security" not in version["content"]  # published technical profile remains independent and immutable
 
     invalid_checks = {**enabled, "checks": {}}
