@@ -30,6 +30,17 @@ def test_missing_secret_file_reports_kind_without_exposing_secret(tmp_path: Path
     assert "FileNotFoundError" in str(error.value)
 
 
+def test_production_background_service_can_start_without_api_session_secret() -> None:
+    settings = Settings(environment="production", cookie_secure=True, session_secret_required=False)
+
+    assert settings.session_secret_required is False
+
+
+def test_production_requires_a_strong_session_secret_by_default() -> None:
+    with pytest.raises(ValueError, match="TLS_SCAN_SESSION_SECRET"):
+        Settings(environment="production", cookie_secure=True)
+
+
 def test_database_password_file_is_applied_without_injecting_it_in_compose_url(tmp_path: Path) -> None:
     password = " p@ss:/db?word "
     file = tmp_path / "database"
@@ -75,6 +86,8 @@ def test_compose_grants_file_secrets_only_to_consumers() -> None:
     assert {"database_password", "session_secret", "oidc_client_secret", "greenbone_password", "snmp_v3_auth_key"} <= secret_names("api")
     assert {"database_password", "smtp_password", "graph_client_secret", "snmp_v3_auth_key"} <= secret_names("worker")
     assert {"database_password", "smtp_password", "graph_client_secret"} == secret_names("scheduler")
+    assert services["worker"]["environment"]["TLS_SCAN_SESSION_SECRET_REQUIRED"] == "false"
+    assert services["scheduler"]["environment"]["TLS_SCAN_SESSION_SECRET_REQUIRED"] == "false"
     assert "oidc_client_secret" not in secret_names("worker") | secret_names("scheduler")
     assert "greenbone_password" not in secret_names("worker") | secret_names("scheduler")
     assert secret_names("webui") == set()

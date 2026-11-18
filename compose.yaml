@@ -108,6 +108,8 @@ services:
     command: python -m tls_scan_app.workers.worker
     environment:
       <<: *backend-environment
+      # Background workers do not serve sessions and must not receive the API session secret.
+      TLS_SCAN_SESSION_SECRET_REQUIRED: "false"
       TLS_SCAN_SMTP_PASSWORD_FILE: /run/secrets/smtp_password
       TLS_SCAN_GRAPH_CLIENT_SECRET_FILE: /run/secrets/graph_client_secret
       TLS_SCAN_SNMP_V3_USERNAME: ${TLS_SCAN_SNMP_V3_USERNAME:-}
@@ -129,6 +131,8 @@ services:
     command: python -m tls_scan_app.scheduler.scheduler
     environment:
       <<: *backend-environment
+      # The scheduler does not serve sessions and must not receive the API session secret.
+      TLS_SCAN_SESSION_SECRET_REQUIRED: "false"
       TLS_SCAN_SMTP_PASSWORD_FILE: /run/secrets/smtp_password
       TLS_SCAN_GRAPH_CLIENT_SECRET_FILE: /run/secrets/graph_client_secret
     secrets: [database_password, smtp_password, graph_client_secret]
