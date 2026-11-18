@@ -467,6 +467,7 @@ export const en = {
   "sched.cronHint": "5 fields; at most one run every 5 minutes.",
   "sched.day": "Day of month (1-28)",
   "sched.definition": "Scan definition",
+  "sched.edit": "Edit schedule",
   "sched.dueAt": "Due at",
   "sched.frequency": "Frequency",
   "sched.history": "History",
