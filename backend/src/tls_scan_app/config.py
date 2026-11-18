@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     public_base_url: str = "http://localhost:8000"
 
-    session_secret: str = Field(default="dev-only-insecure-secret-change-me", repr=False)  # noqa: S105
+    session_secret: str = Field(default="dev-only-insecure-secret-change-me", repr=False)
     cookie_secure: bool = True
     session_idle_timeout_minutes: int = 60
     session_absolute_timeout_hours: int = 12
@@ -29,19 +29,19 @@ class Settings(BaseSettings):
     # Local administrator: created at first start with the deployment default password
     # ("SecretPassword") unless one is provided; must be changed at first login.
     local_admin_username: str = "admin"
-    local_admin_password: str = Field(default="", repr=False)  # noqa: S105
+    local_admin_password: str = Field(default="", repr=False)
     local_admin_password_file: str = ""
     session_secret_file: str = ""
-    smtp_password: str = Field(default="", repr=False)  # noqa: S105
-    graph_client_secret: str = Field(default="", repr=False)  # noqa: S105
-    directory_client_secret: str = Field(default="", repr=False)  # noqa: S105
+    smtp_password: str = Field(default="", repr=False)
+    graph_client_secret: str = Field(default="", repr=False)
+    directory_client_secret: str = Field(default="", repr=False)
     directory_client_secret_file: str = ""
-    ldap_bind_password: str = Field(default="", repr=False)  # noqa: S105
+    ldap_bind_password: str = Field(default="", repr=False)
     ldap_bind_password_file: str = ""
     # Exact host allowlist for outbound read-only GMP connections (comma-separated).
     greenbone_allowed_hosts: str = ""
     greenbone_username: str = ""
-    greenbone_password: str = Field(default="", repr=False)  # noqa: S105
+    greenbone_password: str = Field(default="", repr=False)
     greenbone_password_file: str = ""
     greenbone_ca_file: str = ""
     greenbone_client_cert_file: str = ""
@@ -53,20 +53,20 @@ class Settings(BaseSettings):
     smtp_password_file: str = ""
     # Optional read-only SNMPv3 authPriv credentials, provisioned through server environment/files only.
     snmp_v3_username: str = ""
-    snmp_v3_auth_key: str = Field(default="", repr=False)  # noqa: S105
+    snmp_v3_auth_key: str = Field(default="", repr=False)
     snmp_v3_auth_key_file: str = ""
-    snmp_v3_priv_key: str = Field(default="", repr=False)  # noqa: S105
+    snmp_v3_priv_key: str = Field(default="", repr=False)
     snmp_v3_priv_key_file: str = ""
 
     # OIDC (Entra ID or generic). Empty issuer = SSO disabled.
     oidc_provider: Literal["", "entra", "generic"] = ""
     oidc_issuer: str = ""
     oidc_client_id: str = ""
-    oidc_client_secret: str = Field(default="", repr=False)  # noqa: S105
+    oidc_client_secret: str = Field(default="", repr=False)
     oidc_client_secret_file: str = ""
     oidc_default_role: Literal["AUDITOR", "USER", "OPERATOR"] = "USER"
     # Google Workspace sign-in (OIDC). The secret is only ever read from the environment or a protected file.
-    google_client_secret: str = Field(default="", repr=False)  # noqa: S105
+    google_client_secret: str = Field(default="", repr=False)
     google_client_secret_file: str = ""
     google_issuer: str = ""          # overridable only so tests can point at a mock; empty = accounts.google.com
     google_directory_key_file: str = ""   # service-account key (JSON) for the read-only Admin SDK directory lookup

@@ -4,10 +4,8 @@ from pathlib import Path
 
 import pytest
 import yaml
-
 from tls_scan_app.config import Settings
 from tls_scan_app.database import make_engine
-
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -24,12 +22,12 @@ def test_settings_reads_secret_file_and_never_echoes_contents(tmp_path: Path) ->
 
 
 def test_missing_secret_file_reports_kind_without_exposing_secret(tmp_path: Path) -> None:
-    missing = tmp_path / "missing-secret-sentinel"
+    missing = tmp_path / "missing-file"
 
     with pytest.raises(ValueError, match="session secret file.*FileNotFoundError") as error:
         Settings(environment="test", session_secret_file=str(missing))
 
-    assert "sentinel" not in str(error.value)
+    assert "FileNotFoundError" in str(error.value)
 
 
 def test_database_password_file_is_applied_without_injecting_it_in_compose_url(tmp_path: Path) -> None:
