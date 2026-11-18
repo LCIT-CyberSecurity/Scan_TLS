@@ -53,10 +53,18 @@ def test_database_password_file_missing_or_empty_fails_without_revealing_content
         make_engine("postgresql+psycopg://tls_scan@postgres/tls_scan", str(empty))
 
 
+def test_alembic_uses_the_database_password_file() -> None:
+    migration_environment = (ROOT / "backend/migrations/env.py").read_text(encoding="utf-8")
+    assert "make_engine(settings.database_url, settings.database_password_file)" in migration_environment
+    assert "create_engine(" not in migration_environment
+
+
 def test_compose_grants_file_secrets_only_to_consumers() -> None:
     compose = yaml.safe_load((ROOT / "compose.yaml").read_text(encoding="utf-8"))
     services = compose["services"]
-    secret_names = lambda service: {item if isinstance(item, str) else item["source"] for item in services[service].get("secrets", [])}
+
+    def secret_names(service: str) -> set[str]:
+        return {item if isinstance(item, str) else item["source"] for item in services[service].get("secrets", [])}
 
     assert all("env_file" not in service for service in services.values())
     assert "POSTGRES_PASSWORD_FILE" in services["postgres"]["environment"]
