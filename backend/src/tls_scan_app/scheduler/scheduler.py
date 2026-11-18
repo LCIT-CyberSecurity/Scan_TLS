@@ -20,7 +20,15 @@ from sqlalchemy.orm import Session as DbSession
 
 from tls_scan_app.config import Settings, get_settings
 from tls_scan_app.database import make_engine, make_session_factory
-from tls_scan_app.models import DnsDiscovery, Role, ScanDefinition, ScanRun, ScanSchedule, ScheduleTrigger, User
+from tls_scan_app.models import (
+    DnsDiscovery,
+    Role,
+    ScanDefinition,
+    ScanRun,
+    ScanSchedule,
+    ScheduleTrigger,
+    User,
+)
 from tls_scan_app.models.scan import ACTIVE_STATUSES
 from tls_scan_app.models.user import role_at_least
 from tls_scan_app.services import audit, runs
@@ -94,6 +102,31 @@ def _fire_dns(db, schedule):
     owner = db.get(User, schedule.owner_id) if schedule.owner_id else None
     if owner is None or not owner.active or not role_at_least(owner.role, Role.OPERATOR):
         return "error", "schedule owner is missing, inactive, or no longer permitted to run discoveries", None, None
+    monitor_id = config["options"].get("lookalike_monitor_id")
+    if monitor_id:
+        from tls_scan_app.models import DnsLookalikeMonitor
+
+        try:
+            monitor = db.get(DnsLookalikeMonitor, monitor_id)
+        except (TypeError, ValueError):
+            monitor = None
+        if (monitor is None or monitor.deleted_at is not None or not monitor.enabled
+                or monitor.owner_id != owner.id or owner.role != Role.ADMIN):
+            return "error", "lookalike monitor is missing, disabled, or no longer authorised", None, None
+        if monitor.domain != config["domain"]:
+            return "error", "lookalike schedule domain no longer matches its monitor", None, None
+        busy = db.scalar(select(DnsDiscovery.id).where(DnsDiscovery.requested_by == owner.id,
+                                                       DnsDiscovery.status.in_(("queued", "running"))).limit(1))
+        if busy:
+            return "skipped_overlap", "a previous DNS discovery for this owner is still active", None, None
+        discovery = DnsDiscovery(domain=monitor.domain, requested_by=owner.id,
+                                 options={"lookalike_monitor_id": str(monitor.id)})
+        db.add(discovery)
+        db.flush()
+        audit.record(db, "dns.lookalike.scheduled", actor_label="scheduler", resource_type="dns_discovery",
+                     resource_id=discovery.id, detail={"domain": monitor.domain, "schedule_id": str(schedule.id),
+                                                       "monitor_id": str(monitor.id)})
+        return "triggered", "", None, discovery.id
     busy = db.scalar(select(DnsDiscovery.id).where(DnsDiscovery.requested_by == owner.id,
                                                    DnsDiscovery.status.in_(("queued", "running"))).limit(1))
     if busy:

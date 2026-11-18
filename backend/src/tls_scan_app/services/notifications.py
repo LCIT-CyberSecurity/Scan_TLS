@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session as DbSession
 from tls_scan_app.models import Notification, RunEndpoint, ScanRun, ScanRunRequester, User
 
 DEFAULT_EVENTS = {"scan_completed", "scan_failed", "scan_cancelled", "new_noncompliance", "certificate_expiring", "schedule_problem"}
-EXTRA_EVENTS = {"new_noncompliance", "certificate_expiring", "schedule_problem"}
+EXTRA_EVENTS = {"new_noncompliance", "certificate_expiring", "schedule_problem", "dns_lookalike"}
 ALL_EVENTS = DEFAULT_EVENTS | EXTRA_EVENTS
 
 EVENT_BY_STATUS = {"completed": "scan_completed", "partial": "scan_completed", "failed": "scan_failed",
