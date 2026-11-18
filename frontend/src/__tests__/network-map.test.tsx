@@ -130,13 +130,14 @@ describe("Network Exposure Map", () => {
     await waitFor(() => expect(graphState.data?.nodes[0]?.id).toBe("zone:zone-1"));
     act(() => graphState.handlers["node:click"]?.({ target: { id: "zone:zone-1" } }));
     expect(await screen.findByRole("button", { name: "Back to parent view" })).toBeInTheDocument();
+    const parentRequestsBeforeEscape = calls.filter((item) => item.path === "/map/graph" && item.params?.si_id === "si-1" && !item.params?.zone_id).length;
     fireEvent.keyDown(window, { key: "Escape" });
-    await waitFor(() => expect(calls.some((item) => item.path === "/map/graph" && item.params?.si_id === "si-1" && !item.params?.zone_id)).toBe(true));
+    await waitFor(() => expect(calls.filter((item) => item.path === "/map/graph" && item.params?.si_id === "si-1" && !item.params?.zone_id).length).toBeGreaterThan(parentRequestsBeforeEscape));
 
     act(() => graphState.handlers["node:click"]?.({ target: { id: "zone:zone-1" } }));
     fireEvent.click(await screen.findByRole("button", { name: "Back to parent view" }));
     await waitFor(() => expect(graphState.data?.nodes[0]?.id).toBe("zone:zone-1"));
-    expect(calls.some((item) => item.path === "/map/graph" && item.params?.si_id === "si-1" && !item.params?.zone_id)).toBe(true);
+    expect(calls.filter((item) => item.path === "/map/graph" && item.params?.si_id === "si-1" && !item.params?.zone_id)).toHaveLength(parentRequestsBeforeEscape + 2);
   });
 
   it("supports a global search that opens the actual target detail", async () => {
