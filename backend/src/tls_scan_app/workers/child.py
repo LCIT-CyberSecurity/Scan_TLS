@@ -6,22 +6,22 @@ started are skipped and the partial results are still written.
 """
 from __future__ import annotations
 
+import csv
+import html
+import io
 import json
 import signal
 import sys
 import threading
 from pathlib import Path
 
-from tls_scan_app.services.planner import job_from_snapshot
-from tls_scanner.runner import execute_scan
 from tls_scan_app.services.ipsec import evaluate_policy, probe
-from tls_scan_app.services.ssh_audit import audit_target, evaluate_ssh_policy
-from tls_scan_app.services.service_identification import identify_services, write_report as write_service_report
+from tls_scan_app.services.planner import job_from_snapshot
 from tls_scan_app.services.quic_scan import scan as scan_quic, write_csv as write_quic_report
-import csv
-import html
-import io
-from datetime import UTC, datetime
+from tls_scan_app.services.service_identification import identify_services
+from tls_scan_app.services.service_identification import write_report as write_service_report
+from tls_scan_app.services.ssh_audit import audit_target, evaluate_ssh_policy
+from tls_scanner.runner import execute_scan
 
 
 def emit(name: str, data: dict) -> None:
@@ -72,7 +72,6 @@ def write_ssh_reports(observations: list[dict], export_dir: Path, run_id: str, f
                  "fingerprints": json.dumps(x.get("fingerprints") or {}, sort_keys=True)}
                 for x in observations]
         if fmt == "csv":
-            import csv, io
             stream = io.StringIO(newline="")
             writer = csv.DictWriter(stream, fieldnames=fields); writer.writeheader(); writer.writerows(rows)
             path.write_text(stream.getvalue(), encoding="utf-8")
