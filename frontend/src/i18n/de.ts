@@ -415,6 +415,7 @@ export const de: Messages = {
   "sched.last": "Letzte Ausführung",
   "sched.mineSubtitle": "Ihre Zeitpläne",
   "sched.new": "Neuer Zeitplan",
+  "sched.edit": "Zeitplan bearbeiten",
   "sched.next": "Nächste Ausführung",
   "sched.none": "Keine Zeitpläne.",
   "sched.outcome": "Ergebnis",
