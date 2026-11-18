@@ -1,4 +1,4 @@
-import { Plus, Trash2 } from "lucide-react";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
@@ -16,31 +16,33 @@ import { formatDate, formatDuration } from "../lib/utils";
 
 const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 
-function ScheduleDialog({ defs, onClose, onSaved }: { defs: Definition[]; onClose: () => void; onSaved: () => void }) {
+function ScheduleDialog({ defs, schedule, onClose, onSaved }: { defs: Definition[]; schedule?: Schedule; onClose: () => void; onSaved: () => void }) {
   const { t } = useI18n();
-  const [definition, setDefinition] = useState(defs[0]?.id ?? "");
-  const [kind, setKind] = useState("daily");
-  const [time, setTime] = useState("03:00");
-  const [weekday, setWeekday] = useState(0);
-  const [day, setDay] = useState(1);
-  const [at, setAt] = useState("");
-  const [expr, setExpr] = useState("0 3 * * 1");
+  const [definition, setDefinition] = useState(schedule?.definition_id ?? defs[0]?.id ?? "");
+  const [kind, setKind] = useState(schedule?.kind ?? "daily");
+  const [time, setTime] = useState((schedule?.params.time as string) ?? "03:00");
+  const [weekday, setWeekday] = useState((schedule?.params.weekday as number) ?? 0);
+  const [day, setDay] = useState((schedule?.params.day as number) ?? 1);
+  const [at, setAt] = useState((schedule?.params.at as string)?.slice(0, 16) ?? "");
+  const [expr, setExpr] = useState((schedule?.params.expr as string) ?? "0 3 * * 1");
+  const [active, setActive] = useState(schedule?.active ?? true);
   const [error, setError] = useState<unknown>();
   const params = kind === "once" ? { at } : kind === "daily" ? { time } : kind === "weekly" ? { time, weekday } : kind === "monthly" ? { time, day } : { expr };
   async function save() {
-    try { await api("/schedules", { method: "POST", body: { definition_id: definition, kind, params, timezone: TZ } }); onSaved(); onClose(); } catch (e) { setError(e); }
+    try { await api(schedule ? `/schedules/${schedule.id}` : "/schedules", { method: schedule ? "PUT" : "POST", body: { definition_id: definition, kind, params, timezone: schedule?.timezone ?? TZ, active } }); onSaved(); onClose(); } catch (e) { setError(e); }
   }
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()} title={t("sched.new")}>
+    <Dialog open onOpenChange={(o) => !o && onClose()} title={schedule ? t("sched.edit") : t("sched.new")}>
       <div className="space-y-4">
-        <Field label={t("sched.definition")}><Select value={definition} onChange={(e) => setDefinition(e.target.value)}>{defs.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</Select></Field>
+        <Field label={t("sched.definition")}>{schedule ? <p className="text-sm">{defs.find((d) => d.id === schedule.definition_id)?.name ?? schedule.definition_id}</p> : <Select value={definition} onChange={(e) => setDefinition(e.target.value)}>{defs.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</Select>}</Field>
         <Field label={t("sched.frequency")}><Select value={kind} onChange={(e) => setKind(e.target.value)}>{["once", "daily", "weekly", "monthly", "cron"].map((k) => <option key={k} value={k}>{t(`sched.${k}` as never)}</option>)}</Select></Field>
         {kind === "once" && <Field label={t("sched.at")}><Input type="datetime-local" value={at} onChange={(e) => setAt(e.target.value)} /></Field>}
         {["daily", "weekly", "monthly"].includes(kind) && <Field label={t("sched.time")}><Input type="time" value={time} onChange={(e) => setTime(e.target.value)} /></Field>}
         {kind === "weekly" && <Field label={t("sched.weekday")}><Select value={weekday} onChange={(e) => setWeekday(Number(e.target.value))}>{[0, 1, 2, 3, 4, 5, 6].map((d) => <option key={d} value={d}>{new Date(2024, 0, 1 + d).toLocaleDateString(undefined, { weekday: "long" })}</option>)}</Select></Field>}
         {kind === "monthly" && <Field label={t("sched.day")}><Input type="number" min={1} max={28} value={day} onChange={(e) => setDay(Number(e.target.value))} /></Field>}
         {kind === "cron" && <Field label={t("sched.cron")} hint={t("sched.cronHint")}><Input value={expr} onChange={(e) => setExpr(e.target.value)} /></Field>}
-        <p className="text-xs text-muted">{t("sched.timezone")}: {TZ}</p>
+        <p className="text-xs text-muted">{t("sched.timezone")}: {schedule?.timezone ?? TZ}</p>
+        {schedule && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />{t("sched.active")}</label>}
         <ErrorNote error={error} />
         <div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>{t("action.cancel")}</Button><Button onClick={() => void save()}>{t("action.save")}</Button></div>
       </div>
@@ -54,6 +56,7 @@ export default function Schedules() {
   const { data, reload, error } = useLoad(() => api<Schedule[]>("/schedules"), [], 10000);
   const { data: defs } = useLoad(() => api<Definition[]>("/scan-definitions"));
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<Schedule | null>(null);
   const [detail, setDetail] = useState<Schedule | null>(null);
   const [err, setErr] = useState<unknown>();
   const name = (id: string) => defs?.find((d) => d.id === id)?.name ?? id.slice(0, 8);
@@ -69,11 +72,13 @@ export default function Schedules() {
               <Td><Badge tone={s.active ? "success" : "neutral"}>{s.active ? t("sched.active") : t("sched.inactive")}</Badge></Td>
               <Td><div className="flex justify-end gap-2">
                 {(s.owner_id === user?.id || atLeast("OPERATOR")) && <Button size="sm" variant="outline" onClick={async () => setDetail(await api<Schedule>(`/schedules/${s.id}`))}>{t("sched.history")}</Button>}
+                {(s.owner_id === user?.id || atLeast("OPERATOR")) && <Button size="sm" variant="outline" aria-label={t("action.edit")} onClick={() => setEditing(s)}><Pencil /></Button>}
                 {(s.owner_id === user?.id || atLeast("OPERATOR")) && <ConfirmButton variant="outline" label={<Trash2 className="size-4" />} confirm={t("confirm.delete")} onConfirm={async () => { try { await api(`/schedules/${s.id}`, { method: "DELETE" }); void reload(); } catch (e) { setErr(e); } }} />}
               </div></Td></tr>
           ))}</tbody></Table>
       ) : <Empty>{t("sched.none")}</Empty>}</Card>
       {open && defs && <ScheduleDialog defs={defs} onClose={() => setOpen(false)} onSaved={() => void reload()} />}
+      {editing && defs && <ScheduleDialog defs={defs} schedule={editing} onClose={() => setEditing(null)} onSaved={() => void reload()} />}
       {detail && (
         <Dialog open onOpenChange={(o) => !o && setDetail(null)} title={t("sched.history")} wide>
           <Table><thead><tr><Th>{t("sched.dueAt")}</Th><Th>{t("sched.outcome")}</Th><Th>{t("sched.reason")}</Th><Th /></tr></thead>

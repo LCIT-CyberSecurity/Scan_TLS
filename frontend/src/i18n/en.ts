@@ -415,6 +415,7 @@ export const en = {
   "sched.last": "Last run",
   "sched.mineSubtitle": "Your schedules",
   "sched.new": "New schedule",
+  "sched.edit": "Edit schedule",
   "sched.next": "Next run",
   "sched.none": "No schedule.",
   "sched.outcome": "Outcome",
