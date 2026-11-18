@@ -95,7 +95,13 @@ def test_scan_can_identify_an_http_service_without_a_tls_endpoint(user, operator
     profile = operator.post("/api/profiles", json={"name": f"service-{uuid.uuid4().hex[:6]}", "content": content})
     assert profile.status_code == 201, profile.text
     assert operator.post(f"/api/profiles/{profile.json()['id']}/publish").status_code == 200
-    target = user.post("/api/targets", json={"value": LAB, "ports": "80"}).json()
+    target_response = user.post("/api/targets", json={"value": LAB, "ports": "80"})
+    if target_response.status_code == 409:
+        target = next(item for item in user.get("/api/targets", params={"q": LAB}).json()
+                      if item["value"] == LAB and item["ports"] == "80")
+    else:
+        assert target_response.status_code == 201, target_response.text
+        target = target_response.json()
     payload = {
         "name": f"service-{uuid.uuid4().hex[:6]}", "profile_id": profile.json()["id"],
         "target_ids": [target["id"]], "policy_ids": [catalog["policy"]],
