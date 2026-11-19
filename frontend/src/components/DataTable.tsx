@@ -83,6 +83,10 @@ export function DataTable<T>({ rows, columns, rowKey, empty, defaultSort }: { ro
     getFilteredRowModel: getFilteredRowModel(),
     getSortedRowModel: getSortedRowModel(),
     enableMultiSort: false,
+    // No pagination or expansion here: their automatic resets would set the table state again every time the sorted or
+    // filtered rows are recomputed, which happens on each render when the caller builds `rows`/`columns` inline. That
+    // endless chain of updates starved React transitions, so router navigations from such a page never committed.
+    autoResetAll: false,
     onSortingChange: () => undefined,
     onColumnFiltersChange: () => undefined,
   });

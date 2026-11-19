@@ -1,4 +1,4 @@
-import { act } from "react";
+import { act, Profiler, StrictMode } from "react";
 import { fireEvent, render, screen, within } from "../test-utils";
 import { I18nProvider } from "../i18n";
 import { DataTable, type Column } from "../components/DataTable";
@@ -33,5 +33,22 @@ describe("DataTable", () => {
     expect(within(table).getAllByRole("row").map((row) => row.textContent)).toEqual([
       "NameTags", "Target 2green",
     ]);
+  });
+
+  it("stops re-rendering once displayed, even when the caller rebuilds rows and columns (LST-30)", async () => {
+    // Pages such as Reports build `rows` and `columns` inline. A table that keeps committing on its own creates an endless
+    // chain of urgent updates, which starves React transitions: router navigations from that page never commit.
+    let commits = 0;
+    const page = () => <StrictMode><I18nProvider><Profiler id="table" onRender={() => { commits += 1; }}>
+      <DataTable rows={rows.filter(() => true)} columns={columns.map((column) => ({ ...column }))} rowKey={(row) => row.id} />
+    </Profiler></I18nProvider></StrictMode>;
+    const { rerender } = render(page());
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+    rerender(page());   // the page renders again a moment later, e.g. when its data arrives
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 200)); });
+    const settled = commits;
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 300)); });
+    expect(commits).toBe(settled);
+    expect(commits).toBeLessThan(10);
   });
 });
