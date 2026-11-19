@@ -4,8 +4,8 @@ from pathlib import Path
 
 import pytest
 import yaml
-from tls_scan_app.config import Settings
-from tls_scan_app.database import make_engine
+from orion_app.config import Settings
+from orion_app.database import make_engine
 
 ROOT = Path(__file__).resolve().parents[2]
 
@@ -37,7 +37,7 @@ def test_production_background_service_can_start_without_api_session_secret() ->
 
 
 def test_production_requires_a_strong_session_secret_by_default() -> None:
-    with pytest.raises(ValueError, match="TLS_SCAN_SESSION_SECRET"):
+    with pytest.raises(ValueError, match="ORION_SESSION_SECRET"):
         Settings(environment="production", cookie_secure=True)
 
 
@@ -46,7 +46,7 @@ def test_database_password_file_is_applied_without_injecting_it_in_compose_url(t
     file = tmp_path / "database"
     file.write_text(password, encoding="utf-8")
 
-    engine = make_engine("postgresql+psycopg://tls_scan@postgres:5432/tls_scan", str(file))
+    engine = make_engine("postgresql+psycopg://orion@postgres:5432/orion", str(file))
 
     assert engine.url.password == password
     assert password not in engine.url.render_as_string(hide_password=True)
@@ -56,12 +56,12 @@ def test_database_password_file_is_applied_without_injecting_it_in_compose_url(t
 def test_database_password_file_missing_or_empty_fails_without_revealing_content(tmp_path: Path) -> None:
     missing = tmp_path / "not-there"
     with pytest.raises(RuntimeError, match="Database password file is unavailable"):
-        make_engine("postgresql+psycopg://tls_scan@postgres/tls_scan", str(missing))
+        make_engine("postgresql+psycopg://orion@postgres/orion", str(missing))
 
     empty = tmp_path / "empty"
     empty.write_text("", encoding="utf-8")
     with pytest.raises(RuntimeError, match="Database password file is empty"):
-        make_engine("postgresql+psycopg://tls_scan@postgres/tls_scan", str(empty))
+        make_engine("postgresql+psycopg://orion@postgres/orion", str(empty))
 
 
 def test_alembic_uses_the_database_password_file() -> None:
@@ -80,14 +80,14 @@ def test_compose_grants_file_secrets_only_to_consumers() -> None:
     assert all("env_file" not in service for service in services.values())
     assert "POSTGRES_PASSWORD_FILE" in services["postgres"]["environment"]
     assert "POSTGRES_PASSWORD" not in services["postgres"]["environment"]
-    assert "tls_scan@postgres" in services["api"]["environment"]["TLS_SCAN_DATABASE_URL"]
-    assert ":" not in services["api"]["environment"]["TLS_SCAN_DATABASE_URL"].split("@", 1)[0].split("://", 1)[1]
+    assert "${ORION_DB_USER:-orion}@postgres" in services["api"]["environment"]["ORION_DATABASE_URL"]
+    assert ":" not in services["api"]["environment"]["ORION_DATABASE_URL"].split("@", 1)[0].split("://", 1)[1]
     assert secret_names("postgres") == {"postgres_password"}
     assert {"database_password", "session_secret", "oidc_client_secret", "greenbone_password", "snmp_v3_auth_key"} <= secret_names("api")
     assert {"database_password", "smtp_password", "graph_client_secret", "snmp_v3_auth_key"} <= secret_names("worker")
     assert {"database_password", "smtp_password", "graph_client_secret"} == secret_names("scheduler")
-    assert services["worker"]["environment"]["TLS_SCAN_SESSION_SECRET_REQUIRED"] == "false"
-    assert services["scheduler"]["environment"]["TLS_SCAN_SESSION_SECRET_REQUIRED"] == "false"
+    assert services["worker"]["environment"]["ORION_SESSION_SECRET_REQUIRED"] == "false"
+    assert services["scheduler"]["environment"]["ORION_SESSION_SECRET_REQUIRED"] == "false"
     assert "oidc_client_secret" not in secret_names("worker") | secret_names("scheduler")
     assert "greenbone_password" not in secret_names("worker") | secret_names("scheduler")
     assert secret_names("webui") == set()

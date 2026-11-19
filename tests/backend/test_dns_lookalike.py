@@ -5,13 +5,13 @@ import uuid
 from types import SimpleNamespace
 
 import pytest
-from tls_scan_app.services.dns_discovery.lookalike import (
+from orion_app.services.dns_discovery.lookalike import (
     MAX_CANDIDATES,
     generate_candidates,
     observe_candidates,
 )
-from tls_scan_app.services.dns_discovery.model import Answer, LookupFailure
-from tls_scan_app.services.dns_discovery.policy import DiscoveryError
+from orion_app.services.dns_discovery.model import Answer, LookupFailure
+from orion_app.services.dns_discovery.policy import DiscoveryError
 
 
 def test_generator_is_bounded_deterministic_and_marks_reason() -> None:
@@ -50,7 +50,7 @@ class FakeLookup:
 
     async def query(self, name: str, rdtype: str) -> Answer:
         self.queries += 1
-        if rdtype == "A" and (name == "examp1e.com" or name.startswith("tls-scan-") or name.endswith(".com")):
+        if rdtype == "A" and (name == "examp1e.com" or name.startswith("orion-") or name.endswith(".com")):
             return Answer(["203.0.113.9"])
         raise LookupFailure("nxdomain")
 
@@ -80,7 +80,7 @@ def test_observer_distinguishes_dns_ct_rdap_and_never_labels_malicious() -> None
 
 
 def test_run_monitor_identifies_wildcard_dns_and_keeps_it_informational() -> None:
-    from tls_scan_app.services.dns_discovery.lookalike import run_monitor
+    from orion_app.services.dns_discovery.lookalike import run_monitor
 
     rows = asyncio.run(run_monitor("example.com", {"max_candidates": 20, "tlds": [], "ct_enabled": False}, lookup=FakeLookup()))
 
@@ -91,7 +91,7 @@ def test_run_monitor_identifies_wildcard_dns_and_keeps_it_informational() -> Non
 
 
 def test_monitor_cancellation_stops_queries_and_reports_partial_observations() -> None:
-    from tls_scan_app.services.dns_discovery.lookalike import run_monitor
+    from orion_app.services.dns_discovery.lookalike import run_monitor
 
     lookup = FakeLookup()
     result = asyncio.run(run_monitor("example.com", {"max_candidates": 5}, lookup=lookup, should_stop=lambda: True))
@@ -102,8 +102,8 @@ def test_monitor_cancellation_stops_queries_and_reports_partial_observations() -
 
 
 def test_scheduler_queues_only_an_enabled_owned_admin_monitor(monkeypatch) -> None:
-    from tls_scan_app.models import DnsDiscovery, DnsLookalikeMonitor, Role, User
-    from tls_scan_app.scheduler import scheduler
+    from orion_app.models import DnsDiscovery, DnsLookalikeMonitor, Role, User
+    from orion_app.scheduler import scheduler
 
     owner_id, monitor_id = uuid.uuid4(), uuid.uuid4()
     owner = SimpleNamespace(id=owner_id, role=Role.ADMIN, active=True)
@@ -146,8 +146,8 @@ def test_scheduler_queues_only_an_enabled_owned_admin_monitor(monkeypatch) -> No
 
 
 def test_disabled_queued_monitor_is_rejected_by_worker_before_any_dns_query() -> None:
-    from tls_scan_app.models import DnsDiscovery, DnsLookalikeMonitor
-    from tls_scan_app.services.dns_discovery.runner import process_next
+    from orion_app.models import DnsDiscovery, DnsLookalikeMonitor
+    from orion_app.services.dns_discovery.runner import process_next
 
     monitor_id = uuid.uuid4()
     row = DnsDiscovery(domain="example.com", status="queued", options={"lookalike_monitor_id": str(monitor_id)})
@@ -185,7 +185,7 @@ def test_disabled_queued_monitor_is_rejected_by_worker_before_any_dns_query() ->
 
 
 def test_monitor_configuration_requires_authorisation_and_keeps_optional_sources_off() -> None:
-    from tls_scan_app.api.catalog import LookalikeMonitorBody, _lookalike_options
+    from orion_app.api.catalog import LookalikeMonitorBody, _lookalike_options
 
     with pytest.raises(DiscoveryError, match="Confirm that you are authorised"):
         _lookalike_options(LookalikeMonitorBody(domain="example.com"), {"ct_enabled": True})
@@ -195,7 +195,7 @@ def test_monitor_configuration_requires_authorisation_and_keeps_optional_sources
 
 
 def test_paused_monitor_does_not_generate_candidates_until_enabled(monkeypatch) -> None:
-    from tls_scan_app.api import catalog
+    from orion_app.api import catalog
 
     calls = []
     monkeypatch.setattr(catalog, "generate_candidates", lambda *args, **kwargs: calls.append((args, kwargs)))

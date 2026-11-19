@@ -49,7 +49,7 @@ def test_real_scan_end_to_end_and_standalone_parity(user, auditor, catalog):
         policy_file.write_text(yaml.safe_dump({"name": "p", "version": "1", "tls": POLICY}))
         out = Path(tmp) / "out.csv"
         proc = subprocess.run(
-            [sys.executable, "tls_scan.py", LAB, "-p", "443,8443", "--workers", "2", "--policy-file", str(policy_file),
+            [sys.executable, "orion.py", LAB, "-p", "443,8443", "--workers", "2", "--policy-file", str(policy_file),
              "--no-log-file", "-e", str(out)],
             capture_output=True, text=True, timeout=240, cwd="/app",
         )

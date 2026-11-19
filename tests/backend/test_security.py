@@ -57,7 +57,7 @@ def test_diagnostics_do_not_leak_secrets(admin):
     import os
 
     body = str(admin.get("/api/admin/diagnostics").json()) + str(admin.get("/api/admin/settings").json())
-    for secret in (os.environ["TLS_SCAN_SESSION_SECRET"] if "TLS_SCAN_SESSION_SECRET" in os.environ else "crashtest-only-session-secret", os.environ["TLS_SCAN_LOCAL_ADMIN_PASSWORD"], os.environ["TLS_SCAN_DATABASE_URL"]):
+    for secret in (os.environ["ORION_SESSION_SECRET"] if "ORION_SESSION_SECRET" in os.environ else "crashtest-only-session-secret", os.environ["ORION_LOCAL_ADMIN_PASSWORD"], os.environ["ORION_DATABASE_URL"]):
         assert secret not in body
 
 
@@ -72,14 +72,14 @@ def test_engine_subprocess_has_no_secrets_in_environment():
     """The scan subprocess is started with an allow-listed environment (see workers/worker.py)."""
     import inspect
 
-    from tls_scan_app.workers import worker
+    from orion_app.workers import worker
 
     src = inspect.getsource(worker.run_subprocess)
     assert 'k in ("PATH", "HOME", "LANG", "LC_ALL", "PYTHONPATH", "SSL_CERT_FILE")' in src
 
 
 def test_login_rate_limit_unit():
-    from tls_scan_app.services.rate_limit import SlidingWindowLimiter
+    from orion_app.services.rate_limit import SlidingWindowLimiter
 
     lim = SlidingWindowLimiter()
     assert [lim.allow("k", 3, 60) for _ in range(5)] == [True, True, True, False, False]

@@ -4,7 +4,7 @@
 #   up_<project>             present while the project's containers exist
 #   volumes/<project>_pgdata/db     the "database": one "user:<name>" line per user
 #   volumes/<project>_data/...      the persistent data volume
-# Failure injection: FAKE_NO_DAEMON, FAKE_FAIL_PGDUMP, FAKE_FAIL_UP.
+# Failure injection: FAKE_NO_DAEMON, FAKE_FAIL_PGDUMP, FAKE_FAIL_UP, FAKE_FAIL_TAR, FAKE_FAIL_RESTORE.
 S="${FAKE_STATE:?}"; mkdir -p "$S/volumes"; ALL="$*"
 echo "docker $*" >>"$S/calls"
 vol() { printf '%s/volumes/%s' "$S" "$1"; }
@@ -24,13 +24,15 @@ case "${1:-}" in
   run)
     [ -z "${FAKE_FAIL_TAR:-}" ] || exit 1
     v="$(printf '%s\n' "$@" | sed -n 's#^\(.*\):/data:ro$#\1#p')"
-    tar -C "$(vol "$v")" -cf - . ; exit $? ;;
+    if [ -n "$v" ]; then tar -C "$(vol "$v")" -cf - . ; exit $?; fi
+    v="$(printf '%s\n' "$@" | sed -n 's#^\(.*\):/data$#\1#p')"   # writable mount: restore into the volume
+    mkdir -p "$(vol "$v")"; tar -C "$(vol "$v")" -xf - ; exit $? ;;
   compose)
     shift; [ "${1:-}" != version ] || exit 0
     P=""; while [ $# -gt 0 ]; do case "$1" in -p) P="$2"; shift 2 ;; --project-directory|-f) shift 2 ;; *) break ;; esac; done
     sub="$1"; shift
     case "$sub" in
-      config) case "$*" in *--images*) printf 'postgres:16-alpine\ntls-scan-backend:local\n' ;; esac; exit 0 ;;
+      config) case "$*" in *--images*) printf 'postgres:16-alpine\norion-backend:local\n' ;; esac; exit 0 ;;
       build) exit 0 ;;
       up) [ -z "${FAKE_FAIL_UP:-}" ] || { echo "up failed" >&2; exit 1; }; ensure_project "$P"; exit 0 ;;
       down) case "$*" in *-v*) rm -rf "$S"/volumes/"$P"_*;; esac; rm -f "$S/up_$P"; exit 0 ;;
@@ -47,7 +49,8 @@ case "${1:-}" in
           postgres:pg_dump) [ -z "${FAKE_FAIL_PGDUMP:-}" ] || { echo "pg_dump: connection failed" >&2; exit 1; }
                             echo DUMP; cat "$db" ;;
           postgres:pg_restore) case "$*" in *" -l"*) read -r h; [ "$h" = DUMP ] || exit 1 ;;
-                                  *) read -r h; [ "$h" = DUMP ] || exit 1; cat >"$db" ;; esac ;;
+                                  *) [ -z "${FAKE_FAIL_RESTORE:-}" ] || { echo "pg_restore: failed" >&2; exit 1; }
+                                     read -r h; [ "$h" = DUMP ] || exit 1; cat >"$db" ;; esac ;;
           postgres:dropdb) rm -f "$db" ;;
           postgres:createdb) : >"$db" ;;
           postgres:psql) wc -l <"$db" | tr -d ' ' ;;

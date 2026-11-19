@@ -9,7 +9,7 @@ mkdir -p certs
 mkdir -p ldap-certs
 if [ ! -f ldap-certs/ldap.crt ]; then
   ( cd ldap-certs
-    openssl req -x509 -newkey rsa:2048 -nodes -days 30 -keyout ca.key -out ca.crt -subj "/CN=TLS Scan CrashTest LDAP CA" >/dev/null 2>&1
+    openssl req -x509 -newkey rsa:2048 -nodes -days 30 -keyout ca.key -out ca.crt -subj "/CN=Orion CrashTest LDAP CA" >/dev/null 2>&1
     openssl req -newkey rsa:2048 -nodes -keyout ldap.key -out ldap.csr -subj "/CN=openldap" >/dev/null 2>&1
     printf 'subjectAltName=DNS:openldap\nextendedKeyUsage=serverAuth\n' > san.cnf
     openssl x509 -req -in ldap.csr -CA ca.crt -CAkey ca.key -CAcreateserial -days 30 -out ldap.crt -extfile san.cnf >/dev/null 2>&1

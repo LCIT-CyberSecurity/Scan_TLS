@@ -17,11 +17,11 @@ MOCK = "http://mock-oidc:8080"
 
 
 def entra(**over):
-    return {"provider": "entra", "entra": {"tenant_id": TENANT, "client_id": "tls-scan-test", "issuer": MOCK}, "auto_provision": True, **over}
+    return {"provider": "entra", "entra": {"tenant_id": TENANT, "client_id": "orion-test", "issuer": MOCK}, "auto_provision": True, **over}
 
 
 def google(domains=("corp.example",), **over):
-    return {"provider": "google", "google": {"client_id": "tls-scan-test", "allowed_domains": list(domains)}, "auto_provision": True, **over}
+    return {"provider": "google", "google": {"client_id": "orion-test", "allowed_domains": list(domains)}, "auto_provision": True, **over}
 
 
 @pytest.fixture(autouse=True)
@@ -85,7 +85,7 @@ def test_a_multi_tenant_endpoint_cannot_replace_the_tenant_restriction(admin):
     assert r.status_code == 422
     r = admin.put("/api/admin/auth", json={"value": entra(entra={"tenant_id": TENANT, "client_id": "x", "issuer": "https://login.microsoftonline.com/99999999-2222-3333-4444-555555555555/v2.0"})})
     assert r.status_code == 422  # the issuer authority cannot silently target another tenant
-    from tls_scan_app.services.auth_config import validate
+    from orion_app.services.auth_config import validate
     with pytest.raises(ValueError, match="issuer"):
         validate(entra(entra={"tenant_id": TENANT, "client_id": "x", "issuer": "http://localhost/tenant/v2.0"}), allow_http=False)
     assert admin.put("/api/admin/auth", json={"value": {"provider": "google", "google": {"client_id": "x", "allowed_domains": ["not a domain"]}}}).status_code == 422
@@ -152,7 +152,7 @@ def test_entra_configuration_test_steps_are_honest(admin):
     assert by["signing keys (JWKS)"]["status"] == "ok" and by["tenant restriction"]["status"] == "ok"
     assert steps[-1]["step"] == "interactive sign-in" and steps[-1]["status"] == "info"      # technical checks are not a real sign-in
     assert admin.post("/api/admin/auth/test/google", json={}).json()[0]["status"] == "fail"    # not the active provider
-    configure(admin, entra(entra={"tenant_id": TENANT, "client_id": "tls-scan-test", "issuer": "http://mock-oidc:9"}))
+    configure(admin, entra(entra={"tenant_id": TENANT, "client_id": "orion-test", "issuer": "http://mock-oidc:9"}))
     assert any(s["status"] == "fail" for s in admin.post("/api/admin/auth/test/entra", json={}).json())
 
 

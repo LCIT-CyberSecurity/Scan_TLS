@@ -3,7 +3,7 @@ set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CRASHTEST_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
-COMPOSE_PROJECT="${CRASHTEST_COMPOSE_PROJECT:-${COMPOSE_PROJECT_NAME:-tlsscan-crashtest}}"
+COMPOSE_PROJECT="${CRASHTEST_COMPOSE_PROJECT:-${COMPOSE_PROJECT_NAME:-orion-crashtest}}"
 COMPOSE_FILE="${CRASHTEST_DIR}/compose.crashtest.yaml"
 CA_FILE="${CRASHTEST_DIR}/ldap-certs/ca.crt"
 CA_IN_CONTAINER="/tmp/crashtest-ldap-ca.crt"
@@ -101,7 +101,7 @@ try:
     check(identity.get('role') == 'USER', 'LDAP sign-in assigned an unexpected role')
     check(identity.get('local_account') is False, 'LDAP identity was marked as a local account')
     user.headers['Cookie'] = authenticated.headers['set-cookie'].split(';')[0]
-    check(user.get('/api/auth/me').status_code == 200, 'LDAP sign-in did not create a TLS Scan session')
+    check(user.get('/api/auth/me').status_code == 200, 'LDAP sign-in did not create an Orion session')
 
     again = httpx.post(f'{base}/api/auth/ldap/login', json={'username': 'ldap-user', 'password': ldap_password}, timeout=15)
     check(again.status_code == 200, 'LDAP reauthentication failed')
@@ -109,7 +109,7 @@ try:
           'LDAP reauthentication did not preserve the existing identity and role')
     print('local_fallback_admin=PASS')
     print('ldaps_diagnostics=PASS')
-    print('ldap_sign_in_and_tls_scan_session=PASS')
+    print('ldap_sign_in_and_orion_session=PASS')
     print('identity_and_role_reuse=PASS role=USER')
 finally:
     restored = admin.put('/api/admin/auth', json={'value': previous_value}, headers=headers)

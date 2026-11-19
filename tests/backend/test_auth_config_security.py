@@ -4,12 +4,12 @@ import asyncio
 
 import pytest
 
-from tls_scan_app.auth import oidc
-from tls_scan_app.connectors import ldap_auth
-from tls_scan_app.connectors.registry import build_connector
-from tls_scan_app.config import Settings
-from tls_scan_app.models import SystemSetting
-from tls_scan_app.services.auth_config import validate
+from orion_app.auth import oidc
+from orion_app.connectors import ldap_auth
+from orion_app.connectors.registry import build_connector
+from orion_app.config import Settings
+from orion_app.models import SystemSetting
+from orion_app.services.auth_config import validate
 
 
 TENANT = "11111111-2222-3333-4444-555555555555"

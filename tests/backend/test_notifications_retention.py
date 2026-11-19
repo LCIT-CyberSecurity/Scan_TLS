@@ -10,7 +10,7 @@ SINK = "http://smtp-sink:8025/messages"
 def test_smtp_diagnostics_notification_and_preferences(admin, user, operator, catalog):
     # unconfigured connector: explicit conflict, not a fake success
     assert admin.post("/api/admin/notifications/test", json={}).status_code == 409
-    cfg = {"connector": "smtp", "smtp": {"host": "smtp-sink", "port": 1025, "starttls": False, "from": "tls-scan@example.com"}}
+    cfg = {"connector": "smtp", "smtp": {"host": "smtp-sink", "port": 1025, "starttls": False, "from": "orion@example.com"}}
     assert admin.put("/api/admin/settings/notifications", json={"value": cfg}).status_code == 200
     steps = admin.post("/api/admin/notifications/test", json={"to": "admin-test@example.com"}).json()
     assert [s["status"] for s in steps] == ["ok", "ok", "ok"]
@@ -56,18 +56,18 @@ def test_retention_purges_old_report_files_and_audit_but_keeps_recent(admin, use
     from sqlalchemy import create_engine, text
     from sqlalchemy.orm import Session
 
-    from tls_scan_app.services import retention
+    from orion_app.services import retention
 
     definition = make_definition(user, catalog, [LAB], name="retention", ports="443")
     old = wait_final(user, user.post(f"/api/scan-definitions/{definition['id']}/run").json()["run_id"])
     recent = wait_final(user, user.post(f"/api/scan-definitions/{definition['id']}/run").json()["run_id"])
     assert user.get(f"/api/scan-runs/{old['id']}/reports/csv").status_code == 200
     admin.put("/api/admin/settings/retention", json={"value": {"reports_days": 30, "runs_days": 3650, "audit_days": 3650}})
-    engine = create_engine(os.environ["TLS_SCAN_DATABASE_URL"])
+    engine = create_engine(os.environ["ORION_DATABASE_URL"])
     with engine.begin() as db:
         db.execute(text("update scan_runs set finished_at = :t where id = :id"), {"t": datetime.now(UTC) - timedelta(days=90), "id": old["id"]})
     with Session(engine) as db:
-        counts = retention.purge(db, Path(os.environ["TLS_SCAN_STORAGE_ROOT"]))
+        counts = retention.purge(db, Path(os.environ["ORION_STORAGE_ROOT"]))
     assert counts["report_files"] >= 1
     assert user.get(f"/api/scan-runs/{old['id']}/reports/csv").status_code == 404  # files purged
     assert user.get(f"/api/scan-runs/{old['id']}").json()["endpoints"]  # structured history kept (runs_days not reached)
@@ -79,7 +79,7 @@ def test_retention_purges_old_report_files_and_audit_but_keeps_recent(admin, use
 def test_graph_connector_diagnostics_and_delivery(admin, user, catalog):
     import httpx
 
-    graph = {"tenant_id": "contoso-test", "client_id": "app-1", "sender": "tls-scan@contoso.example"}
+    graph = {"tenant_id": "contoso-test", "client_id": "app-1", "sender": "orion@contoso.example"}
     admin.put("/api/admin/settings/notifications", json={"value": {"connector": "graph", "graph": graph}})
     steps = admin.post("/api/admin/notifications/test", json={"to": "someone@example.com"}).json()
     assert [(s["step"], s["status"]) for s in steps] == [("token", "ok"), ("send", "ok")]
@@ -93,14 +93,14 @@ def test_graph_connector_diagnostics_and_delivery(admin, user, catalog):
     final = wait_final(user, user.post(f"/api/scan-definitions/{definition['id']}/run").json()["run_id"])
     mails = wait_for(lambda: [m for m in httpx.get("http://mock-graph:8080/messages").json() if final["id"] in m["body"]], 60)
     assert mails[0]["to"] == [user.user["email"]] and mails[0]["sender"] == graph["sender"] and "Report:" in mails[0]["body"]
-    admin.put("/api/admin/settings/notifications", json={"value": {"connector": "smtp", "smtp": {"host": "smtp-sink", "port": 1025, "starttls": False, "from": "tls-scan@example.com"}}})
+    admin.put("/api/admin/settings/notifications", json={"value": {"connector": "smtp", "smtp": {"host": "smtp-sink", "port": 1025, "starttls": False, "from": "orion@example.com"}}})
 
 
 def test_certificate_expiry_and_new_noncompliance_events(admin, user, operator, catalog):
     """The lab's 8445 certificate expires in 10 days (< 30-day window); a second scan with an extra port brings new findings."""
     import httpx
 
-    admin.put("/api/admin/settings/notifications", json={"value": {"connector": "smtp", "smtp": {"host": "smtp-sink", "port": 1025, "starttls": False, "from": "tls-scan@example.com"}}})
+    admin.put("/api/admin/settings/notifications", json={"value": {"connector": "smtp", "smtp": {"host": "smtp-sink", "port": 1025, "starttls": False, "from": "orion@example.com"}}})
     assert user.patch("/api/auth/preferences", json={"notify_events": ["certificate_expiring", "new_noncompliance"]}).status_code == 200
     d1 = make_definition(user, catalog, [LAB], name="expiry-a", ports="8445")
     final1 = wait_final(user, user.post(f"/api/scan-definitions/{d1['id']}/run").json()["run_id"])
@@ -134,11 +134,11 @@ def test_schedule_problem_event_is_sent(admin, user, catalog):
     import httpx
     from sqlalchemy import create_engine, text
 
-    admin.put("/api/admin/settings/notifications", json={"value": {"connector": "smtp", "smtp": {"host": "smtp-sink", "port": 1025, "starttls": False, "from": "tls-scan@example.com"}}})
+    admin.put("/api/admin/settings/notifications", json={"value": {"connector": "smtp", "smtp": {"host": "smtp-sink", "port": 1025, "starttls": False, "from": "orion@example.com"}}})
     definition = make_definition(user, catalog, [LAB], name="late-schedule", ports="443")
     sched = user.post("/api/schedules", json={"definition_id": definition["id"], "kind": "daily", "params": {"time": "03:00"}, "timezone": "UTC"}).json()
     # simulate downtime: the occurrence was due two hours ago
-    engine = create_engine(os.environ["TLS_SCAN_DATABASE_URL"])
+    engine = create_engine(os.environ["ORION_DATABASE_URL"])
     with engine.begin() as db:
         db.execute(text("update scan_schedules set next_run_at = :t where id = :id"), {"t": datetime.now(UTC) - timedelta(hours=2), "id": sched["id"]})
     mails = wait_for(lambda: [m for m in httpx.get(SINK).json() if "schedule problem" in m["subject"] and sched["id"] in m["body"]], 60)

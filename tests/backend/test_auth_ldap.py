@@ -84,7 +84,7 @@ def test_ldaps_sign_in_creates_the_account_and_the_role_survives(admin):
     assert r.status_code == 200, r.text
     user = r.json()["user"]
     assert user["email"] == "ldap-alice@example.org" and user["role"] == "USER" and user["local_account"] is False
-    assert c.get("/api/auth/me").status_code == 200                              # a normal TLS Scan session, same cookie and CSRF model
+    assert c.get("/api/auth/me").status_code == 200                              # a normal Orion session, same cookie and CSRF model
     assert admin.put(f"/api/admin/users/{user['id']}", json={"role": "OPERATOR"}).status_code == 200
     _, again = sign_in("ldap-alice", PASSWORD)
     assert again.json()["user"]["role"] == "OPERATOR" and again.json()["user"]["id"] == user["id"]
@@ -189,7 +189,7 @@ def test_a_directory_account_never_takes_over_a_local_account_with_the_same_mail
 
 
 def test_repeated_failures_are_throttled_like_the_local_sign_in(admin):
-    # the lab stack runs with the limiter off (TLS_SCAN_RATE_LIMIT_ENABLED=false); the counters are the local ones, covered by test_login_throttle
+    # the lab stack runs with the limiter off (ORION_RATE_LIMIT_ENABLED=false); the counters are the local ones, covered by test_login_throttle
     configure(admin, ldap_cfg())
     for _ in range(6):
         assert sign_in(f"nobody-{uuid.uuid4().hex[:4]}", "x")[1].status_code == 401

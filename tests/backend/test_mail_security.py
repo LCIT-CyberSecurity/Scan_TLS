@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import threading
 
-from tls_scan_app.services import mail_security as checks
+from orion_app.services import mail_security as checks
 
 
 def run(coro):

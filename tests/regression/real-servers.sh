@@ -2,15 +2,15 @@
 # STARTTLS adapters and lot 2 checks against REAL daemons (Postfix, Dovecot, vsftpd, OpenLDAP, PostgreSQL, Prosody) on their
 # standard ports. Needs Docker; run from the repo root (on the VM: ops/dev/vm.sh "bash tests/regression/real-servers.sh").
 set -euo pipefail
-docker build -q -t tlsscan-regression -f ops/docker/backend.Dockerfile --build-arg WITH_DEV=true . >/dev/null
-docker build -q -t tlsscan-real -f tests/lab/real-services.Dockerfile . >/dev/null
-docker network rm tlsscan-real-net >/dev/null 2>&1 || true
-docker network create tlsscan-real-net >/dev/null
-trap 'docker rm -f regress-real >/dev/null 2>&1; docker network rm tlsscan-real-net >/dev/null 2>&1' EXIT
-docker run -d --rm --name regress-real --network tlsscan-real-net --network-alias lab-real tlsscan-real >/dev/null
+docker build -q -t orion-regression -f ops/docker/backend.Dockerfile --build-arg WITH_DEV=true . >/dev/null
+docker build -q -t orion-real -f tests/lab/real-services.Dockerfile . >/dev/null
+docker network rm orion-real-net >/dev/null 2>&1 || true
+docker network create orion-real-net >/dev/null
+trap 'docker rm -f regress-real >/dev/null 2>&1; docker network rm orion-real-net >/dev/null 2>&1' EXIT
+docker run -d --rm --name regress-real --network orion-real-net --network-alias lab-real orion-real >/dev/null
 for _ in $(seq 1 60); do docker logs regress-real 2>&1 | grep -q "\[real-services\] ready" && break; sleep 1; done
 sleep 3
-docker run --rm -i --network tlsscan-real-net -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/app" -w /app -e PYTHONPATH=/app tlsscan-regression python - <<'PY'
+docker run --rm -i --network orion-real-net -u "$(id -u):$(id -g)" -e HOME=/tmp -v "$PWD:/app" -w /app -e PYTHONPATH=/app orion-regression python - <<'PY'
 import socket, sys
 from tls_scanner.checks.catalog import run_complementary_checks
 

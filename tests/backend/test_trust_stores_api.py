@@ -127,6 +127,8 @@ def test_invalid_requests(admin):
     ok = files("ACME-Root-CA.crt")
     assert admin.post("/api/admin/trust-stores", json={"name": "", "files": ok}).status_code == 422
     assert admin.post("/api/admin/trust-stores", json={"name": "a,b", "files": ok}).status_code == 422
+    assert admin.post("/api/admin/trust-stores", json={"name": "Orion Public Web PKI", "files": ok}).status_code == 422
+    # the pre-rebranding name of the built-in store stays reserved: historical results carry it
     assert admin.post("/api/admin/trust-stores", json={"name": "TLS Scan Public Web PKI", "files": ok}).status_code == 422
     assert admin.post("/api/admin/trust-stores", json={"name": uniq("n"), "files": []}).status_code == 422
     assert admin.post("/api/admin/trust-stores", json={"name": uniq("n"), "files": [{"filename": "x", "content_b64": "%%%"}]}).status_code == 422
@@ -313,7 +315,7 @@ def test_B_selected_root_gives_private_trusted_with_provenance(run_acme, acme):
     assert full["trust_classification"] == "PRIVATE_TRUSTED" and full["chain_validation_status"] == "Passed"
     assert full["trusted_by"] == [f"{acme['name']} (v1)"] and "ACME-Root-CA" in full["trust_anchor"]
     results = {r["store_name"]: r for r in full["trust_store_results"]}
-    assert results[f"{acme['name']} (v1)"]["status"] == "trusted" and "TLS Scan Public Web PKI" in results and results["TLS Scan Public Web PKI"]["status"] == "untrusted"
+    assert results[f"{acme['name']} (v1)"]["status"] == "trusted" and "Orion Public Web PKI" in results and results["Orion Public Web PKI"]["status"] == "untrusted"
     # provenance of the run: exact store, version, content hash and anchors (no raw certificate)
     ref = run_acme["trust_stores"][0]
     assert ref["id"] == acme["id"] and ref["version"] == 1 and ref["content_sha256"] == acme["content_sha256"]
@@ -399,7 +401,7 @@ def test_snapshots_pin_the_exact_version(admin, operator, user, catalog, acme, r
 def test_reports_carry_the_provenance(auditor, run_globex, globex):
     metadata = auditor.get(f"/api/scan-runs/{run_globex['id']}/reports/metadata").json()
     names = [s["store_name"] for s in metadata["trust_stores"]]
-    assert f"{globex['name']} (v1)" in names and "TLS Scan Public Web PKI" in names
+    assert f"{globex['name']} (v1)" in names and "Orion Public Web PKI" in names
     store = next(s for s in metadata["trust_stores"] if s["store_name"].startswith(globex["name"]))
     assert store["metadata"]["content_sha256"] == globex["content_sha256"] and store["store_type"] == "inline"
     trust = {e["endpoint_id"]: e for e in metadata["endpoint_trust"]}

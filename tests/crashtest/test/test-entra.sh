@@ -4,7 +4,7 @@ set -Eeuo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
 COMPOSE_FILE="${REPO_ROOT}/ops/dev/compose.test.yaml"
-PROJECT="tlsscan-crashtest-entra-$(id -u)-${BASHPID}"
+PROJECT="orion-crashtest-entra-$(id -u)-${BASHPID}"
 ARTIFACTS="${SCRIPT_DIR}/artifacts"
 mkdir -p "${ARTIFACTS}"
 

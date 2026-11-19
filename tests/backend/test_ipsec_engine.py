@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from tls_scan_app.services.ipsec import evaluate_policy, parse_ike_scan, probe, validate_ipsec_policy, validate_ipsec_profile
+from orion_app.services.ipsec import evaluate_policy, parse_ike_scan, probe, validate_ipsec_policy, validate_ipsec_profile
 
 
 POLICY = {"allowed_versions": ["IKEv2"], "allowed_encryption": ["AES_GCM_16"], "allowed_integrity": ["NONE"],
@@ -64,14 +64,14 @@ def test_policy_requires_every_crypto_dimension_and_detects_observed_mismatch():
 
 
 def test_probe_uses_bounded_ikev2_and_nat_t_arguments_and_handles_timeout(monkeypatch):
-    monkeypatch.setattr("tls_scan_app.services.ipsec.shutil.which", lambda _: "/usr/bin/ike-scan")
+    monkeypatch.setattr("orion_app.services.ipsec.shutil.which", lambda _: "/usr/bin/ike-scan")
     captured = {}
 
     def fake_run(args, **kwargs):
         captured["args"] = args
         return SimpleNamespace(returncode=0, stdout="HDR=(version=2.0) SA=(encryption=AES_GCM hash=NONE auth=NONE group=ECP_256)", stderr="")
 
-    monkeypatch.setattr("tls_scan_app.services.ipsec.subprocess.run", fake_run)
+    monkeypatch.setattr("orion_app.services.ipsec.subprocess.run", fake_run)
     assert probe("192.0.2.1", "IKEv2", 4500, 500, 0)["status"] == "observed"
     assert "--ikev2" in captured["args"] and "--nat-t" in captured["args"]
     assert "--retry=1" in captured["args"] and "--timeout=500" in captured["args"]
@@ -80,10 +80,10 @@ def test_probe_uses_bounded_ikev2_and_nat_t_arguments_and_handles_timeout(monkey
         from subprocess import TimeoutExpired
         raise TimeoutExpired(args[0], kwargs["timeout"])
 
-    monkeypatch.setattr("tls_scan_app.services.ipsec.subprocess.run", timeout)
+    monkeypatch.setattr("orion_app.services.ipsec.subprocess.run", timeout)
     assert probe("192.0.2.1", "IKEv1", 500, 500, 0)["status"] == "timeout"
 
-    monkeypatch.setattr("tls_scan_app.services.ipsec.subprocess.run", fake_run)
+    monkeypatch.setattr("orion_app.services.ipsec.subprocess.run", fake_run)
     probe("192.0.2.1", "IKEv1", 4500, 500, 0, False, ["7/256,4,1,14"])
     assert "--dport=4500" in captured["args"] and "--nat-t" not in captured["args"]
     assert "--trans=7/256,4,1,14" in captured["args"] and "--ikev2" not in captured["args"]

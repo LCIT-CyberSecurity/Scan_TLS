@@ -8,13 +8,13 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
-from tls_scan_app.services.logs import ScrubFilter, scrub_text
-from tls_scan_app.services.planner import PlanError, fingerprint, job_from_snapshot, validate_policy_content, validate_profile_content
-from tls_scan_app.services.schedule_calc import ScheduleError, next_after, validate
-from tls_scan_app.services.targets import TargetError, normalize_ports, normalize_target
-from tls_scan_app.auth.passwords import hash_password, is_acceptable_for_production, verify_password
-from tls_scan_app.auth import flow_cookie
-from tls_scan_app.models.user import Role, role_at_least
+from orion_app.services.logs import ScrubFilter, scrub_text
+from orion_app.services.planner import PlanError, fingerprint, job_from_snapshot, validate_policy_content, validate_profile_content
+from orion_app.services.schedule_calc import ScheduleError, next_after, validate
+from orion_app.services.targets import TargetError, normalize_ports, normalize_target
+from orion_app.auth.passwords import hash_password, is_acceptable_for_production, verify_password
+from orion_app.auth import flow_cookie
+from orion_app.models.user import Role, role_at_least
 
 PARIS = "Europe/Paris"
 
@@ -55,7 +55,7 @@ class TestSchedules:
         assert next_after("cron", {"expr": "0 3 * * 1"}, "UTC", utc(2026, 10, 10)) == utc(2026, 10, 12, 3)
 
     def test_dns_comparison_reports_observation_not_deletion(self):
-        from tls_scan_app.api.runs import compare_discovery_results
+        from orion_app.api.runs import compare_discovery_results
 
         previous = {"observations": [{"fqdn": "a.example.org", "ips": ["192.0.2.1"]},
                                       {"fqdn": "b.example.org", "ips": ["192.0.2.2"]}], "partial": False}
@@ -169,7 +169,7 @@ class TestSecurityHelpers:
 
 
 def test_rate_limiter_counts_without_consuming():
-    from tls_scan_app.services.rate_limit import SlidingWindowLimiter
+    from orion_app.services.rate_limit import SlidingWindowLimiter
 
     lim = SlidingWindowLimiter()
     assert lim.count("k", 60) == 0 and lim.count("k", 60) == 0  # reading does not record

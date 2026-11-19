@@ -9,9 +9,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
-from tls_scan_app.database import Base
-from tls_scan_app.models import RunEndpoint, RunFinding, ScanDefinition, ScanRun
-from tls_scan_app.services import dashboard
+from orion_app.database import Base
+from orion_app.models import RunEndpoint, RunFinding, ScanDefinition, ScanRun
+from orion_app.services import dashboard
 
 NOW = datetime.now(UTC)
 

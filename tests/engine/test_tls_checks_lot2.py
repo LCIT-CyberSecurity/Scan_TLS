@@ -167,7 +167,7 @@ class SmtpTests(unittest.TestCase):
             server.recv_until(conn)
             conn.sendall(b"220 go\r\n")
         outcome, received = upgrade("smtp", play)
-        self.assertEqual((outcome.status, received), (UPGRADED, b"EHLO tls-scan.invalid\r\nSTARTTLS\r\n"))
+        self.assertEqual((outcome.status, received), (UPGRADED, b"EHLO orion.invalid\r\nSTARTTLS\r\n"))
 
     def test_starttls_is_requested_even_if_ehlo_does_not_list_it_as_before(self):
         def play(conn, server):
@@ -177,7 +177,7 @@ class SmtpTests(unittest.TestCase):
             server.recv_until(conn)
             conn.sendall(b"502 no\r\n")
         outcome, received = upgrade("smtp", play)
-        self.assertEqual((outcome.status, outcome.advertised, received), (NOT_OFFERED, False, b"EHLO tls-scan.invalid\r\nSTARTTLS\r\n"))
+        self.assertEqual((outcome.status, outcome.advertised, received), (NOT_OFFERED, False, b"EHLO orion.invalid\r\nSTARTTLS\r\n"))
 
 
 class PostgresTests(unittest.TestCase):

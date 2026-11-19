@@ -1,7 +1,7 @@
-from tls_scan_app.api import catalog
-from tls_scan_app.config import get_settings
-from tls_scan_app.database import make_engine, make_session_factory
-from tls_scan_app.models import DnsDiscovery
+from orion_app.api import catalog
+from orion_app.config import get_settings
+from orion_app.database import make_engine, make_session_factory
+from orion_app.models import DnsDiscovery
 
 
 def test_monitor_routes_are_admin_guarded_and_default_to_paused() -> None:

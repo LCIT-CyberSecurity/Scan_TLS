@@ -1,4 +1,4 @@
-"""Lab STARTTLS services for the TLS Scan tests. NEVER for real use.
+"""Lab STARTTLS services for the Orion tests. NEVER for real use.
 
 Each port speaks just enough of its protocol (greeting, capabilities, the STARTTLS request) and then performs a
 REAL TLS handshake with the OpenSSL of the `ssl` module, so the checks run against a genuine negotiated channel.

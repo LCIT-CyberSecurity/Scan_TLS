@@ -10,8 +10,8 @@ import pytest
 
 API = os.environ.get("TEST_API_URL", "http://localhost:8000")
 LAB = os.environ.get("TEST_LAB_HOST", "lab-tls")
-ADMIN_USER = os.environ.get("TLS_SCAN_LOCAL_ADMIN_USERNAME", "admin")
-ADMIN_PASSWORD = os.environ["TLS_SCAN_LOCAL_ADMIN_PASSWORD"]
+ADMIN_USER = os.environ.get("ORION_LOCAL_ADMIN_USERNAME", "admin")
+ADMIN_PASSWORD = os.environ["ORION_LOCAL_ADMIN_PASSWORD"]
 STRONG = "Correct-Horse-Battery-9!"
 POLICY = {
     "allowed_versions": ["TLSv1.2", "TLSv1.3"],

@@ -12,7 +12,7 @@ import pytest
 from conftest import API, LAB, make_definition, wait_final
 
 NO_RUN = "00000000-0000-4000-8000-000000000000"
-ROOT = Path(os.environ.get("TLS_SCAN_STORAGE_ROOT", "/var/lib/tls-scan"))
+ROOT = Path(os.environ.get("ORION_STORAGE_ROOT", "/var/lib/orion"))
 
 
 @pytest.fixture(scope="module")
@@ -246,8 +246,8 @@ def test_report_integrity_failure_is_refused(user, auditor, catalog):
 
 
 def test_no_secret_leaks_in_results(run, auditor):
-    secrets = [os.environ.get(k) for k in ("TLS_SCAN_SESSION_SECRET", "TLS_SCAN_LOCAL_ADMIN_PASSWORD", "TLS_SCAN_DATABASE_URL",
-                                           "TLS_SCAN_OIDC_CLIENT_SECRET", "TLS_SCAN_GRAPH_CLIENT_SECRET", "TLS_SCAN_LDAP_BIND_PASSWORD")]
+    secrets = [os.environ.get(k) for k in ("ORION_SESSION_SECRET", "ORION_LOCAL_ADMIN_PASSWORD", "ORION_DATABASE_URL",
+                                           "ORION_OIDC_CLIENT_SECRET", "ORION_GRAPH_CLIENT_SECRET", "ORION_LDAP_BIND_PASSWORD")]
     paths = ["/api/results", f"/api/results/{run['id']}", f"/api/results/{run['id']}/endpoints", f"/api/results/{run['id']}/findings",
              f"/api/results/{run['id']}/reports", "/swagger/openapi.json", f"/api/results/{NO_RUN}", "/api/results?limit=zzz"]
     blob = "".join(auditor.get(p).text for p in paths)
@@ -285,7 +285,7 @@ def test_behind_nginx():
     assert r.status_code == 200
     for path in ("/swagger", "/swagger/"):
         page = login.get(path)
-        assert page.status_code == 200 and "swagger-ui" in page.text and "<title>TLS Scan API" in page.text, path
+        assert page.status_code == 200 and "swagger-ui" in page.text and "<title>Orion API" in page.text, path
         assert "strict-transport-security" in page.headers and "script-src 'self'" in page.headers["content-security-policy"]
     assert login.get("/swagger/swagger-ui-bundle.js").status_code == 200
     assert login.get("/swagger/openapi.json").json()["paths"]

@@ -32,7 +32,7 @@ test.describe.configure({ mode: "serial" });
 test("admin: the built-in store is read-only, a private store is created from a CA file, bad files are refused", async ({ page }) => {
   await login(page, "admin", ADMIN);
   await openTrustTab(page);
-  const builtin = page.getByRole("row", { name: /TLS Scan Public Web PKI/ });
+  const builtin = page.getByRole("row", { name: /Orion Public Web PKI/ });
   await expect(builtin).toBeVisible();
   await expect(builtin.getByText("Built-in public")).toBeVisible();
   await expect(builtin.getByRole("button")).toHaveCount(0);
@@ -158,7 +158,7 @@ test("the trust authorities tab works on a phone and in dark mode, without horiz
     if (await page.getByRole("button", { name: "Open the menu" }).isVisible()) await page.getByRole("button", { name: "Open the menu" }).click();
     await navigateSidebar(page, "Administration", "Administration");
     await page.getByRole("tab", { name: "Trust authorities" }).click();
-    await expect(page.getByRole("row", { name: /TLS Scan Public Web PKI/ })).toBeVisible();
+    await expect(page.getByRole("row", { name: /Orion Public Web PKI/ })).toBeVisible();
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     expect(overflow, `${colorScheme}: page overflows horizontally`).toBeLessThanOrEqual(1);
     await page.screenshot({ path: `results/trust-authorities-${colorScheme}-phone.png`, fullPage: true });

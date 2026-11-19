@@ -6,7 +6,7 @@ import subprocess
 import pytest
 from types import SimpleNamespace
 
-from tls_scan_app.services.ssh_audit import (
+from orion_app.services.ssh_audit import (
     evaluate_ssh_policy,
     audit_target,
     parse_ssh_audit_json,
@@ -73,7 +73,7 @@ def test_docker_image_contains_ssh_audit_cli():
 
 
 def test_audit_invocation_is_bounded_and_never_runs_rate_tests(monkeypatch):
-    import tls_scan_app.services.ssh_audit as ssh_audit
+    import orion_app.services.ssh_audit as ssh_audit
 
     monkeypatch.setattr(ssh_audit.shutil, "which", lambda _: "/usr/bin/ssh-audit")
     calls = []

@@ -261,7 +261,7 @@ def test_E_enrichment_keeps_every_manual_field(operator, admin):
 def test_E_changed_addresses_are_flagged_and_nothing_is_deleted(operator):
     from sqlalchemy import create_engine, text
 
-    engine = create_engine(os.environ["TLS_SCAN_DATABASE_URL"])
+    engine = create_engine(os.environ["ORION_DATABASE_URL"])
     operator.post("/api/targets", json={"value": "gitlab.client.test", "ports": "", "tags": [], "si_ids": []})
     target = targets_of(operator, "gitlab.client.test")[0]
     with engine.begin() as db:  # a previous observation with an address that the DNS no longer returns
@@ -416,10 +416,10 @@ def test_worker_restart_closes_a_stale_discovery_consistently():
     from sqlalchemy import create_engine
     from sqlalchemy.orm import Session
 
-    from tls_scan_app.models import DnsDiscovery
-    from tls_scan_app.services.dns_discovery import process_next
+    from orion_app.models import DnsDiscovery
+    from orion_app.services.dns_discovery import process_next
 
-    engine = create_engine(os.environ["TLS_SCAN_DATABASE_URL"])
+    engine = create_engine(os.environ["ORION_DATABASE_URL"])
     old = datetime.now(UTC) - timedelta(minutes=10)
     with Session(engine) as db:
         row = DnsDiscovery(domain="stale.test", status="running", started_at=old, heartbeat_at=old)

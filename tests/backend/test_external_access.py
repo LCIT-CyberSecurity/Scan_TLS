@@ -15,10 +15,10 @@ from mcp.client.streamable_http import streamable_http_client
 from sqlalchemy import create_engine, text
 
 from conftest import API, LAB, Api, make_definition, make_user, wait_final
-from tls_scan_app.mcp_server import MCP_TOOL_NAMES
+from orion_app.mcp_server import LEGACY_MCP_TOOL_NAMES, MCP_TOOL_NAMES
 
 NO_RUN = "00000000-0000-4000-8000-000000000000"
-engine = create_engine(os.environ["TLS_SCAN_DATABASE_URL"])
+engine = create_engine(os.environ["ORION_DATABASE_URL"])
 
 
 def set_service(admin: Api, service: str, on: bool) -> None:
@@ -102,7 +102,7 @@ def test_a_key_needs_both_the_global_switch_and_the_individual_authorisation(adm
     assert who.post("/api/me/access/api/token").status_code == 403          # authorised, off
     set_service(admin, "api", True)
     r = who.post("/api/me/access/api/token")
-    assert r.status_code == 201 and r.json()["token"].startswith("tls_scan_pat_")
+    assert r.status_code == 201 and r.json()["token"].startswith("orion_pat_")
     assert who.post("/api/me/access/mcp/token").status_code == 403          # independent: MCP not granted / not enabled
     assert who.post("/api/me/access/other/token").status_code == 404
     state = who.get("/api/me/access").json()["api"]
@@ -189,7 +189,7 @@ def test_keys_are_stored_hashed_and_never_returned_again_or_logged(admin, on):
 def test_rest_and_mcp_keys_and_sessions_never_cross(admin, on):
     who = authorised(admin)
     pat, mcp = generate(who, "api"), generate(who, "mcp")
-    assert pat.startswith("tls_scan_pat_") and mcp.startswith("tls_scan_mcp_")
+    assert pat.startswith("orion_pat_") and mcp.startswith("orion_mcp_")
     assert rest(pat).get("/api/v1/me").status_code == 200
     assert rest(mcp).get("/api/v1/me").status_code == 401                              # MCP key on REST
     assert httpx.post(f"{API}/mcp", headers={"Authorization": f"Bearer {pat}"}, json={}).status_code == 401   # REST key on MCP
@@ -198,6 +198,7 @@ def test_rest_and_mcp_keys_and_sessions_never_cross(admin, on):
             assert rest(token).get(path).status_code == 401, path                        # external keys never open WebUI routes
     assert who.get("/api/v1/me").status_code == 401                                      # a WebUI session is not an external key
     assert httpx.get(f"{API}/api/v1/me").status_code == 401
+    assert rest("orion_pat_" + "x" * 40).get("/api/v1/me").status_code == 401
     assert rest("tls_scan_pat_" + "x" * 40).get("/api/v1/me").status_code == 401
 
 
@@ -283,10 +284,10 @@ def test_rest_rate_limit_and_audited_failures(admin, on):
     codes = [c.get("/api/v1/me").status_code for _ in range(130)]
     assert codes.count(200) == 120 and codes.count(429) == 10
     assert c.get("/api/v1/me").headers.get("retry-after") == "60"
-    httpx.get(f"{API}/api/v1/me", headers={"Authorization": "Bearer tls_scan_pat_bogus"})
+    httpx.get(f"{API}/api/v1/me", headers={"Authorization": "Bearer orion_pat_bogus"})
     events = admin.get("/api/admin/audit", params={"action": "external_api"}).json()
     assert any(e["action"] == "external_api.auth_failed" for e in events) and any(e["action"] == "external_api.rate_limited" for e in events)
-    assert "tls_scan_pat_bogus" not in str(events)
+    assert "orion_pat_bogus" not in str(events)
 
 
 # ---------- MCP ----------
@@ -317,30 +318,30 @@ def test_official_mcp_client_lists_a_closed_read_only_tool_list_and_calls_them(a
     async def exercise() -> None:
         async with mcp_session(token) as session:
             tools = await session.list_tools()
-            assert sorted(t.name for t in tools.tools) == sorted(MCP_TOOL_NAMES)
+            assert sorted(t.name for t in tools.tools) == sorted(MCP_TOOL_NAMES + LEGACY_MCP_TOOL_NAMES)
             assert not any(w in t.name for t in tools.tools for w in ("run", "delete", "create", "update", "export", "shell", "sql"))
-            current = (await session.call_tool("tls_scan_get_current_user", {})).structured_content
+            current = (await session.call_tool("orion_get_current_user", {})).structured_content
             assert current["email"] == who.user["email"] and current["role"] == "USER"
-            listed = (await session.call_tool("tls_scan_list_scans", {"limit": 100})).structured_content
+            listed = (await session.call_tool("orion_list_scans", {"limit": 100})).structured_content
             assert any(i["id"] == run["id"] for i in listed["items"])
-            summary = (await session.call_tool("tls_scan_get_scan_summary", {"scan_id": run["id"]})).structured_content
+            summary = (await session.call_tool("orion_get_scan_summary", {"scan_id": run["id"]})).structured_content
             assert summary["id"] == run["id"] and "reports" not in summary
-            endpoints = (await session.call_tool("tls_scan_list_endpoints", {"scan_id": run["id"], "limit": 5})).structured_content
+            endpoints = (await session.call_tool("orion_list_endpoints", {"scan_id": run["id"], "limit": 5})).structured_content
             assert endpoints["items"]
             endpoint_id = endpoints["items"][0]["endpoint_id"]
-            details = (await session.call_tool("tls_scan_get_endpoint_details", {"scan_id": run["id"], "endpoint_id": endpoint_id})).structured_content
+            details = (await session.call_tool("orion_get_endpoint_details", {"scan_id": run["id"], "endpoint_id": endpoint_id})).structured_content
             assert details["endpoint"]["endpoint_id"] == endpoint_id and isinstance(details["findings"], list)
-            findings = (await session.call_tool("tls_scan_list_findings", {"scan_id": run["id"], "limit": 100})).structured_content
+            findings = (await session.call_tool("orion_list_findings", {"scan_id": run["id"], "limit": 100})).structured_content
             assert findings["pagination"]["total"] == findings_before["pagination"]["total"]       # same data as REST
-            compliance = (await session.call_tool("tls_scan_get_compliance_summary", {"scan_id": run["id"]})).structured_content
+            compliance = (await session.call_tool("orion_get_compliance_summary", {"scan_id": run["id"]})).structured_content
             assert compliance["scan_id"] == run["id"] and compliance["endpoints_by_compliance_status"]
-            compared = await session.call_tool("tls_scan_compare_scans", {"scan_id": run["id"]})
+            compared = await session.call_tool("orion_compare_scans", {"scan_id": run["id"]})
             assert compared.is_error or compared.structured_content is not None
-            missing = await session.call_tool("tls_scan_get_scan_summary", {"scan_id": NO_RUN})
+            missing = await session.call_tool("orion_get_scan_summary", {"scan_id": NO_RUN})
             assert missing.is_error
-            bad = await session.call_tool("tls_scan_list_scans", {"limit": 5000})
+            bad = await session.call_tool("orion_list_scans", {"limit": 5000})
             assert bad.is_error
-            garbage = await session.call_tool("tls_scan_get_scan_summary", {"scan_id": "x'; drop table users;--"})
+            garbage = await session.call_tool("orion_get_scan_summary", {"scan_id": "x'; drop table users;--"})
             assert garbage.is_error
 
     asyncio.run(exercise())
@@ -357,13 +358,13 @@ def test_mcp_applies_the_current_role_and_the_current_authorisation_on_every_cal
         async with mcp_session(token) as session:
             return await session.call_tool(name, args)
 
-    assert not asyncio.run(call("tls_scan_get_current_user", {})).is_error
+    assert not asyncio.run(call("orion_get_current_user", {})).is_error
     assert admin.put(f"/api/admin/users/{who.user['id']}", json={"role": "AUDITOR"}).status_code == 200
-    assert asyncio.run(call("tls_scan_get_current_user", {})).structured_content["role"] == "AUDITOR"
-    assert asyncio.run(call("tls_scan_compare_scans", {"scan_id": run["id"]})).is_error            # AUDITOR cannot compare
+    assert asyncio.run(call("orion_get_current_user", {})).structured_content["role"] == "AUDITOR"
+    assert asyncio.run(call("orion_compare_scans", {"scan_id": run["id"]})).is_error            # AUDITOR cannot compare
     grant(admin, who, mcp_access_enabled=False)
     with pytest.raises(Exception):
-        asyncio.run(call("tls_scan_get_current_user", {}))                                          # key revoked: no session at all
+        asyncio.run(call("orion_get_current_user", {}))                                          # key revoked: no session at all
 
 
 def test_mcp_rate_limit(admin, on):
@@ -374,7 +375,7 @@ def test_mcp_rate_limit(admin, on):
         outcomes = []
         async with mcp_session(token) as session:
             for _ in range(70):
-                outcomes.append((await session.call_tool("tls_scan_get_current_user", {})).is_error)
+                outcomes.append((await session.call_tool("orion_get_current_user", {})).is_error)
         return outcomes
 
     try:
@@ -382,3 +383,51 @@ def test_mcp_rate_limit(admin, on):
     except Exception:  # the HTTP-level limit may cut the session first
         return
     assert outcomes.count(True) >= 1
+
+
+# ---------- compatibility with keys and clients from before the Orion rebranding ----------
+def legacy_key(who: Api, service: str) -> str:
+    """A key as issued before the rebranding (tls_scan_ prefix), stored exactly as the previous version stored it."""
+    from orion_app.services.external_access import LEGACY_PREFIXES, _digest
+    secret = LEGACY_PREFIXES[service] + uuid.uuid4().hex + uuid.uuid4().hex
+    with engine.begin() as db:
+        db.execute(text("UPDATE access_tokens SET revoked_at = now() WHERE user_id = :u AND service = :s AND revoked_at IS NULL"),
+                   {"u": who.user["id"], "s": service})
+        db.execute(text("INSERT INTO access_tokens (id, user_id, service, prefix, token_hash, created_at, expires_at) "
+                        "VALUES (:id, :u, :s, :p, :h, now(), :e)"),
+                   {"id": str(uuid.uuid4()), "u": who.user["id"], "s": service, "p": secret[:len(LEGACY_PREFIXES[service]) + 6],
+                    "h": _digest(secret), "e": datetime.now(UTC) + timedelta(days=30)})
+    return secret
+
+
+def test_keys_issued_before_the_rebranding_keep_their_service_and_rules(admin, on):
+    who = authorised(admin)
+    pat, mcp = legacy_key(who, "api"), legacy_key(who, "mcp")
+    assert rest(pat).get("/api/v1/me").json()["email"] == who.user["email"]               # a legacy REST key still works
+    assert rest(mcp).get("/api/v1/me").status_code == 401                                  # a legacy MCP key is still refused on REST
+    assert httpx.post(f"{API}/mcp", headers={"Authorization": f"Bearer {pat}"}, json={}).status_code == 401
+    assert rest(pat).get("/api/dashboard").status_code == 401                               # never a WebUI route
+    renewed = generate(who, "api")                                                          # a new key replaces it, Orion prefix
+    assert renewed.startswith("orion_pat_") and rest(pat).get("/api/v1/me").status_code == 401
+    grant(admin, who, mcp_access_enabled=False)                                             # withdrawing revokes legacy keys too
+    assert httpx.post(f"{API}/mcp", headers={"Authorization": f"Bearer {mcp}"}, json={}).status_code == 401
+
+
+def test_legacy_mcp_key_and_legacy_tool_names_stay_usable(admin, on, run):
+    who = authorised(admin, "USER")
+    token = legacy_key(who, "mcp")
+
+    async def exercise() -> None:
+        async with mcp_session(token) as session:
+            tools = {t.name: t for t in (await session.list_tools()).tools}
+            assert all(tools[name].description.startswith("Deprecated alias of orion_") for name in LEGACY_MCP_TOOL_NAMES)
+            current = (await session.call_tool("tls_scan_get_current_user", {})).structured_content
+            assert current == (await session.call_tool("orion_get_current_user", {})).structured_content
+            assert current["email"] == who.user["email"]
+            legacy = (await session.call_tool("tls_scan_get_scan_summary", {"scan_id": run["id"]})).structured_content
+            assert legacy == (await session.call_tool("orion_get_scan_summary", {"scan_id": run["id"]})).structured_content
+
+    asyncio.run(exercise())
+    called = admin.get("/api/admin/audit", params={"action": "mcp.tool_called"}).json()
+    assert any(e["resource_id"] == "orion_get_current_user" for e in called)                # audited under the canonical name
+    assert token not in str(called)
