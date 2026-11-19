@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# TLS Scan Manager: install, update, back up, restore, reinstall and remove TLS Scan, in one of two
-# independent deployment modes.
+# Orion Manager: install, update, back up, restore, reinstall and remove Orion, in one of two
+# independent deployment modes. (The former bootstrap_tls-scan-deployment.sh forwards here unchanged.)
 #
-#   ./bootstrap_tls-scan-deployment.sh                      interactive menu (French)
-#   ./bootstrap_tls-scan-deployment.sh [--mode MODE] COMMAND [options]
+#   ./bootstrap_orion-deployment.sh                         interactive menu (French)
+#   ./bootstrap_orion-deployment.sh [--mode MODE] COMMAND [options]
 #
 # Modes
 #   standalone   native command-line engine: Python 3.12+ + Nmap, in a dedicated virtualenv (.venv). No Docker.
@@ -21,6 +21,11 @@
 #   reset-admin          reset the local administrator password (one-time or default)           (webui)
 #   logs [SERVICE]       follow the technical logs                                                (webui)
 #   rollback-secrets     restore legacy direct .env variables from the protected secret files     (webui)
+#   migrate-config       rename the TLS_SCAN_* entries of .env to ORION_* (a copy of .env is kept) (webui)
+#   migrate-orion        move a TLS Scan installation to the Orion project, database and volumes:
+#                        verified backup, restore into new volumes, counts compared, automatic rollback;
+#                        the TLS Scan volumes are kept untouched                                (webui)
+#   rollback-orion       stop Orion and restart the kept TLS Scan installation (after migrate-orion) (webui)
 #   reinstall            START FROM SCRATCH: removes the data (backup + typed confirmation)
 #   uninstall            remove the mode's components; data is asked about separately
 #
@@ -36,15 +41,18 @@
 # Exit codes: 0 done, 1 failure or refusal (nothing destructive happened), 2 usage error,
 #             3 cancelled (nothing was modified).
 #
-# The WebUI mode only ever touches the Docker project named by TLS_SCAN_PROJECT (default "tls-scan"); the
-# CrashTest, test and end-to-end projects are refused by name. .env is created if missing and never overwritten.
+# The WebUI mode only ever touches the Docker project named by ORION_PROJECT (default "orion"). An installation made
+# before the Orion rebranding keeps its project ("tls-scan"), database, role and volumes: they are pinned in .env
+# (ORION_PROJECT, ORION_DB_NAME, ORION_DB_USER) and its TLS_SCAN_* settings keep working; migrate-orion moves it
+# explicitly. The CrashTest, test and end-to-end projects are refused by name. .env is created if missing and its
+# existing entries are never overwritten.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT" || exit 1
 ENV_FILE="$ROOT/.env"
 VENV="$ROOT/.venv"
-BACKUP_DIR="${TLS_SCAN_BACKUP_DIR:-$ROOT/backups}"
+BACKUP_DIR="${ORION_BACKUP_DIR:-${TLS_SCAN_BACKUP_DIR:-$ROOT/backups}}"
 
 MODE=""
 ASSUME_YES=0
@@ -63,7 +71,7 @@ fi
 
 # The technical log of the steps (never shown unless a step fails; removed on exit). It can hold command
 # output, so it is private and short-lived.
-LOG="$(umask 077; mktemp "${TMPDIR:-/tmp}/tls-scan-manager.XXXXXX")"
+LOG="$(umask 077; mktemp "${TMPDIR:-/tmp}/orion-manager.XXXXXX")"
 trap 'rm -f "$LOG"' EXIT
 
 say()  { printf '%s\n' "$*"; }
@@ -72,7 +80,7 @@ die()  { printf '%s%s%s\n' "$RED" "$*" "$RESET" >&2; exit 1; }
 
 banner() {
     say "${BOLD}╔══════════════════════════════════════════╗"
-    say "║            TLS Scan Manager              ║"
+    say "║              Orion Manager               ║"
     say "╚══════════════════════════════════════════╝${RESET}"
     say ""
 }
@@ -168,8 +176,18 @@ random_hex() {
         head -c "$1" /dev/urandom | od -An -tx1 | tr -d ' \n'; fi
 }
 
-PROJECT="$(env_get TLS_SCAN_PROJECT)"
-PROJECT="${PROJECT:-tls-scan}"
+# cfg_get NAME: ORION_NAME, else the pre-rebranding TLS_SCAN_NAME, the way compose.yaml resolves them.
+cfg_get() {
+    local v; v="$(env_get "ORION_$1")"
+    [ -n "$v" ] || v="$(env_get "TLS_SCAN_$1")"
+    printf '%s' "$v"
+}
+
+NEW_PROJECT="orion"
+LEGACY_PROJECT="tls-scan"
+LEGACY_DB="tls_scan"
+PROJECT="$(cfg_get PROJECT)"
+PROJECT="${PROJECT:-$NEW_PROJECT}"
 
 # compose.override.yaml (site-specific, not versioned) is read when present, like plain `docker compose`.
 dc() {
@@ -178,14 +196,16 @@ dc() {
     docker compose -p "$PROJECT" --project-directory "$ROOT" "${files[@]}" "$@"
 }
 
-https_port() { local p; p="$(env_get TLS_SCAN_HTTPS_PORT)"; printf '%s' "${p:-8443}"; }
-http_port()  { local p; p="$(env_get TLS_SCAN_HTTP_PORT)"; printf '%s' "${p:-8080}"; }
-cert_dir()   { local d; d="$(env_get TLS_SCAN_CERT_DIR)"; printf '%s' "${d:-$ROOT/data/certs}"; }
-image_tag()  { local v; v="$(env_get TLS_SCAN_VERSION)"; printf '%s' "${v:-local}"; }
+https_port() { local p; p="$(cfg_get HTTPS_PORT)"; printf '%s' "${p:-8443}"; }
+http_port()  { local p; p="$(cfg_get HTTP_PORT)"; printf '%s' "${p:-8080}"; }
+cert_dir()   { local d; d="$(cfg_get CERT_DIR)"; printf '%s' "${d:-$ROOT/data/certs}"; }
+image_tag()  { local v; v="$(cfg_get VERSION)"; printf '%s' "${v:-local}"; }
+db_name()    { local v; v="$(cfg_get DB_NAME)"; printf '%s' "${v:-orion}"; }
+db_user()    { local v; v="$(cfg_get DB_USER)"; printf '%s' "${v:-orion}"; }
 
 public_url() {
     local u
-    u="$(env_get TLS_SCAN_PUBLIC_BASE_URL)"
+    u="$(cfg_get PUBLIC_BASE_URL)"
     printf '%s' "${u:-https://localhost:$(https_port)}"
 }
 
@@ -258,16 +278,50 @@ git_fast_forward() { git -C "$ROOT" merge --ff-only '@{u}'; }
 
 check_project_name() {
     case "$PROJECT" in
-        *crashtest*|*e2e*|tlsscan-test*|tls-scan-test*)
+        *crashtest*|*e2e*|tlsscan-test*|tls-scan-test*|orion-test*)
             die "Refusé : « $PROJECT » est un projet de test (CrashTest / end-to-end), pas une installation." ;;
     esac
     [[ "$PROJECT" =~ ^[a-z0-9][a-z0-9_-]*$ ]] || die "Nom de projet invalide : $PROJECT"
     case "$(image_tag)" in
         *crashtest*) die "Refusé : l'étiquette d'image « $(image_tag) » appartient au CrashTest." ;;
     esac
-    if [ "$PROJECT" != "tls-scan" ]; then
-        warn "Projet Docker alternatif : $PROJECT (TLS_SCAN_PROJECT)."
+    adopt_legacy_install || die "Impossible d'enregistrer l'installation TLS Scan existante dans .env."
+    if [ "$PROJECT" = "$LEGACY_PROJECT" ]; then
+        say "Installation TLS Scan conservée (projet « $PROJECT », base « $(db_name) ») : migrate-orion la déplace vers Orion."
+    elif [ "$PROJECT" != "$NEW_PROJECT" ]; then
+        warn "Projet Docker alternatif : $PROJECT (ORION_PROJECT)."
     fi
+}
+
+# An installation made before the Orion rebranding keeps its names: without ORION_DB_NAME in .env, a .env holding
+# TLS_SCAN_* entries, or volumes of the project, means its PostgreSQL database and role are still "tls_scan". They
+# are pinned (appended to .env, nothing else changes) so that Orion never starts on an empty database next to it.
+legacy_install() {
+    [ -z "$(env_get ORION_DB_NAME)" ] || return 1
+    if [ -f "$ENV_FILE" ] && grep -q '^TLS_SCAN_' "$ENV_FILE"; then return 0; fi
+    project_has_volumes "$PROJECT"
+}
+
+project_has_volumes() {
+    command -v docker >/dev/null 2>&1 || return 1
+    [ -n "$(docker volume ls -q --filter "label=com.docker.compose.project=$1" 2>/dev/null)" ]
+}
+
+adopt_legacy_install() {
+    # No project configured (e.g. .env lost) but the volumes of a TLS Scan installation exist: that is the installation.
+    if [ -z "$(cfg_get PROJECT)" ] && [ "$PROJECT" = "$NEW_PROJECT" ] && ! project_has_volumes "$NEW_PROJECT" \
+        && project_has_volumes "$LEGACY_PROJECT"; then
+        PROJECT="$LEGACY_PROJECT"
+    fi
+    legacy_install || return 0
+    if [ ! -f "$ENV_FILE" ]; then
+        [ -f "$ROOT/.env.example" ] || { echo ".env.example est introuvable."; return 1; }
+        ( umask 077; grep -v -E '^ORION_(PROJECT|DB_NAME|DB_USER)=' "$ROOT/.env.example" >"$ENV_FILE" ) || return 1
+    fi
+    [ -n "$(env_get ORION_PROJECT)" ] || env_set ORION_PROJECT "$PROJECT"
+    env_set ORION_DB_NAME "$LEGACY_DB"
+    [ -n "$(env_get ORION_DB_USER)" ] || env_set ORION_DB_USER "$LEGACY_DB"
+    warn "Installation antérieure à Orion détectée : projet « $PROJECT » et base « $LEGACY_DB » conservés (.env complété)."
 }
 
 port_busy() { (exec 3<>"/dev/tcp/127.0.0.1/$1") 2>/dev/null; }
@@ -294,7 +348,7 @@ web_check_ports() {
     web_installed && return 0   # our own containers hold the ports
     local p
     for p in "$(https_port)" "$(http_port)"; do
-        if port_busy "$p"; then echo "Le port $p est déjà utilisé : modifiez TLS_SCAN_HTTPS_PORT / TLS_SCAN_HTTP_PORT dans .env."; return 1; fi
+        if port_busy "$p"; then echo "Le port $p est déjà utilisé : modifiez ORION_HTTPS_PORT / ORION_HTTP_PORT dans .env."; return 1; fi
     done
 }
 
@@ -320,11 +374,11 @@ web_show_status() {
 # --- WebUI mode: building blocks --------------------------------------------------------------------
 
 secret_dir() {
-    local dir; dir="$(env_get TLS_SCAN_SECRET_DIR)"; dir="${dir:-./data/secrets}"
+    local dir; dir="$(cfg_get SECRET_DIR)"; dir="${dir:-./data/secrets}"
     case "$dir" in /*) printf '%s' "$dir" ;; *) printf '%s/%s' "$ROOT" "$dir" ;; esac
 }
 
-secret_gid() { local gid; gid="$(env_get TLS_SCAN_SECRET_GID)"; printf '%s' "${gid:-$(id -g)}"; }
+secret_gid() { local gid; gid="$(cfg_get SECRET_GID)"; printf '%s' "${gid:-$(id -g)}"; }
 
 secret_file_path() { printf '%s/%s' "$(secret_dir)" "$1"; }
 
@@ -332,7 +386,7 @@ secret_file_path() { printf '%s/%s' "$(secret_dir)" "$1"; }
 # to only the services that need the file; Docker Compose file secrets preserve host bind-mount mode.
 protect_secret_file() {
     local file="$1" gid; gid="$(secret_gid)"
-    chgrp "$gid" "$file" 2>/dev/null || { echo "Impossible d'attribuer le groupe $gid au fichier secret (vérifiez TLS_SCAN_SECRET_GID)."; return 1; }
+    chgrp "$gid" "$file" 2>/dev/null || { echo "Impossible d'attribuer le groupe $gid au fichier secret (vérifiez ORION_SECRET_GID)."; return 1; }
     chmod 0440 "$file" || return 1
 }
 
@@ -371,21 +425,23 @@ resolve_host_secret_path() {
 # Direct .env credentials are copied only after an explicit confirmation, then their .env values are
 # blanked. Existing files are never silently overwritten or rotated.
 migrate_env_secrets() {
-    local direct=(POSTGRES_PASSWORD TLS_SCAN_SESSION_SECRET TLS_SCAN_LOCAL_ADMIN_PASSWORD TLS_SCAN_OIDC_CLIENT_SECRET \
-        TLS_SCAN_GOOGLE_CLIENT_SECRET TLS_SCAN_DIRECTORY_CLIENT_SECRET TLS_SCAN_LDAP_BIND_PASSWORD \
-        TLS_SCAN_GREENBONE_PASSWORD TLS_SCAN_SMTP_PASSWORD TLS_SCAN_GRAPH_CLIENT_SECRET \
-        TLS_SCAN_SNMP_V3_AUTH_KEY TLS_SCAN_SNMP_V3_PRIV_KEY)
-    local names=(postgres_password session_secret local_admin_password oidc_client_secret google_client_secret \
-        directory_client_secret ldap_bind_password greenbone_password smtp_password graph_client_secret \
-        snmp_v3_auth_key snmp_v3_priv_key)
-    local path_keys=(TLS_SCAN_SESSION_SECRET_FILE TLS_SCAN_LOCAL_ADMIN_PASSWORD_FILE TLS_SCAN_OIDC_CLIENT_SECRET_FILE \
-        TLS_SCAN_GOOGLE_CLIENT_SECRET_FILE TLS_SCAN_DIRECTORY_CLIENT_SECRET_FILE TLS_SCAN_LDAP_BIND_PASSWORD_FILE \
-        TLS_SCAN_GREENBONE_PASSWORD_FILE TLS_SCAN_SMTP_PASSWORD_FILE TLS_SCAN_GRAPH_CLIENT_SECRET_FILE \
-        TLS_SCAN_SNMP_V3_AUTH_KEY_FILE TLS_SCAN_SNMP_V3_PRIV_KEY_FILE TLS_SCAN_GREENBONE_CA_FILE \
-        TLS_SCAN_GREENBONE_CLIENT_CERT_FILE TLS_SCAN_GREENBONE_CLIENT_KEY_FILE TLS_SCAN_GOOGLE_DIRECTORY_KEY_FILE)
-    local path_names=(session_secret local_admin_password oidc_client_secret google_client_secret directory_client_secret \
+    # Each credential may be written with the Orion prefix or the pre-rebranding TLS_SCAN_ one; both are migrated.
+    local direct_suffixes=(SESSION_SECRET LOCAL_ADMIN_PASSWORD OIDC_CLIENT_SECRET GOOGLE_CLIENT_SECRET DIRECTORY_CLIENT_SECRET \
+        LDAP_BIND_PASSWORD GREENBONE_PASSWORD SMTP_PASSWORD GRAPH_CLIENT_SECRET SNMP_V3_AUTH_KEY SNMP_V3_PRIV_KEY)
+    local direct_files=(session_secret local_admin_password oidc_client_secret google_client_secret directory_client_secret \
+        ldap_bind_password greenbone_password smtp_password graph_client_secret snmp_v3_auth_key snmp_v3_priv_key)
+    local path_suffixes=(SESSION_SECRET_FILE LOCAL_ADMIN_PASSWORD_FILE OIDC_CLIENT_SECRET_FILE GOOGLE_CLIENT_SECRET_FILE \
+        DIRECTORY_CLIENT_SECRET_FILE LDAP_BIND_PASSWORD_FILE GREENBONE_PASSWORD_FILE SMTP_PASSWORD_FILE GRAPH_CLIENT_SECRET_FILE \
+        SNMP_V3_AUTH_KEY_FILE SNMP_V3_PRIV_KEY_FILE GREENBONE_CA_FILE GREENBONE_CLIENT_CERT_FILE GREENBONE_CLIENT_KEY_FILE \
+        GOOGLE_DIRECTORY_KEY_FILE)
+    local path_files=(session_secret local_admin_password oidc_client_secret google_client_secret directory_client_secret \
         ldap_bind_password greenbone_password smtp_password graph_client_secret snmp_v3_auth_key snmp_v3_priv_key \
         greenbone_ca.pem greenbone_client.crt greenbone_client.key google_directory_key.json)
+    local direct=(POSTGRES_PASSWORD) names=(postgres_password) path_keys=() path_names=() prefix j
+    for prefix in ORION_ TLS_SCAN_; do
+        for j in "${!direct_suffixes[@]}"; do direct+=("$prefix${direct_suffixes[$j]}"); names+=("${direct_files[$j]}"); done
+        for j in "${!path_suffixes[@]}"; do path_keys+=("$prefix${path_suffixes[$j]}"); path_names+=("${path_files[$j]}"); done
+    done
     local i value file source pending=0
     for i in "${!direct[@]}"; do
         value="$(env_get "${direct[$i]}")"; file="$(secret_file_path "${names[$i]}")"
@@ -457,7 +513,7 @@ prepare_secret_files() {
     fi
     file="$dir/session_secret"
     if [ ! -s "$file" ]; then
-        direct_value="$(env_get TLS_SCAN_SESSION_SECRET)"
+        direct_value="$(cfg_get SESSION_SECRET)"
         if [ -n "$direct_value" ]; then write_secret_value "$file" "$direct_value" || return 1
         else write_secret_value "$file" "$(random_hex 32)" || return 1; echo "Secret de session créé dans le répertoire protégé"; fi
     fi
@@ -519,16 +575,20 @@ create_env() {
         echo ".env créé à partir de .env.example"
     fi
     chmod 600 "$ENV_FILE"
-    [ -n "$(env_get TLS_SCAN_SECRET_DIR)" ] || env_set TLS_SCAN_SECRET_DIR "./data/secrets"
-    [ -n "$(env_get TLS_SCAN_SECRET_GID)" ] || env_set TLS_SCAN_SECRET_GID "$(id -g)"
+    [ -n "$(cfg_get SECRET_DIR)" ] || env_set ORION_SECRET_DIR "./data/secrets"
+    [ -n "$(cfg_get SECRET_GID)" ] || env_set ORION_SECRET_GID "$(id -g)"
     migrate_env_secrets || return 1
     prepare_secret_files || return 1
     local secret_key
-    for secret_key in POSTGRES_PASSWORD TLS_SCAN_SESSION_SECRET TLS_SCAN_LOCAL_ADMIN_PASSWORD TLS_SCAN_OIDC_CLIENT_SECRET \
-        TLS_SCAN_GOOGLE_CLIENT_SECRET TLS_SCAN_DIRECTORY_CLIENT_SECRET TLS_SCAN_LDAP_BIND_PASSWORD TLS_SCAN_GREENBONE_PASSWORD \
-        TLS_SCAN_SMTP_PASSWORD TLS_SCAN_GRAPH_CLIENT_SECRET TLS_SCAN_SNMP_V3_AUTH_KEY TLS_SCAN_SNMP_V3_PRIV_KEY; do
+    local prefix suffix
+    for secret_key in POSTGRES_PASSWORD; do
         [ -z "$(env_get "$secret_key")" ] || { echo "La variable $secret_key doit être migrée hors de .env; aucune valeur directe ne sera transmise."; return 1; }
     done
+    for prefix in ORION_ TLS_SCAN_; do for suffix in SESSION_SECRET LOCAL_ADMIN_PASSWORD OIDC_CLIENT_SECRET GOOGLE_CLIENT_SECRET \
+        DIRECTORY_CLIENT_SECRET LDAP_BIND_PASSWORD GREENBONE_PASSWORD SMTP_PASSWORD GRAPH_CLIENT_SECRET SNMP_V3_AUTH_KEY SNMP_V3_PRIV_KEY; do
+        secret_key="$prefix$suffix"
+        [ -z "$(env_get "$secret_key")" ] || { echo "La variable $secret_key doit être migrée hors de .env; aucune valeur directe ne sera transmise."; return 1; }
+    done; done
     return 0
 }
 
@@ -579,7 +639,7 @@ check_migrations() {
 }
 
 api_health() {
-    local tries="${TLS_SCAN_HEALTH_TRIES:-40}" i
+    local tries="${ORION_HEALTH_TRIES:-${TLS_SCAN_HEALTH_TRIES:-40}}" i
     for ((i = 0; i < tries; i++)); do
         if dc exec -T api curl -fs http://localhost:8000/api/health/ready >/dev/null 2>&1; then break; fi
         [ "$i" -lt $((tries - 1)) ] || { echo "L'API ne répond pas sur /api/health/ready."; return 1; }
@@ -595,7 +655,7 @@ api_health() {
 # A fresh database holds the local administrator only.
 check_fresh_bootstrap() {
     local q
-    q="$(dc exec -T postgres psql -U tls_scan -d tls_scan -Atc "select count(*) from users")" || return 1
+    q="$(dc exec -T postgres psql -U "$(db_user)" -d "$(db_name)" -Atc "select count(*) from users")" || return 1
     [ "$q" = "1" ] || { echo "Base inattendue : $q utilisateur(s) au lieu de 1 (l'administrateur local seul)."; return 1; }
 }
 
@@ -603,7 +663,7 @@ check_fresh_bootstrap() {
 
 data_volume() { printf '%s_data' "$PROJECT"; }
 
-# make_backup [DIR]: one archive tls-scan-backup-<UTC>.tar.gz holding db.dump (pg_dump -Fc), data.tar (the
+# make_backup [DIR]: one archive orion-backup-<UTC>.tar.gz holding db.dump (pg_dump -Fc), data.tar (the
 # persistent data volume: reports, logs), SHA256SUMS and MANIFEST.txt. It is verified before it is kept.
 # Prints "Sauvegarde écrite : <file>". .env and the HTTPS certificate are NOT in it (keep them in your own
 # secret backup).
@@ -615,25 +675,27 @@ make_backup() {
     return "$rc"
 }
 BACKUP_WORK=""
+BACKUP_ARCHIVE=""
 _make_backup() {
     local dir="${1:-$BACKUP_DIR}" stamp archive work
     docker volume inspect "$(data_volume)" >/dev/null 2>&1 || { echo "Le volume de données $(data_volume) n'existe pas : rien à sauvegarder."; return 1; }
     dc up -d --wait postgres >/dev/null 2>&1 || { echo "PostgreSQL ne démarre pas."; return 1; }
     ( umask 077; mkdir -p "$dir" ) || { echo "Impossible de créer $dir."; return 1; }
     stamp="$(date -u +%Y%m%dT%H%M%SZ)"
-    archive="$dir/tls-scan-backup-$stamp.tar.gz"
-    work="$(umask 077; mktemp -d "$dir/.tls-scan-backup.XXXXXX")" || return 1
+    archive="$dir/orion-backup-$stamp.tar.gz"
+    work="$(umask 077; mktemp -d "$dir/.orion-backup.XXXXXX")" || return 1
     BACKUP_WORK="$work"
-    dc exec -T postgres pg_dump -U tls_scan -Fc tls_scan >"$work/db.dump" || { echo "pg_dump a échoué."; return 1; }
+    dc exec -T postgres pg_dump -U "$(db_user)" -Fc "$(db_name)" >"$work/db.dump" || { echo "pg_dump a échoué."; return 1; }
     [ -s "$work/db.dump" ] || { echo "Le dump PostgreSQL est vide."; return 1; }
     docker run --rm --entrypoint tar -v "$(data_volume)":/data:ro "$(postgres_image)" -C /data -cf - . >"$work/data.tar" \
         || { echo "La sauvegarde du volume de données a échoué."; return 1; }
     ( cd "$work" && sha256sum db.dump data.tar >SHA256SUMS )
     cat >"$work/MANIFEST.txt" <<MANIFEST
-TLS Scan backup
+Orion backup
 created_utc: $stamp
 git: $(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)
 project: $PROJECT
+database: $(db_name)
 format: tar.gz archive; db.dump = pg_dump -Fc; data.tar = raw archive of the data volume (reports, logs)
 contents: db.dump, data.tar, SHA256SUMS, MANIFEST.txt
 excluded: .env and the HTTPS certificate (keep them in your own secret backup)
@@ -642,6 +704,7 @@ MANIFEST
     verify_archive "$work/archive.tmp" || { echo "L'archive écrite ne passe pas la vérification d'intégrité."; return 1; }
     mv "$work/archive.tmp" "$archive"
     chmod 600 "$archive"
+    BACKUP_ARCHIVE="$archive"
     echo "Sauvegarde écrite : $archive"
 }
 
@@ -712,7 +775,7 @@ admin_info() {
 
 web_do_install() {
     banner
-    say "Installation de TLS Scan — WebUI (projet Docker « $PROJECT »)."
+    say "Installation d'Orion — WebUI (projet Docker « $PROJECT »)."
     web_installed && say "Une installation existe : .env, certificats et données sont conservés."
     say ""
     local new_env="non"
@@ -831,23 +894,25 @@ web_check_dump() {
 
 web_replace_database() {
     dc up -d --wait postgres || return 1
-    dc exec -T postgres dropdb -U tls_scan --if-exists tls_scan || return 1
-    dc exec -T postgres createdb -U tls_scan tls_scan || return 1
-    dc exec -T postgres pg_restore -U tls_scan -d tls_scan --no-owner <"$1/db.dump" || return 1
+    local user name; user="$(db_user)"; name="$(db_name)"
+    dc exec -T postgres dropdb -U "$user" --if-exists "$name" || return 1
+    dc exec -T postgres createdb -U "$user" "$name" || return 1
+    # Objects belong to the restoring role: an archive of a TLS Scan installation (role tls_scan) restores into Orion.
+    dc exec -T postgres pg_restore -U "$user" -d "$name" --no-owner --no-privileges <"$1/db.dump" || return 1
 }
 
 web_restore_data() {
     local f="$1/data.tar"; [ -s "$f" ] || f="$1/files.tar"
-    dc exec -T api tar -C /var/lib/tls-scan -xf - <"$f"
+    dc exec -T api tar -C /var/lib/orion -xf - <"$f"
 }
 
 web_do_reset_admin() {
     web_check_prerequisites >"$LOG" 2>&1 || { cat "$LOG" >&2; return 1; }
-    web_installed || die "TLS Scan n'est pas installé."
+    web_installed || die "Orion n'est pas installé."
     local args=()
     [ "$RESET_DEFAULT" = 1 ] && args+=(--default)
     # Run directly (not through the step log): the one-time password is shown on the terminal only.
-    dc exec -T api python -m tls_scan_app.cli reset-admin-password ${args[@]+"${args[@]}"}
+    dc exec -T api python -m orion_app.cli reset-admin-password ${args[@]+"${args[@]}"}
 }
 
 web_do_rollback_secrets() {
@@ -898,13 +963,22 @@ web_do_reinstall() {
     admin_info
 }
 
+# The images of this version and those built under their pre-rebranding names; a missing one is not an error.
+remove_images() {
+    local image
+    for image in orion-backend orion-webui tls-scan-backend tls-scan-webui; do
+        docker image inspect "$image:$(image_tag)" >/dev/null 2>&1 || continue
+        docker image rm "$image:$(image_tag)" || return 1
+    done
+}
+
 web_do_uninstall() {
     banner
     say "${RED}${BOLD}ATTENTION — DÉSINSTALLATION (WebUI)${RESET}"
     say ""
     say "Seront supprimés :"
     say "  - les conteneurs du projet « $PROJECT »"
-    say "  - ses images (tls-scan-backend:$(image_tag), tls-scan-webui:$(image_tag))"
+    say "  - ses images (orion-backend:$(image_tag), orion-webui:$(image_tag), et leurs anciens noms tls-scan-*)"
     say ""
     say "Conservés par défaut (questions séparées ci-dessous) : les données (volumes PostgreSQL et rapports),"
     say ".env, les certificats HTTPS, les sauvegardes et le dépôt Git."
@@ -924,7 +998,7 @@ web_do_uninstall() {
         offer_backup "la suppression" || die "La sauvegarde a échoué : désinstallation interrompue, rien n'a été modifié."
     fi
     say ""
-    confirm_typed "DESINSTALLER TLS SCAN" || cancelled
+    confirm_typed "DESINSTALLER ORION" || cancelled
     if [ "$remove_data" = "oui" ]; then
         say ""
         confirm_typed "SUPPRIMER LES DONNEES" || cancelled
@@ -936,7 +1010,7 @@ web_do_uninstall() {
     else
         step "Suppression des conteneurs de $PROJECT (volumes conservés)" dc down --remove-orphans || return 1
     fi
-    step "Suppression des images" docker image rm "tls-scan-backend:$(image_tag)" "tls-scan-webui:$(image_tag)" || true
+    step "Suppression des images" remove_images || true
     if [ "$remove_certs" = "oui" ] && [ -d "$(cert_dir)" ] && [ ! -L "$(cert_dir)" ]; then
         step "Suppression des certificats" rm -rf -- "$(cert_dir)" || warn "Certificats non supprimés (droits ?)."
     else
@@ -948,8 +1022,212 @@ web_do_uninstall() {
         step_skipped "Suppression de .env (conservé)"
     fi
     say ""
-    say "${GREEN}TLS Scan WebUI est désinstallé.${RESET} Le dépôt Git ($ROOT) est conservé."
+    say "${GREEN}Orion WebUI est désinstallé.${RESET} Le dépôt Git ($ROOT) est conservé."
     [ "$remove_data" = "oui" ] || say "Les données sont conservées : une nouvelle installation les retrouvera."
+}
+
+# --- WebUI mode: Orion transition (installations made before the rebranding) -----------------------------------
+
+ENV_BACKUP_GLOB=".env.pre-orion-*"
+# Target project of migrate-orion; another name only for a rehearsal next to a real installation.
+MIGRATION_PROJECT="${ORION_MIGRATION_PROJECT:-$NEW_PROJECT}"
+
+# Copies .env (mode 600) before the transition changes it; prints the copy's path.
+save_env_copy() {
+    local copy; copy="$ROOT/.env.pre-orion-$(date -u +%Y%m%dT%H%M%SZ)"
+    ( umask 077; cp -p "$ENV_FILE" "$copy" ) || return 1
+    chmod 600 "$copy" && printf '%s' "$copy"
+}
+
+latest_env_copy() { find "$ROOT" -maxdepth 1 -name "$ENV_BACKUP_GLOB" -type f 2>/dev/null | sort | tail -n 1; }
+
+# migrate-config: every TLS_SCAN_X=value line becomes ORION_X=value unless ORION_X is already set (an explicit
+# ORION_ entry wins); values are never printed. The copy of .env is restored if Compose rejects the result.
+rename_env_keys() {
+    local tmp
+    tmp="$(mktemp "$ROOT/.env.XXXXXX")" || return 1
+    awk '
+        /^ORION_[A-Za-z0-9_]*=/ { split($0, kv, "="); have[kv[1]] = 1 }
+        { lines[NR] = $0 }
+        END {
+            for (i = 1; i <= NR; i++) {
+                line = lines[i]
+                if (line ~ /^TLS_SCAN_[A-Za-z0-9_]*=/) {
+                    key = substr(line, 1, index(line, "=") - 1); name = "ORION_" substr(key, 10)
+                    if (name in have) continue
+                    have[name] = 1; print "ORION_" substr(line, 10); continue
+                }
+                print line
+            }
+        }' "$ENV_FILE" >"$tmp" || { rm -f "$tmp"; return 1; }
+    chmod 600 "$tmp" && mv "$tmp" "$ENV_FILE"
+}
+
+web_do_migrate_config() {
+    [ -f "$ENV_FILE" ] || die "Aucun .env : rien à migrer."
+    local legacy copy
+    legacy="$(sed -n 's/^\(TLS_SCAN_[A-Za-z0-9_]*\)=.*/\1/p' "$ENV_FILE")"
+    [ -n "$legacy" ] || { say "Aucune variable TLS_SCAN_* dans .env : la configuration utilise déjà ORION_*."; return 0; }
+    say "Variables renommées en ORION_* (les valeurs ne changent pas et ne sont pas affichées) :"
+    printf '%s\n' "$legacy" | sed 's/^/    /'
+    ask_go "Renommer ces variables dans .env (une copie est conservée) ?" || cancelled
+    copy="$(save_env_copy)" || die "Impossible de copier .env."
+    rename_env_keys || { cp -p "$copy" "$ENV_FILE"; die "Échec du renommage : .env restauré."; }
+    if command -v docker >/dev/null 2>&1 && ! check_compose >"$LOG" 2>&1; then
+        cp -p "$copy" "$ENV_FILE"; cat "$LOG" >&2
+        die "Docker Compose refuse la configuration renommée : .env a été restauré à l'identique."
+    fi
+    say "${GREEN}Configuration migrée.${RESET} Copie de l'ancien .env : $copy (à supprimer après vérification)."
+}
+
+# Row count of every table of the database, one "table|count" line each, sorted: the integrity evidence.
+table_counts() {
+    dc exec -T postgres psql -U "$(db_user)" -d "$(db_name)" -At -c \
+        "select table_name || '|' || (xpath('/row/c/text()', query_to_xml(format('select count(*) as c from %I.%I', table_schema, table_name), false, true, '')))[1]::text
+         from information_schema.tables where table_schema = 'public' and table_type = 'BASE TABLE' order by 1"
+}
+
+# Number of entries of the project's data volume (reports, logs).
+data_entries() {
+    docker run --rm --entrypoint tar -v "$(data_volume)":/data:ro "$(postgres_image)" -C /data -cf - . | tar -tf - | wc -l | tr -d ' '
+}
+
+restore_data_volume() {
+    docker run --rm -i --entrypoint tar -v "$(data_volume)":/data "$(postgres_image)" -C /data -xf - <"$1"
+}
+
+MIGRATION_WORK=""
+MIGRATION_ARCHIVE=""
+MIGRATION_ENV_COPY=""
+MIGRATION_LEGACY_PROJECT=""
+
+migration_backup() {
+    make_backup "$BACKUP_DIR" || return 1
+    MIGRATION_ARCHIVE="$BACKUP_ARCHIVE"
+}
+migration_inventory() {
+    table_counts >"$MIGRATION_WORK/legacy.counts" || return 1
+    [ -s "$MIGRATION_WORK/legacy.counts" ] || { echo "Inventaire vide."; return 1; }
+    data_entries >"$MIGRATION_WORK/legacy.data" || return 1
+    echo "$(wc -l <"$MIGRATION_WORK/legacy.counts" | tr -d ' ') table(s), $(cat "$MIGRATION_WORK/legacy.data") entrée(s) de données."
+}
+migration_extract() { mkdir -p "$MIGRATION_WORK/archive" && verify_archive "$MIGRATION_ARCHIVE" "$MIGRATION_WORK/archive"; }
+migration_switch_env() {
+    MIGRATION_ENV_COPY="$(save_env_copy)" || return 1
+    env_set ORION_PROJECT "$MIGRATION_PROJECT"
+    env_set ORION_DB_NAME orion
+    env_set ORION_DB_USER orion
+    PROJECT="$MIGRATION_PROJECT"
+    echo "Copie de l'ancien .env : $MIGRATION_ENV_COPY"
+}
+migration_create() { dc up --no-start && dc up -d --wait postgres; }
+migration_restore() {
+    web_replace_database "$MIGRATION_WORK/archive" || return 1
+    if [ -s "$MIGRATION_WORK/archive/data.tar" ]; then restore_data_volume "$MIGRATION_WORK/archive/data.tar" || return 1; fi
+}
+# The copy must be exact BEFORE Orion starts (its scheduler could legitimately add rows afterwards).
+migration_compare() {
+    table_counts >"$MIGRATION_WORK/orion.counts" || return 1
+    if ! cmp -s "$MIGRATION_WORK/legacy.counts" "$MIGRATION_WORK/orion.counts"; then
+        echo "Les comptages diffèrent (TLS Scan → Orion) :"; diff "$MIGRATION_WORK/legacy.counts" "$MIGRATION_WORK/orion.counts"; return 1
+    fi
+    local data; data="$(data_entries)" || return 1
+    [ "$data" = "$(cat "$MIGRATION_WORK/legacy.data")" ] || { echo "Données persistantes : $data entrée(s) au lieu de $(cat "$MIGRATION_WORK/legacy.data")."; return 1; }
+    echo "$(wc -l <"$MIGRATION_WORK/orion.counts" | tr -d ' ') table(s) et $data entrée(s) de données identiques." | tee "$MIGRATION_WORK/compare.txt"
+}
+
+# Back to the TLS Scan installation exactly as it was: Orion is stopped (its volumes are kept for analysis), the
+# previous .env is put back and the untouched TLS Scan project is started again.
+restart_legacy() {
+    local copy="$1" legacy="$2"
+    PROJECT="$MIGRATION_PROJECT"; dc stop || true
+    cp -p "$copy" "$ENV_FILE" || return 1
+    PROJECT="$legacy"
+    start_stack && api_health
+}
+
+web_do_migrate_orion() {
+    banner
+    say "${BOLD}MIGRATION VERS ORION${RESET} (projet, base PostgreSQL et volumes)"
+    say ""
+    say "L'installation TLS Scan « $PROJECT » (base « $(db_name) ») est copiée vers le projet « $MIGRATION_PROJECT » (base « orion »)"
+    say "par une sauvegarde vérifiée puis une restauration, et les comptages de chaque table sont comparés."
+    say "Les volumes TLS Scan ne sont ni modifiés ni supprimés : rollback-orion y revient à tout moment."
+    say "Interruption de service : de l'arrêt de TLS Scan jusqu'au démarrage d'Orion."
+    say ""
+    [[ "$MIGRATION_PROJECT" =~ ^[a-z0-9][a-z0-9_-]*$ ]] || die "Nom de projet cible invalide : $MIGRATION_PROJECT"
+    [ "$PROJECT" != "$MIGRATION_PROJECT" ] || die "L'installation utilise déjà le projet « $MIGRATION_PROJECT »."
+    [ "$(db_name)" != orion ] || die "La base s'appelle déjà « orion » : rien à migrer."
+    web_check_prerequisites >"$LOG" 2>&1 || { cat "$LOG" >&2; return 1; }
+    [ -f "$ENV_FILE" ] || die "Aucun .env : rien à migrer."
+    web_installed || die "Aucune installation TLS Scan dans le projet « $PROJECT »."
+    local legacy="$PROJECT"
+    PROJECT="$MIGRATION_PROJECT"
+    if web_installed; then die "Le projet « $MIGRATION_PROJECT » existe déjà (conteneurs ou volumes) : rien n'est écrasé. Vérifiez-le avant de relancer."; fi
+    PROJECT="$legacy"
+    confirm_typed "MIGRER VERS ORION" || cancelled
+    say ""
+    MIGRATION_WORK="$(mktemp -d)"; chmod 700 "$MIGRATION_WORK"
+    # shellcheck disable=SC2064
+    trap "rm -rf '$MIGRATION_WORK'; rm -f '$LOG'" EXIT
+    MIGRATION_LEGACY_PROJECT="$legacy"
+    begin_steps 13
+    step "Sauvegarde vérifiée de TLS Scan" migration_backup || die "Sauvegarde impossible : rien n'a été modifié."
+    say "    $MIGRATION_ARCHIVE"
+    step "Inventaire des données TLS Scan" migration_inventory || die "Inventaire impossible : rien n'a été modifié."
+    sed -n '$p' "$LOG" | sed 's/^/    /'
+    step "Lecture de la sauvegarde" migration_extract || die "Sauvegarde illisible : rien n'a été modifié."
+    step "Arrêt de TLS Scan (volumes conservés)" dc stop || die "Arrêt impossible : rien n'a été modifié."
+    if step "Configuration Orion (.env copié)" migration_switch_env \
+        && step "Validation Docker Compose" check_compose \
+        && step "Construction des images" build_images \
+        && step "Création des volumes et de la base Orion" migration_create \
+        && step "Restauration des données dans Orion" migration_restore \
+        && step "Contrôle d'intégrité (comptages)" migration_compare \
+        && step "Démarrage d'Orion et migrations" start_stack \
+        && step "Migrations PostgreSQL" check_migrations \
+        && step "Santé des services" api_health; then
+        say ""
+        say "${GREEN}Migration terminée.${RESET} URL : $(public_url)"
+        say "Contrôle            : $(cat "$MIGRATION_WORK/compare.txt")"
+        say "Sauvegarde TLS Scan : $MIGRATION_ARCHIVE"
+        say "Ancien .env         : $MIGRATION_ENV_COPY"
+        say "Les volumes de « $legacy » sont conservés : rollback-orion revient à TLS Scan tant qu'ils existent."
+        say "Après recette, ils peuvent être supprimés manuellement (voir docs/admin/orion-migration.md)."
+        return 0
+    fi
+    say ""
+    warn "Échec de la migration : retour automatique à TLS Scan."
+    if [ -n "$MIGRATION_ENV_COPY" ]; then
+        step "Retour à TLS Scan" restart_legacy "$MIGRATION_ENV_COPY" "$legacy" \
+            || die "Le retour automatique a échoué : sauvegarde $MIGRATION_ARCHIVE, ancien .env $MIGRATION_ENV_COPY."
+    else
+        PROJECT="$legacy"; step "Redémarrage de TLS Scan" start_stack || die "Redémarrage impossible : sauvegarde $MIGRATION_ARCHIVE."
+    fi
+    say "TLS Scan est de nouveau en service, inchangé. Les volumes Orion créés sont conservés pour analyse."
+    return 1
+}
+
+web_do_rollback_orion() {
+    banner
+    local copy; copy="$(latest_env_copy)"
+    [ -n "$copy" ] || die "Aucune copie .env.pre-orion-* : pas de migration à annuler."
+    local legacy; legacy="$(sed -n 's/^ORION_PROJECT=//p; s/^TLS_SCAN_PROJECT=//p' "$copy" | tail -n 1)"; legacy="${legacy:-$LEGACY_PROJECT}"
+    [ "$PROJECT" = "$MIGRATION_PROJECT" ] || die "L'installation n'utilise pas le projet « $MIGRATION_PROJECT » : rien à annuler."
+    say "${RED}${BOLD}RETOUR À TLS SCAN${RESET}"
+    say ""
+    say "Orion est arrêté (ses volumes sont conservés) et l'installation TLS Scan « $legacy » redémarre avec $copy."
+    say "Les modifications faites dans Orion depuis la migration ne sont PAS reportées dans TLS Scan."
+    say ""
+    PROJECT="$legacy"
+    web_installed || die "Les volumes du projet « $legacy » n'existent plus : retour impossible, restaurez une sauvegarde."
+    PROJECT="$MIGRATION_PROJECT"
+    web_check_prerequisites >"$LOG" 2>&1 || { cat "$LOG" >&2; return 1; }
+    offer_backup "le retour à TLS Scan" || die "La sauvegarde a échoué : rien n'a été modifié."
+    confirm_typed "RETOUR TLS SCAN" || cancelled
+    begin_steps 1
+    step "Arrêt d'Orion et redémarrage de TLS Scan" restart_legacy "$copy" "$legacy" || return 1
+    say "${GREEN}TLS Scan est de nouveau en service.${RESET} URL : $(public_url)"
 }
 
 # --- Standalone mode --------------------------------------------------------------------------------------------
@@ -1013,12 +1291,12 @@ standalone_check_prerequisites() {
         echo "Dépendances manquantes :"; printf '%s\n' "$missing" | sed 's/^/    - /'
         return 1
     fi
-    [ -f "$ROOT/requirements.txt" ] && [ -f "$ROOT/tls_scan.py" ] || { echo "requirements.txt ou tls_scan.py est introuvable à côté de ce script."; return 1; }
+    [ -f "$ROOT/requirements.txt" ] && [ -f "$ROOT/orion.py" ] || { echo "requirements.txt ou orion.py est introuvable à côté de ce script."; return 1; }
     echo "Python : $("$PYTHON" --version 2>&1) ; Nmap : $(nmap --version 2>/dev/null | head -n 1)"
 }
 
-# Advanced (tests of this script): TLS_SCAN_PY_MODULES lists the modules proving the dependencies are installed.
-PY_MODULES="${TLS_SCAN_PY_MODULES:-yaml, nmap, cryptography, prettytable, tqdm, certifi}"
+# Advanced (tests of this script): ORION_PY_MODULES lists the modules proving the dependencies are installed.
+PY_MODULES="${ORION_PY_MODULES:-${TLS_SCAN_PY_MODULES:-yaml, nmap, cryptography, prettytable, tqdm, certifi}}"
 standalone_installed() { [ -x "$VENV/bin/python" ] && "$VENV/bin/python" -c "import $PY_MODULES" 2>/dev/null; }
 standalone_partial()   { [ -d "$VENV" ] && ! standalone_installed; }
 
@@ -1028,16 +1306,16 @@ standalone_create_venv() {
     "$PYTHON" -m venv "$VENV"
 }
 standalone_install_deps() { "$VENV/bin/python" -m pip install --disable-pip-version-check -r "$ROOT/requirements.txt"; }
-standalone_check_cli()    { "$VENV/bin/python" "$ROOT/tls_scan.py" --help >/dev/null && echo "CLI opérationnelle"; }
+standalone_check_cli()    { "$VENV/bin/python" "$ROOT/orion.py" --help >/dev/null && echo "CLI opérationnelle"; }
 
 # YAML configuration: reports are listed and each one is validated with --dry-run (no Nmap, no network).
 standalone_check_config() {
     local cfg="$ROOT/config/config.yaml" reports name n=0
     [ -f "$cfg" ] || { echo "$cfg est introuvable."; return 1; }
-    reports="$("$VENV/bin/python" "$ROOT/tls_scan.py" --config "$cfg" --list-reports)" || { echo "$reports"; return 1; }
+    reports="$("$VENV/bin/python" "$ROOT/orion.py" --config "$cfg" --list-reports)" || { echo "$reports"; return 1; }
     while IFS= read -r name; do
         [ -n "$name" ] || continue
-        "$VENV/bin/python" "$ROOT/tls_scan.py" --config "$cfg" --report "$name" --dry-run --no-log-file >/dev/null 2>"$LOG.err" \
+        "$VENV/bin/python" "$ROOT/orion.py" --config "$cfg" --report "$name" --dry-run --no-log-file >/dev/null 2>"$LOG.err" \
             || { echo "Rapport « $name » invalide :"; tail -n 5 "$LOG.err"; rm -f "$LOG.err"; return 1; }
         n=$((n + 1))
     done <<<"$reports"
@@ -1058,17 +1336,17 @@ standalone_usage() {
     say "Lancer un scan (l'environnement virtuel est $VENV) :"
     say ""
     say "    source .venv/bin/activate"
-    say "    python tls_scan.py --config config/config.yaml --list-reports"
-    say "    python tls_scan.py --config config/config.yaml --report <nom> --dry-run   # validation sans scan"
-    say "    python tls_scan.py --config config/config.yaml --report <nom>"
-    say "    python tls_scan.py -p fast ma-cible.example.org                           # scan ponctuel"
+    say "    python orion.py --config config/config.yaml --list-reports"
+    say "    python orion.py --config config/config.yaml --report <nom> --dry-run   # validation sans scan"
+    say "    python orion.py --config config/config.yaml --report <nom>"
+    say "    python orion.py -p fast ma-cible.example.org                           # scan ponctuel"
     say ""
     say "Aucun scan n'a été lancé par l'installation."
 }
 
 standalone_do_install() {
     banner
-    say "Installation de TLS Scan — Standalone (natif, sans Docker)."
+    say "Installation d'Orion — Standalone (natif, sans Docker)."
     standalone_installed && say "Une installation existe : l'environnement virtuel est réutilisé, configurations et rapports conservés."
     say ""
     if [ -n "$(standalone_missing)" ]; then standalone_offer_packages || true; fi
@@ -1164,7 +1442,7 @@ standalone_do_uninstall() {
         step_skipped "Suppression de logs/ et scan_reports/ (conservés)"
     fi
     say ""
-    say "${GREEN}TLS Scan Standalone est désinstallé.${RESET} Le dépôt Git ($ROOT) est conservé."
+    say "${GREEN}Orion Standalone est désinstallé.${RESET} Le dépôt Git ($ROOT) est conservé."
 }
 
 # --- interactive menus ------------------------------------------------------------------------------------------
@@ -1179,7 +1457,7 @@ menu_standalone() {
     while true; do
         say ""
         banner
-        say "TLS Scan — Standalone"
+        say "Orion — Standalone"
         say ""
         standalone_show_status
         say "[1] Installer"
@@ -1216,7 +1494,7 @@ menu_webui() {
     while true; do
         say ""
         banner
-        say "TLS Scan — WebUI (Docker)"
+        say "Orion — WebUI (Docker)"
         say ""
         if web_installed; then
             say "État : Installé"
@@ -1264,7 +1542,7 @@ menu_main() {
     local choice
     while true; do
         banner
-        say "Bienvenue dans l'assistant TLS Scan."
+        say "Bienvenue dans l'assistant Orion."
         say ""
         say "Choisissez votre mode de déploiement :"
         say ""
@@ -1293,7 +1571,7 @@ menu_main() {
 
 # --- command line --------------------------------------------------------------------------------------------------
 
-usage() { sed -n '2,36p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,40p' "$0" | sed 's/^# \{0,1\}//'; }
 
 COMMAND=""
 ARGS=()
@@ -1330,14 +1608,14 @@ if [ "$MODE" = "standalone" ]; then
         status|verify)      standalone_do_status ;;
         reinstall)          standalone_do_reinstall ;;
         uninstall)          standalone_do_uninstall ;;
-        backup|restore|reset-admin|logs) die "La commande « $COMMAND » n'existe qu'en mode WebUI (--mode webui)." ;;
+        backup|restore|reset-admin|logs|migrate-config|migrate-orion|rollback-orion) die "La commande « $COMMAND » n'existe qu'en mode WebUI (--mode webui)." ;;
         *) echo "Commande inconnue : $COMMAND" >&2; usage >&2; exit 2 ;;
     esac
     exit $?
 fi
 
 case "$COMMAND" in
-    install|update|redeploy|status|verify|backup|restore|reset-admin|logs|reinstall|uninstall|rollback-secrets) check_project_name ;;
+    install|update|redeploy|status|verify|backup|restore|reset-admin|logs|reinstall|uninstall|rollback-secrets|migrate-config|migrate-orion|rollback-orion) check_project_name ;;
     *) echo "Commande inconnue : $COMMAND" >&2; usage >&2; exit 2 ;;
 esac
 case "$COMMAND" in
@@ -1348,6 +1626,9 @@ case "$COMMAND" in
     restore)         web_do_restore "${ARGS[0]:-}" ;;
     reset-admin)     web_do_reset_admin ;;
     rollback-secrets) web_do_rollback_secrets ;;
+    migrate-config)  web_do_migrate_config ;;
+    migrate-orion)   web_do_migrate_orion ;;
+    rollback-orion)  web_do_rollback_orion ;;
     logs)            web_do_logs "${ARGS[0]:-}" ;;
     reinstall)       web_do_reinstall ;;
     uninstall)       web_do_uninstall ;;
