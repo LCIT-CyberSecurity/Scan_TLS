@@ -1,7 +1,9 @@
 """Runtime configuration of the WebUI application, read from ORION_* environment variables.
 
 Installations from before the Orion rebranding still set TLS_SCAN_*: each legacy variable is read only when its ORION_*
-counterpart is absent, so an explicit ORION_* value always wins. Legacy names are reported (never their values) at start.
+counterpart is absent or empty, so an explicit ORION_* value always wins. Legacy names are reported (never their values)
+at start. An empty variable counts as unset, as `${VAR:-default}` does in Compose, which passes "" for an unset optional
+setting (a boolean such as ORION_SSO_AUTO_PROVISION would otherwise refuse to start).
 """
 from __future__ import annotations
 
@@ -23,20 +25,18 @@ logger = logging.getLogger("orion_app.config")
 
 
 def env_value(name: str, default: str = "") -> str:
-    """ORION_<name> when it is set (even empty), else the legacy TLS_SCAN_<name>, else the default."""
-    if ENV_PREFIX + name in os.environ:
-        return os.environ[ENV_PREFIX + name]
-    return os.environ.get(LEGACY_ENV_PREFIX + name, default)
+    """ORION_<name> when it is set and not empty, else the legacy TLS_SCAN_<name>, else the default."""
+    return os.environ.get(ENV_PREFIX + name) or os.environ.get(LEGACY_ENV_PREFIX + name) or default
 
 
 def legacy_variables_in_use() -> list[str]:
     """Names of the TLS_SCAN_* variables actually used because no ORION_* variable replaces them."""
     return sorted(name for name in os.environ
-                  if name.startswith(LEGACY_ENV_PREFIX) and ENV_PREFIX + name[len(LEGACY_ENV_PREFIX):] not in os.environ)
+                  if name.startswith(LEGACY_ENV_PREFIX) and os.environ[name] and not os.environ.get(ENV_PREFIX + name[len(LEGACY_ENV_PREFIX):]))
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix=ENV_PREFIX, extra="ignore")
+    model_config = SettingsConfigDict(env_prefix=ENV_PREFIX, extra="ignore", env_ignore_empty=True)
 
     @classmethod
     def settings_customise_sources(cls, settings_cls: type[BaseSettings], init_settings: PydanticBaseSettingsSource,

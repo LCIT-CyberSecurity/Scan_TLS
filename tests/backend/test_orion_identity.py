@@ -39,10 +39,20 @@ def test_env_value_priority_and_values_never_listed(monkeypatch):
     monkeypatch.delenv("ORION_MCP_ALLOWED_HOSTS", raising=False)
     monkeypatch.setenv("TLS_SCAN_MCP_ALLOWED_HOSTS", "legacy.example")
     assert env_value("MCP_ALLOWED_HOSTS") == "legacy.example"
+    monkeypatch.setenv("ORION_MCP_ALLOWED_HOSTS", "orion.example")
+    assert env_value("MCP_ALLOWED_HOSTS") == "orion.example"         # an ORION_ value wins
     monkeypatch.setenv("ORION_MCP_ALLOWED_HOSTS", "")
-    assert env_value("MCP_ALLOWED_HOSTS") == ""                      # an explicit ORION_ value, even empty, wins
+    assert env_value("MCP_ALLOWED_HOSTS") == "legacy.example"        # empty counts as unset, as ${VAR:-} does in Compose
     monkeypatch.setenv("TLS_SCAN_SESSION_SECRET", "sentinel-value-never-listed")
     assert "sentinel-value-never-listed" not in " ".join(legacy_variables_in_use())
+
+
+def test_empty_optional_settings_from_compose_keep_their_defaults(monkeypatch):
+    for name in ("SSO_AUTO_PROVISION", "OIDC_PROVIDER", "MAX_SCAN_WORKERS"):
+        monkeypatch.setenv(f"ORION_{name}", "")
+        monkeypatch.delenv(f"TLS_SCAN_{name}", raising=False)
+    settings = Settings(environment="test")
+    assert settings.sso_auto_provision is None and settings.oidc_provider == "" and settings.max_scan_workers == 8
 
 
 def test_legacy_secret_file_variable_is_honoured(monkeypatch, tmp_path):
