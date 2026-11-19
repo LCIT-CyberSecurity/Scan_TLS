@@ -1,12 +1,12 @@
 import { expect, test } from "@playwright/test";
-import { DEMO, login } from "./helpers";
+import { DEMO, login, navigateSidebar } from "./helpers";
 
 test("user: create a target, launch a scan, follow it, read results, download a report, compare", async ({ page }) => {
   await login(page, "user@crashtest.example.com", DEMO);
   await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
 
   // create a target with a tag
-  await page.getByRole("link", { name: /Targets/ }).click();
+  await navigateSidebar(page, "Scanning", "Targets");
   await page.getByRole("button", { name: "New target" }).click();
   const value = `e2e-${Date.now()}.example.org`;
   await page.getByRole("dialog").getByLabel("Targets", { exact: true }).fill(value);
@@ -15,7 +15,7 @@ test("user: create a target, launch a scan, follow it, read results, download a 
   await expect(page.getByRole("cell", { name: value })).toBeVisible();
 
   // launch the seeded HTTPS-only lab definition
-  await page.getByRole("link", { name: "Scans", exact: true }).click();
+  await navigateSidebar(page, "Scanning", "Scans");
   await page.getByRole("tab", { name: "Definitions" }).click();
   const row = page.getByRole("row", { name: /Lab - HTTPS only/ });
   await row.getByRole("button", { name: "Run" }).click();
@@ -40,7 +40,7 @@ test("user: create a target, launch a scan, follow it, read results, download a 
 
   // a second run, then compare with the previous one
   const url = page.url();
-  await page.getByRole("link", { name: "Scans", exact: true }).click();
+  await navigateSidebar(page, "Scanning", "Scans");
   await page.getByRole("tab", { name: "Definitions" }).click();
   await page.getByRole("row", { name: /Lab - HTTPS only/ }).getByRole("button", { name: "Run" }).click();
   await expect(page).not.toHaveURL(url);

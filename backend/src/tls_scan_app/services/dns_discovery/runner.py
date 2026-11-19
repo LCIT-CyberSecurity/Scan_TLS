@@ -13,10 +13,16 @@ from sqlalchemy.orm import Session as DbSession
 
 from tls_scan_app.models import DnsDiscovery
 
-from .methods import METHOD_FUNCTIONS, Collector, Ctx, Stopped
+from . import lookalike
+from .methods import METHOD_FUNCTIONS, Collector, Ctx, Stopped, fetch_ct
 from .model import DnsLookup, Lookup
 from .policy import (
-    FAST_METHODS, LEGACY_METHODS, MAX_DURATION, METHODS, DiscoveryError, load_settings, parse_server,
+    LEGACY_METHODS,
+    MAX_DURATION,
+    METHODS,
+    DiscoveryError,
+    load_settings,
+    parse_server,
 )
 
 logger = logging.getLogger("tls_scan_app.dns_discovery")
@@ -112,11 +118,27 @@ def process_next(db: DbSession, *, lookup=None, transfer=dns.query.xfr, ct_fetch
         return False
     row.status, row.started_at, row.heartbeat_at = "running", now, now
     domain, row_id, options = row.domain, row.id, dict(row.options or {})
+    lookalike_monitor_id = options.get("lookalike_monitor_id")
+    if lookalike_monitor_id:
+        from tls_scan_app.models import DnsLookalikeMonitor
+
+        try:
+            monitor = db.get(DnsLookalikeMonitor, lookalike_monitor_id)
+        except (TypeError, ValueError):
+            monitor = None
+        if monitor is None or not monitor.enabled or monitor.deleted_at is not None:
+            row.status, row.error, row.finished_at = "failed", "monitor disabled before execution", now
+            db.commit()
+            return True
+        domain = monitor.domain
+        options = {**(monitor.options or {}), "lookalike_monitor_id": str(monitor.id)}
     if row.cancel_requested:
         row.status, row.finished_at, row.error = "failed", now, "cancelled"
         db.commit()
         return True
     settings = load_settings(db)
+    if lookalike_monitor_id and not settings.get("ct_enabled", True):
+        options["ct_enabled"] = False
     db.commit()
     last_beat = [time.monotonic()]
 
@@ -138,8 +160,14 @@ def process_next(db: DbSession, *, lookup=None, transfer=dns.query.xfr, ct_fetch
             db.commit()
 
     try:
-        result = asyncio.run(discover_async(domain, options, settings, lookup=lookup, transfer=transfer, ct_fetch=ct_fetch, should_stop=should_stop, progress=progress))
-        error = failure_message(result)
+        if lookalike_monitor_id:
+            result = asyncio.run(lookalike.run_monitor(domain, options, lookup=lookup,
+                                                       ct_fetch=fetch_ct if options.get("ct_enabled") else None,
+                                                       should_stop=should_stop))
+            error = ""
+        else:
+            result = asyncio.run(discover_async(domain, options, settings, lookup=lookup, transfer=transfer, ct_fetch=ct_fetch, should_stop=should_stop, progress=progress))
+            error = failure_message(result)
     except DiscoveryError as exc:
         result, error = None, str(exc)
     except Exception:  # noqa: BLE001
@@ -147,15 +175,49 @@ def process_next(db: DbSession, *, lookup=None, transfer=dns.query.xfr, ct_fetch
         result, error = None, "Discovery failed"
     db.rollback()
     row = db.get(DnsDiscovery, row_id)
+    if result and lookalike_monitor_id:
+        previous_rows = db.execute(select(DnsDiscovery).where(DnsDiscovery.domain == domain, DnsDiscovery.status == "done")
+                                   .order_by(DnsDiscovery.created_at.desc()).limit(100)).scalars().all()
+        previous = next((r.result for r in previous_rows if r.id != row_id and r.result
+                         and str((r.options or {}).get("lookalike_monitor_id")) == str(lookalike_monitor_id)), None)
+        old = {o.get("domain"): o for o in (previous or {}).get("observations", [])}
+        for observation in result.get("observations", []):
+            was_observed = observation.get("dns_status") == "resolved" or observation.get("ct_status") == "observed" or observation.get("rdap_status") == "registered"
+            prior = old.get(observation.get("domain"), {})
+            prior_observed = prior.get("dns_status") == "resolved" or prior.get("ct_status") == "observed" or prior.get("rdap_status") == "registered"
+            if was_observed and not prior_observed:
+                observation["change"] = "new"
+            elif was_observed and prior_observed and any(observation.get(k) != prior.get(k) for k in ("records", "ct_status", "ct_names", "rdap_status")):
+                observation["change"] = "changed"
+            elif not was_observed and prior_observed:
+                observation["change"] = "not_observed"  # never call absence deletion
+            elif was_observed:
+                observation["change"] = "known"
+            else:
+                observation["change"] = "not_observed"
+        result["compared_with"] = str(next((r.id for r in previous_rows if r.id != row_id and r.result
+                                             and str((r.options or {}).get("lookalike_monitor_id")) == str(lookalike_monitor_id)), "")) or None
+        from tls_scan_app.models import DnsLookalikeMonitor, Notification, User
+
+        monitor = db.get(DnsLookalikeMonitor, lookalike_monitor_id)
+        if monitor and not row.cancel_requested and (monitor.options or {}).get("notifications_enabled"):
+            user = db.get(User, monitor.owner_id) if monitor.owner_id else None
+            wanted = set(user.notify_events.split(",")) if user and user.notify_events is not None else set()
+            alerts = [o for o in result["observations"] if not o.get("wildcard") and o.get("change") in ("new", "changed")
+                      and (o.get("dns_status") == "resolved" or o.get("ct_status") == "observed" or o.get("rdap_status") == "registered")]
+            if user and user.active and "dns_lookalike" in wanted and alerts:
+                lines = "\n".join(f"- {o['domain']} ({o['change']}; DNS={o['dns_status']}, CT={o['ct_status']}, RDAP={o['rdap_status']})" for o in alerts[:10])
+                db.add(Notification(user_id=user.id, event="dns_lookalike", subject=f"[TLS Scan] {len(alerts)} new lookalike observation(s)",
+                                    body=f"Reference domain: {domain}\nThese observations need review and are not proof of malicious intent:\n{lines}\n"))
     cancelled = bool(row.cancel_requested)
-    row.status = "done" if result and not error else "failed"
+    row.status = "done" if result and not error and not cancelled else "failed"
     row.result, row.error, row.finished_at, row.progress = result, error or ("cancelled" if cancelled and not result else ""), datetime.now(UTC), None
     from tls_scan_app.services import audit
 
     audit.record(db, "target.discover.done", actor_label="worker", resource_type="dns_discovery", resource_id=row_id,
                  outcome="success" if row.status == "done" else "failure",
                  detail={"domain": domain, "methods": {k: v["status"] for k, v in (result or {}).get("methods", {}).items()},
-                         "resolver": (result or {}).get("resolver"), "transfer_possible": bool(result and result["transfer_possible"]),
-                         "names": len(result["observations"]) if result else 0, "partial": bool(result and result["partial"]), "cancelled": cancelled})
+                         "resolver": (result or {}).get("resolver"), "transfer_possible": bool(result and result.get("transfer_possible", False)),
+                         "names": len((result or {}).get("observations", [])), "partial": bool(result and result.get("partial", False)), "cancelled": cancelled})
     db.commit()
     return True

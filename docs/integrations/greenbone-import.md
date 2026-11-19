@@ -1,53 +1,104 @@
-# OpenVAS / Greenbone imports
+# OpenVAS / Greenbone target import
 
-Administration → Imports provides two sources for the same preview and importer:
+Administration → Imports synchronizes **target addresses only** into the TLS Scan inventory. The connector is read-only: it never starts or changes a Greenbone scan and it does not import Tasks, Groups, Port Lists, Scan Configurations, Schedules, tags, reports, NVTs or credentials. TLS Scan remains responsible for ports, profiles, policies, scan definitions and schedules.
 
-- GMP over TLS is recommended. Retrieval is read-only and runs in the TLS Scan worker.
-- GMP XML response documents can be uploaded when the Greenbone server is unreachable.
-
-Neither path imports scan credentials, NVTs, vulnerability reports, or runs scans. A selected Greenbone Task can create a TLS Scan definition only after the administrator explicitly chooses an existing published TLS Scan profile and one or more published policies. A Greenbone scan configuration is context only; it is never misrepresented as a TLS Scan profile. Schedules are shown but are not created or activated. TCP ports from a selected Port List are normalized; UDP ports are ignored. Exclusions are displayed as warnings and are not translated into a TLS Scan exclusion automatically.
+The workflow remains **Configure → Test → Retrieve / Upload → Preview → Select → Import → History**. Every import is explicit and auditable; a dry run does not mutate the inventory. TLS Scan schedule definitions remain separate and editable in **Planifications**; Greenbone schedules are never imported or changed.
 
 ## GMP access and secrets
 
-Create a dedicated Greenbone account (for example tls-scan-import) with read-only visibility of Targets, Tasks, Port Lists, Scan Configurations, Schedules, and Tags. The exact role/permissions vary with gvmd release and local RBAC; verify each get_* command with the account. Do not use the Greenbone administrator account. The importer never calls GMP create, modify, delete, or start-task commands and does not read scan credentials.
+Use a dedicated Greenbone account with read-only visibility of Targets. Retrieval calls `get_version`, authenticates, then calls only `get_targets`; the connection test likewise validates authentication and `get_targets` access. No other collection read operation is issued. Do not use the Greenbone administrator account.
 
-The backend must be able to reach gvmd from its container. GMP is not the Greenbone web UI or a REST/JSON API. Some Greenbone Community Edition deployments expose only a Unix socket; this first release supports TLS transport only. Do not expose GMP to the public Internet. Prefer a private network or protected tunnel and configure the exact destination hostname/IP in TLS_SCAN_GREENBONE_ALLOWED_HOSTS (comma-separated if multiple administrative endpoints are intentionally allowed).
+The backend must be able to reach gvmd from its container. GMP is not the Greenbone web UI or a REST/JSON API. This connector supports TLS transport only. Do not expose GMP to the public Internet. Prefer a private network or protected tunnel and configure the exact destination hostname/IP in `TLS_SCAN_GREENBONE_ALLOWED_HOSTS` (comma-separated if multiple administrative endpoints are intentionally allowed).
 
-Configure the GMP login secret through the deployment secret mechanism, not the UI or database:
+A TLS Scan administrator can set **New GMP password** under **Administration → Imports → OpenVAS / Greenbone**. Leave it empty to preserve the current value. A saved password takes precedence over the deployment password. The deployment script provisions a dedicated `greenbone_credential_key` secret for API and worker. PostgreSQL stores the encrypted password and the UI only shows whether it is configured. Back up the key separately from the database, using your secret backup procedure. Changing the host, port or account with a saved password requires submitting the password again.
 
-    TLS_SCAN_GREENBONE_ALLOWED_HOSTS=greenbone.internal
-    TLS_SCAN_GREENBONE_USERNAME=tls-scan-import
-    TLS_SCAN_GREENBONE_PASSWORD_FILE=/run/secrets/greenbone_password
-    TLS_SCAN_GREENBONE_CA_FILE=/run/secrets/greenbone_ca.pem
-    # Optional mutual-TLS files, only if the gvmd endpoint requires a client certificate:
-    # TLS_SCAN_GREENBONE_CLIENT_CERT_FILE=/run/secrets/greenbone_client.crt
-    # TLS_SCAN_GREENBONE_CLIENT_KEY_FILE=/run/secrets/greenbone_client.key
+The existing deployment secret remains the default until a password is entered in the UI:
 
-The CA and client-certificate paths refer to files mounted into both API and worker containers. Server certificate verification is always enabled. GMP application credentials remain distinct from TLS transport credentials. The UI stores only connection label, host, port, username, and timeout in PostgreSQL; it never returns the password or certificate material. The configured host must exactly match the server-side allowlist.
+```text
+TLS_SCAN_GREENBONE_ALLOWED_HOSTS=greenbone.internal
+TLS_SCAN_GREENBONE_USERNAME=tls-scan-import
+TLS_SCAN_GREENBONE_PASSWORD_FILE=/run/secrets/greenbone_password
+TLS_SCAN_GREENBONE_CA_FILE=/run/secrets/greenbone_ca.pem
+# Optional mutual-TLS files, only if gvmd requires a client certificate:
+# TLS_SCAN_GREENBONE_CLIENT_CERT_FILE=/run/secrets/greenbone_client.crt
+# TLS_SCAN_GREENBONE_CLIENT_KEY_FILE=/run/secrets/greenbone_client.key
+```
 
-Use Administration → Imports → OpenVAS / Greenbone → Test connection to inspect DNS, TCP, TLS, GMP, authentication, read permissions, and visible resource counts. A passing TCP or TLS step alone does not mean the GMP login works.
+The CA and optional client-certificate paths refer to files mounted into API and worker containers. Server certificate verification is always enabled. GMP application credentials are separate from TLS transport credentials. The API never returns the password, encrypted value or certificate material. The configured host must exactly match the server-side allowlist, and resolved loopback/link-local/multicast/unspecified addresses are rejected.
+
+Use Administration → Imports → OpenVAS / Greenbone → Test connection to inspect DNS, TCP, TLS, GMP, authentication and read access to Targets. A passing TCP or TLS step alone does not mean the GMP login works.
 
 ## XML fallback
 
-Upload one or more GMP XML response documents for Targets, Tasks, Port Lists, Scan Configurations, Schedules, or Tags. The upload accepts GMP configuration responses, not vulnerability reports. Documents are size-bounded and parsed with entity expansion disabled. A second upload of identical content has a stable source identity.
+When GMP is unreachable, upload one or more GMP `get_targets_response` XML documents. Each file must contain target entries with `hosts`; a Port List is not required. Other XML response types (including Tasks and vulnerability reports) are rejected. Documents are size-bounded and parsed with entity expansion disabled. For recurring exports, keep the same target-export filename(s) so the preview can compare addresses with the previous upload; changing the file names starts a separate source history.
 
-For a one-off export, use an isolated gvm-tools configuration file readable only by the operator (mode 0600) rather than putting a password in command arguments or shell history. gvm-cli reads its defaults from ~/.config/gvm-tools.conf; the [gmp] and [tls] sections hold credentials and transport settings. Example read requests:
+For a one-off export, use an isolated gvm-tools configuration file readable only by the operator (mode 0600) rather than putting a password in command arguments or shell history. Example:
 
-    gvm-cli -c /secure/path/gvm-tools.conf tls --hostname greenbone.internal --xml '<get_targets/>'
-    gvm-cli -c /secure/path/gvm-tools.conf tls --hostname greenbone.internal --xml '<get_tasks/>'
-    gvm-cli -c /secure/path/gvm-tools.conf tls --hostname greenbone.internal --xml '<get_port_lists/>'
-    gvm-cli -c /secure/path/gvm-tools.conf tls --hostname greenbone.internal --xml '<get_scan_configs/>'
-    gvm-cli -c /secure/path/gvm-tools.conf tls --hostname greenbone.internal --xml '<get_schedules/>'
-    gvm-cli -c /secure/path/gvm-tools.conf tls --hostname greenbone.internal --xml '<get_tags/>'
+```sh
+gvm-cli -c /secure/path/gvm-tools.conf tls --hostname greenbone.internal --xml '<get_targets/>'
+```
 
-Save each response as an XML file and upload them together. Do not use --gmp-password on a command line; process arguments may be visible to other local users. Review the exported XML before upload and protect/delete temporary files according to local policy.
+Save the Targets response and upload it. Do not use `--gmp-password` on a command line; process arguments may be visible to other local users. Review the XML before upload and protect/delete temporary files according to local policy.
 
 ## Matching and import behavior
 
-Both modes normalize hosts through the TLS Scan target normalizer. A multi-host Greenbone Target becomes one TLS Scan target per valid IP/FQDN/CIDR host, and its Target name is proposed as a group. Matching uses the existing (value, ports) identity. Existing target names, descriptions, ports, tags, SI assignments, and group membership are not overwritten. Existing groups are reused by exact name and receive only additive memberships. New targets receive the Import OpenVAS tag by default; existing targets are not retagged.
+Each host is normalized by the TLS Scan target normalizer as an IP address, FQDN or CIDR. Matching uses only the exact normalized address; Greenbone UUIDs, ports, DNS resolution and address containment are not identity keys. For example, an FQDN is not treated as equal to an IP it resolves to, and an IP is not treated as equal to a containing CIDR.
 
-Review the preview and explicitly select targets before applying. For selected Tasks, choose an existing published profile and policy set; tasks whose Target is missing are not selectable. Their definitions reference only the selected TLS Scan targets, preserve the Greenbone Task UUID as provenance, and are reused on subsequent imports rather than overwritten. The dry-run endpoint makes no inventory changes. Source UUIDs and TLS Scan object IDs are stored separately from the display tag for repeat imports. The history records mode, user, date, status, and object counts. Scan Configurations, Tags, and Schedules are displayed for context, but their engine-specific contents and scheduling rules are not copied. No Greenbone schedule is imported or enabled.
+An address already present in TLS Scan is reused without changing any field or association: ports, name, description, tags, information-system links, groups, scan definitions and TLS configuration remain untouched. Existing ports are not expanded. New addresses are created with empty ports, which means the TLS Scan profile chooses the port scope. New targets receive the `Import OpenVAS` provenance tag and retain a Greenbone source mapping for audit and repeat imports.
+
+Historical TLS Scan rows may contain the same normalized address with different ports. Such an address is shown as ambiguous and no row is created or modified. Repeating an import is idempotent: it does not create additional rows for addresses that already exist, even if a source UUID changed.
+
+The preview compares normalized target addresses with the most recent snapshot of the same source and can report changed metadata or addresses absent from the latest retrieval. Absence is informational only: no target is deleted, disabled, detached from a group, or otherwise changed automatically. Invalid host values are skipped with a warning. Administrators select the addresses to add before applying the import.
 
 ## Verification
 
-Automated XML tests use fixtures; GMP behavior is exercised with mocked python-gvm in the test suite. A real Greenbone instance is optional and was not required for CI. python-gvm supports GMP over TLS, SSH, and Unix socket transports; this first implementation intentionally enables TLS only. Consult the official [python-gvm connection API](https://greenbone.github.io/python-gvm/api/connections.html), [python-gvm usage](https://greenbone.github.io/python-gvm/usage.html), and [gvm-tools CLI](https://greenbone.github.io/gvm-tools/tools.html) docs for release-specific behavior.
+The Docker backend suite exercises XML validation and XXE protection, target-only GMP requests with a mocked `python-gvm` connection, IP/FQDN/CIDR normalization, matching independent of ports and source UUID, unchanged existing inventory, historical ambiguous rows, repeat-import idempotence and the ADMIN-only API boundary. It also verifies that an existing DNS schedule is updated in place by an operator while a regular user is denied.
+
+For a live GMP rehearsal, use a separate test-only TLS Scan database and Docker network, a Greenbone account with read-only visibility of only the disposable Targets, and a mounted CA/password file. Seed one Target matching an existing TLS Scan record and one new in-scope address. Do not start a Greenbone scanner or task. Verify the connection steps, preview and dry-run, selectively import the new address, confirm the existing record and its group/SI links are unchanged, repeat retrieval/import, then remove only the disposable source Target and confirm the TLS Scan target remains. Record the target counts and result without exporting secrets. Never attach the live rehearsal to the persistent Sandbox database. The repository's isolated backend tests can be run with `ops/dev/test-stack.sh`.
+
+Regression check for schedule editing: in **Planifications**, edit a TLS schedule and save a changed frequency or time; confirm the same schedule is updated and keeps its definition, timezone and active state. For DNS schedules, use an operator account, re-confirm authorization, and verify the options and frequency are saved to the same schedule. A Greenbone import or a missing Greenbone Target must not change any TLS Scan schedule.
+
+Consult the official [python-gvm connection API](https://greenbone.github.io/python-gvm/api/connections.html) and [gvm-tools CLI](https://greenbone.github.io/gvm-tools/tools.html) documentation for release-specific behavior.
+
+## LST-24 persistent Sandbox rehearsal status (2026-11-18)
+
+The earlier disposable GMP rehearsal is recorded in Jira LST-24 comment 10762. It passed the connector and import invariants against a temporary TLS Scan database. It does **not** prove an import into the persistent Sandbox inventory.
+
+The follow-up inventory found no OpenVAS/GVM containers (active or stopped), Compose project, labeled volume/network, or deployment directory on the TLS Scan integration VM. The local SSH configuration contained only the `vm-integrations` alias, but internal DNS did resolve `VM-OpenVAS.home` to `192.168.1.28` plus IPv6 records. That VM was checked directly: the IPv4 neighbor entry was `FAILED`, SSH returned `No route to host`, and targeted SSH/GMP (9390)/GSA (9392) TCP checks to the published addresses timed out or were unreachable. No network scan was run.
+
+The API container's Greenbone configuration was also inspected without printing secrets: its allowed-host list was empty, the username was unset, and the CA, password, client certificate and client key paths were not present as non-empty files. Compose mount declarations existed, but they did not provide usable secret files. Therefore TLS Scan could not initiate a real GMP request even if the manager host were reachable.
+
+The Docker host originally had three unreferenced Greenbone images: `gvmd:stable` (manager, 735,485,753 bytes), `pg-gvm:stable` (Greenbone PostgreSQL database, 509,637,033 bytes), and `pg-gvm-migrator:stable` (database migration helper, 685,058,018 bytes). At the operator's request, the two support images were removed and `gvmd:stable` was retained. No containers, volumes, or networks were removed. About 1.1 GB was freed; the disk then had about 23 GB available. Reusing those support roles in a future manager stack will require pulling those two images again.
+
+The Sandbox itself was not changed by the OpenVAS rehearsal: no GMP endpoint was configured, no import was submitted, and no target or schedule was created or edited. Post-deployment inventory counts were 4 scan runs, 2 schedules, 0 endpoint exposure records, and 0 DNS lookalike monitors. The TLS Scan API, PostgreSQL, WebUI, worker, and scheduler were healthy; WebUI, readiness, and auth-provider endpoints returned HTTP 200. The live GMP connection, persistent target baseline, preview, import, idempotence, source-removal, and authenticated import WebUI scenarios remain **NOT EXECUTED**.
+
+The Sandbox WebUI login was opened with Playwright through a temporary SSH tunnel. The test context accepted the self-signed HTTPS certificate only for that browser context; no global TLS verification setting was changed. The page returned HTTP 200 and rendered the login page. No login or authenticated import flow was attempted, and the screenshot is stored in the private execution evidence directory rather than committed because it does not show the required import preview.
+
+### Repeat the blocked-environment check
+
+Run these read-only checks from the authorized integration host before scheduling the recipe:
+
+```sh
+ssh vm-integrations 'docker ps -a --format "{{.Names}} {{.Status}}"'
+ssh vm-integrations 'docker volume ls --format "{{.Name}}"'
+ssh vm-integrations 'getent ahostsv4 VM-OpenVAS.home; getent ahostsv6 VM-OpenVAS.home'
+ssh vm-integrations 'docker network ls --format "{{.Name}} {{.Labels}}"'
+ssh vm-integrations 'docker image ls --format "{{.Repository}}:{{.Tag}} {{.Size}}" | grep -Ei "greenbone|openvas|gvm"'
+ssh vm-integrations 'timeout 3 bash -c "</dev/tcp/192.168.1.28/9390"'
+```
+
+Once the named manager is reachable, inspect its Docker containers, volumes and networks before changing it. The TLS Scan connector requires certificate-verified GMP over TLS, not the Greenbone WebUI API or a Unix socket. Verify the API allowlist is exact, mount the CA/password (and optional client cert/key) as non-empty secret files, and use a read-only GMP account for Targets. Take the Sandbox backup and inventory baseline before any import. Do not enable feeds/scanning or contact any other LAN host. Follow the E2E sequence above and record each scenario in Jira; do not infer a persistent import result from the previous disposable rehearsal.
+
+### Recorded status
+
+| Check | Result | Evidence |
+| --- | --- | --- |
+| LST-24 schedule edit code/test from PR #36 | PASS | Jira comment 10762; PR #36 merged at `985d553b9eb6f52480d54330ed1a23bbc2752ace` |
+| Current TLS Scan Sandbox Docker health | PASS | API/DB/WebUI healthy; worker/scheduler running; restart count 0; readiness HTTP 200 |
+| Current Sandbox login page visual check | PASS, login page only | Playwright response HTTP 200; self-signed HTTPS exception limited to the test context |
+| Current real Docker TLS Scan → GMP connection | NOT EXECUTED | `VM-OpenVAS.home` resolves to 192.168.1.28, but its SSH/GMP/GSA endpoints are unreachable; Sandbox allowlist and secret files are unusable |
+| Persistent Sandbox inventory baseline, preview and import | NOT EXECUTED | No GMP source; no inventory mutation was made |
+| Persistent idempotence/source-removal and authenticated WebUI flow | NOT EXECUTED | Depends on a real test manager and test account |
+| Confluence architecture page update | NOT EXECUTED | Search returned no accessible matching Scan TLS/Greenbone pages |
+
+Evidence time: 2026-11-18 22:50 Europe/Paris. The sanitized inventory report attached to Jira comment 10801 has SHA-256 `11c37689899836b67b77425240d2bf518648a880970feda1c188fc7fab32bba1`. Before cleanup the cached image digests were `gvmd:stable` `sha256:6c472ffc3e6eb6d806b43ffbbe3fb6b003e986dbe4dc562ad12f4b2cda38ba98`, `pg-gvm:stable` `sha256:44bd4582dc686eb59f4a8450782acb9c1b0d1bfe107231f9625bd7dea8343b66`, and `pg-gvm-migrator:stable` `sha256:87a3309535fba950c1eb3ddd11375ff1545b33bf8c92499b6e1c51798efe214a`. Greenbone's [container guide](https://greenbone.github.io/docs/latest/22.4/container/) documents 20 GB minimum storage for the full community stack; no full stack/feed synchronization was attempted.

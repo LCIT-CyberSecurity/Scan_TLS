@@ -8,7 +8,7 @@ REPO="$(cd "$HERE/../.." && pwd)"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 PASS=0; FAIL=0
-BASE_TOOLS="bash sh sed awk grep cat mktemp tr head tail cut sort uniq printf date tar gzip sha256sum chmod mkdir rm mv cp ln ls id stat dirname basename seq sleep touch timeout wc od find readlink uname env tee openssl git python3 diff cmp expr true false test tput stty"
+BASE_TOOLS="bash sh sed awk grep cat mktemp tr head tail cut sort uniq printf date tar gzip sha256sum chmod chgrp mkdir rm mv cp ln ls id stat dirname basename seq sleep touch timeout wc od find readlink uname env tee openssl git python3 diff cmp expr true false test tput stty"
 
 ok()   { PASS=$((PASS + 1)); printf '  ok   %s\n' "$1"; }
 bad()  { FAIL=$((FAIL + 1)); printf '  FAIL %s\n' "$1"; [ -z "${2:-}" ] || printf '%s\n' "$2" | sed 's/^/       | /' | tail -n 20; }
@@ -172,8 +172,9 @@ has_out "admin / SecretPassword" "initial administrator shown"
 calls_has "build" "images built"
 calls_has "up -d --wait" "containers started"
 check ".env created, mode 600" test "$(stat -c %a "$R/.env")" = 600
-check "secrets generated" bash -c "grep -q '^POSTGRES_PASSWORD=.\{20,\}' '$R/.env' && grep -q '^TLS_SCAN_SESSION_SECRET=.\{40,\}' '$R/.env'"
-SECRET="$(sed -n 's/^POSTGRES_PASSWORD=//p' "$R/.env")"
+check "secret files generated and host-restricted" test -s "$R/data/secrets/postgres_password" -a -s "$R/data/secrets/database_password" -a -s "$R/data/secrets/session_secret" -a "$(stat -c %a "$R/data/secrets/postgres_password")" = 440
+check "direct secrets absent from .env" bash -c "! grep -Eq '^(POSTGRES_PASSWORD|TLS_SCAN_SESSION_SECRET|TLS_SCAN_OIDC_CLIENT_SECRET)=[^[:space:]]+' '$R/.env'"
+SECRET="$(cat "$R/data/secrets/postgres_password")"
 no_out "$SECRET" "no secret in the output"
 check "self-signed certificate generated" test -s "$R/data/certs/fullchain.pem" -a -s "$R/data/certs/privkey.pem"
 check "no native component installed" test ! -e "$R/.venv"
@@ -184,13 +185,35 @@ echo "user:alice" >>"$S/volumes/tls-scan_pgdata/db"
 bs --mode webui install
 rc_is 0 "WebUI install again (idempotent)"
 check ".env preserved" grep -q "MARK=1" "$R/.env"
-check "secrets not regenerated" test "$(sed -n 's/^POSTGRES_PASSWORD=//p' "$R/.env")" = "$SECRET"
+check "secrets not regenerated" test "$(cat "$R/data/secrets/postgres_password")" = "$SECRET"
 check "certificate preserved" test "$(sha256sum "$R/data/certs/fullchain.pem" | cut -c1-64)" = "$CERT_SUM"
 check "data preserved" test "$(db)" = "user:admin user:alice "
 calls_not "down -v" "no volume removal on a re-install"
+SESSION_SECRET="$(cat "$R/data/secrets/session_secret")"
+printf 'POSTGRES_PASSWORD=%s\nTLS_SCAN_SESSION_SECRET=%s\n' "$SECRET" "$SESSION_SECRET" >>"$R/.env"
+bs --mode webui install
+rc_is 1 "legacy .env migration requires explicit confirmation"
+has_out "Migration explicite" "migration is explained"
+check "declined migration leaves .env values and secret file intact" grep -q "^POSTGRES_PASSWORD=$SECRET$" "$R/.env"
+check "declined migration keeps the protected credential" test "$(cat "$R/data/secrets/postgres_password")" = "$SECRET"
+bs --mode webui --yes install
+rc_is 0 "explicit legacy .env secret migration"
+check "legacy direct values scrubbed" bash -c "! grep -Eq '^(POSTGRES_PASSWORD|TLS_SCAN_SESSION_SECRET)=[^[:space:]]+' '$R/.env'"
+check "migration preserves both values" test "$(cat "$R/data/secrets/postgres_password")" = "$SECRET" -a "$(cat "$R/data/secrets/session_secret")" = "$SESSION_SECRET"
 bs --mode webui status
 rc_is 0 "WebUI status"
 has_out "État : Installé" "state shown"
+
+# ---------------------------------------------------------------------------------------------------
+new_sandbox secret-rollback
+bs --mode webui install
+SECRET="$(cat "$R/data/secrets/postgres_password")"
+bs --yes --mode webui rollback-secrets
+rc_is 0 "explicit rollback restores legacy .env credentials"
+check "rollback reuses existing credentials" grep -q "^POSTGRES_PASSWORD=$SECRET$" "$R/.env"
+check "rollback protects .env" test "$(stat -c %a "$R/.env")" = 600
+
+# ---------------------------------------------------------------------------------------------------
 
 # ---------------------------------------------------------------------------------------------------
 new_sandbox webui-safety
@@ -207,11 +230,11 @@ rc_is 1 "certificate without key refused"
 check "nothing generated over the remaining certificate" test ! -e "$R/data/certs/privkey.pem"
 new_sandbox webui-env-lost
 bs --mode webui install
-sed -i 's/^POSTGRES_PASSWORD=.*/POSTGRES_PASSWORD=/' "$R/.env"
+rm -f "$R/data/secrets/postgres_password" "$R/data/secrets/database_password"
 bs --mode webui install
 rc_is 1 "database volume without its password refused"
-has_out "rendrait la base inaccessible" "reason shown"
-check "password not silently regenerated" grep -q '^POSTGRES_PASSWORD=$' "$R/.env"
+has_out "aucun secret postgres_password" "reason shown"
+check "password not silently regenerated" test ! -s "$R/data/secrets/postgres_password"
 new_sandbox webui-ports
 no_tool docker
 bs --mode webui install

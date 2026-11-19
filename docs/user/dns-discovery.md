@@ -40,6 +40,19 @@ discovery has seen, and the **DNS** badge (green = created by a discovery, grey 
 methods, first and last observation, addresses and aliases. A DNS name does not prove that the host is reachable or serves
 TLS: only a scan tells. Manually created targets are unchanged and show nothing extra.
 
+## Import missing endpoints from a scan
+
+When creating or editing a scan definition, operators and administrators can choose one of their completed DNS discoveries
+in **Add DNS discovery endpoints**. The list compares each discovered FQDN with Targets: existing names are shown but
+cannot be selected again; only in-scope, non-wildcard, non-historical names missing from Targets can be selected. You can
+select names individually or select all missing names (up to 500 per import), and choose the target port list.
+
+**Preview import** calls the same reconciliation API as the Targets discovery workflow and shows creates, reuses and
+conflicts. The separate **Confirm and add to Targets** action is required before any inventory change. Once confirmed,
+the imported target IDs are selected in the scan form; save the scan definition to add them to its scope. This does not
+start a scan. Closing the form before saving leaves the explicitly imported Targets in the inventory but does not change
+the scan definition. Existing definition targets are preserved and duplicate IDs are removed.
+
 ## Methods (independent, each can fail without affecting the others)
 
 | Method | What it does |
@@ -115,6 +128,20 @@ Operator or administrator only (and the discovery is private to its requester, v
 `target.discover.apply` (created / enriched / skipped, group, tags), `target.discover.cancel`. Raw DNS answers are not
 stored beyond the consolidated names and addresses, and finished discoveries are purged after 90 days (the inventory keeps
 what was imported).
+
+## Recurring discoveries
+
+In **Schedules**, operators and administrators can schedule either a TLS scan or a DNS discovery. A DNS schedule stores
+the domain, selected discovery methods and bounded options once, then reuses the existing DNS worker on the existing
+once/daily/weekly/monthly/cron cadence and time zone. The explicit authorization confirmation is required when the
+schedule is created. Each due time creates a separate discovery history entry; overlapping work for the owner is skipped,
+and current DNS scope, server authorization and account permissions are rechecked before execution. A failed validation
+is recorded in schedule history rather than silently running with changed settings.
+
+Scheduled discovery only records observations. It does not add, enrich or remove targets. The schedule history links to
+each discovery. When two complete results are available, it summarizes newly observed names, names not observed in the
+latest result, and changed IPs. “Not observed” is not “deleted”; partial results do not infer absences. Import and
+enrichment still require the existing explicit preview and confirmation flow.
 
 ## API
 

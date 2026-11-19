@@ -4,7 +4,20 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func, text
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+    text,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from tls_scan_app.database import Base, JsonType
@@ -22,11 +35,17 @@ class ScanDefinition(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     name: Mapped[str] = mapped_column(String(160))
     description: Mapped[str] = mapped_column(Text, default="")
+    control_type: Mapped[str] = mapped_column(String(12), default="tls", server_default="tls")
     owner_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     profile_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("scan_profiles.id"))
     report_template_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("report_templates.id", ondelete="SET NULL"))
     policy_mode: Mapped[str] = mapped_column(String(20), default="strict_all")
     exclusions: Mapped[list | None] = mapped_column(JsonType)  # hosts, networks and names this scan never touches (IP, CIDR, FQDN, *.domain)
+    mail_security: Mapped[dict | None] = mapped_column(JsonType)  # optional per-definition mail posture checks; defaults to disabled
+    # Optional technology switches. NULL preserves the pre-multiprotocol control_type semantics.
+    enabled_controls: Mapped[list | None] = mapped_column(JsonType)
+    service_identification_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default=text("false"), nullable=False)
+    quic_enabled: Mapped[bool | None] = mapped_column(Boolean, nullable=True)  # NULL inherits the selected profile version
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
     updated_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
@@ -57,13 +76,18 @@ class DefinitionPolicy(Base):
 
 class ScanSchedule(Base):
     __tablename__ = "scan_schedules"
+    __table_args__ = (CheckConstraint(
+        "(task_type = 'tls' AND definition_id IS NOT NULL) OR (task_type = 'dns_discovery' AND definition_id IS NULL)",
+        name="ck_scan_schedule_task_definition"),)
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    definition_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("scan_definitions.id", ondelete="CASCADE"), index=True)
+    definition_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("scan_definitions.id", ondelete="CASCADE"), index=True)
+    task_type: Mapped[str] = mapped_column(String(24), default="tls", server_default="tls")  # tls | dns_discovery
     owner_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     kind: Mapped[str] = mapped_column(String(10))  # once | daily | weekly | monthly | cron
     # once: {at}; daily: {time}; weekly: {time, weekday 0-6}; monthly: {time, day 1-28}; cron: {expr}
     params: Mapped[dict] = mapped_column(JsonType)
+    task_config: Mapped[dict | None] = mapped_column(JsonType)
     timezone: Mapped[str] = mapped_column(String(64), default="UTC")
     active: Mapped[bool] = mapped_column(default=True)
     next_run_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
@@ -83,6 +107,7 @@ class ScheduleTrigger(Base):
     outcome: Mapped[str] = mapped_column(String(20))  # triggered | skipped_overlap | skipped_late | error
     reason: Mapped[str] = mapped_column(Text, default="")
     run_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("scan_runs.id", ondelete="SET NULL"))
+    discovery_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("dns_discoveries.id", ondelete="SET NULL"))
     __table_args__ = (UniqueConstraint("schedule_id", "due_at", name="uq_trigger_schedule_due"),)
 
 
@@ -109,6 +134,9 @@ class ScanRun(Base):
     fingerprint: Mapped[str] = mapped_column(String(64), index=True)
     # Exact configuration used (targets, ports, profile content+version, policy contents+versions).
     config_snapshot: Mapped[dict] = mapped_column(JsonType)
+    mail_security_results: Mapped[list | None] = mapped_column(JsonType)
+    service_observations: Mapped[list | None] = mapped_column(JsonType)
+    quic_observations: Mapped[list | None] = mapped_column(JsonType)
     policy_versions: Mapped[list] = mapped_column(JsonType, default=list)
     queued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -155,6 +183,8 @@ class RunEndpoint(Base):
     untested_checks: Mapped[list] = mapped_column(JsonType, default=list)
     # complementary TLS checks (tls_scanner.checks): [{check_id, status, message, observations, evidence, duration_ms}]
     tls_checks: Mapped[list] = mapped_column(JsonType, default=list)
+    exposure_snapshot: Mapped[dict] = mapped_column(JsonType, default=dict)  # immutable endpoint context captured when this run was queued
+    contextual_risk: Mapped[dict] = mapped_column(JsonType, default=dict)  # versioned assessment; never changes the crypto grade
 
 
 class RunFinding(Base):
@@ -170,3 +200,37 @@ class RunFinding(Base):
     evidence: Mapped[str] = mapped_column(Text, default="")
     remediation: Mapped[str] = mapped_column(Text, default="")
     affected_endpoint_ids: Mapped[list] = mapped_column(JsonType, default=list)
+    contextual_risk_by_endpoint: Mapped[dict] = mapped_column(JsonType, default=dict)
+
+
+class RunIpsecObservation(Base):
+    """IKE-only evidence, stored separately from TLS endpoint grades and findings."""
+    __tablename__ = "run_ipsec_observations"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    run_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("scan_runs.id", ondelete="CASCADE"), index=True)
+    target: Mapped[str] = mapped_column(String(255))
+    port: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(20))  # observed | indeterminate | timeout | filtered | error
+    ike_version: Mapped[str] = mapped_column(String(8), default="")
+    exchange: Mapped[str] = mapped_column(String(32), default="")
+    proposal: Mapped[dict] = mapped_column(JsonType, default=dict)
+    verdict: Mapped[str] = mapped_column(String(20), default="indeterminate")
+    evidence: Mapped[dict] = mapped_column(JsonType, default=dict)
+
+
+class RunSshObservation(Base):
+    """Unauthenticated SSH handshake evidence, separate from TLS endpoints and grades."""
+    __tablename__ = "run_ssh_observations"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    run_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("scan_runs.id", ondelete="CASCADE"), index=True)
+    target: Mapped[str] = mapped_column(String(255))
+    port: Mapped[int] = mapped_column(Integer)
+    status: Mapped[str] = mapped_column(String(20))  # observed | timeout | filtered | error
+    verdict: Mapped[str] = mapped_column(String(20), default="indeterminate")
+    banner: Mapped[str] = mapped_column(String(255), default="")
+    algorithms: Mapped[dict] = mapped_column(JsonType, default=dict)
+    host_keys: Mapped[list] = mapped_column(JsonType, default=list)
+    fingerprints: Mapped[dict] = mapped_column(JsonType, default=dict)
+    evidence: Mapped[dict] = mapped_column(JsonType, default=dict)
