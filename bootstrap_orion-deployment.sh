@@ -579,11 +579,8 @@ create_env() {
     [ -n "$(cfg_get SECRET_GID)" ] || env_set ORION_SECRET_GID "$(id -g)"
     migrate_env_secrets || return 1
     prepare_secret_files || return 1
-    local secret_key
-    local prefix suffix
-    for secret_key in POSTGRES_PASSWORD; do
-        [ -z "$(env_get "$secret_key")" ] || { echo "La variable $secret_key doit être migrée hors de .env; aucune valeur directe ne sera transmise."; return 1; }
-    done
+    local secret_key prefix suffix
+    [ -z "$(env_get POSTGRES_PASSWORD)" ] || { echo "La variable POSTGRES_PASSWORD doit être migrée hors de .env; aucune valeur directe ne sera transmise."; return 1; }
     for prefix in ORION_ TLS_SCAN_; do for suffix in SESSION_SECRET LOCAL_ADMIN_PASSWORD OIDC_CLIENT_SECRET GOOGLE_CLIENT_SECRET \
         DIRECTORY_CLIENT_SECRET LDAP_BIND_PASSWORD GREENBONE_PASSWORD SMTP_PASSWORD GRAPH_CLIENT_SECRET SNMP_V3_AUTH_KEY SNMP_V3_PRIV_KEY; do
         secret_key="$prefix$suffix"
@@ -1099,7 +1096,6 @@ restore_data_volume() {
 MIGRATION_WORK=""
 MIGRATION_ARCHIVE=""
 MIGRATION_ENV_COPY=""
-MIGRATION_LEGACY_PROJECT=""
 
 migration_backup() {
     make_backup "$BACKUP_DIR" || return 1
@@ -1170,7 +1166,6 @@ web_do_migrate_orion() {
     MIGRATION_WORK="$(mktemp -d)"; chmod 700 "$MIGRATION_WORK"
     # shellcheck disable=SC2064
     trap "rm -rf '$MIGRATION_WORK'; rm -f '$LOG'" EXIT
-    MIGRATION_LEGACY_PROJECT="$legacy"
     begin_steps 13
     step "Sauvegarde vérifiée de TLS Scan" migration_backup || die "Sauvegarde impossible : rien n'a été modifié."
     say "    $MIGRATION_ARCHIVE"
