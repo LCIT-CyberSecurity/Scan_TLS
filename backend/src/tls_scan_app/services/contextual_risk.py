@@ -92,6 +92,7 @@ def append_markdown(path: Path, rows: list[dict[str, Any]]) -> None:
 def write_csv(path: Path, rows: list[dict[str, Any]]) -> None:
     if not rows:
         return
+    path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="") as stream:
         writer = csv.DictWriter(stream, fieldnames=("endpoint", "finding_id", "finding", "intrinsic_severity", "contextual_severity",
                                                     "exposure", "source", "method", "justification", "confidence", "matrix_version", "assessed"))
