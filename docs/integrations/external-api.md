@@ -12,9 +12,11 @@ documented at `/swagger`.
 ## Authentication
 
 ```
-Authorization: Bearer tls_scan_pat_<secret>
+Authorization: Bearer orion_pat_<secret>
 ```
 
+* Keys issued before the Orion rebranding (prefix `tls_scan_pat_`) stay valid until they expire or are revoked, with the same
+  hash, scope and rules; new keys use `orion_pat_`. Nothing has to be changed on the client side.
 * The owner generates the key in *Preferences → API and MCP access* (shown **once**). One active key per user; regenerating revokes the previous one; valid **90 days**; revocable at any time.
 * Only the SHA-256 of the key is stored. A REST key never authenticates MCP and an MCP key never authenticates REST; neither opens a WebUI route, and a WebUI session is not accepted here.
 * Every request re-checks, in the database: the global switch, the key, its expiry and revocation, that the user is active, the individual authorisation, and the user's **current role**. A role change, a withdrawn authorisation or a switched-off service applies immediately; no restart.
@@ -38,19 +40,19 @@ Dates are ISO 8601; a value that was not collected is `null`. An unknown scan id
 
 ## Authorisation model and its limit
 
-TLS Scan has **global roles** (AUDITOR < USER < OPERATOR < ADMIN) and no per-SI access control; SI and tags only classify. The external API therefore applies exactly the
+Orion has **global roles** (AUDITOR < USER < OPERATOR < ADMIN) and no per-SI access control; SI and tags only classify. The external API therefore applies exactly the
 rules of the WebUI for the account's role (every role from AUDITOR reads all scans; comparison needs USER), and nothing broader. It does not invent a per-scope model.
 
 ## Examples
 
 ```bash
-export TLS_SCAN=https://tls-scan.example.org:8443
-export KEY='tls_scan_pat_…'          # from Preferences → API and MCP access
+export ORION=https://orion.example.org:8443
+export KEY='orion_pat_…'          # from Preferences → API and MCP access
 
-curl -sH "Authorization: Bearer $KEY" "$TLS_SCAN/api/v1/me"
-curl -sH "Authorization: Bearer $KEY" "$TLS_SCAN/api/v1/scans?status=completed&limit=5"
-curl -sH "Authorization: Bearer $KEY" "$TLS_SCAN/api/v1/scans/<scan_id>/findings?severity=high&limit=50"
-curl -sH "Authorization: Bearer $KEY" "$TLS_SCAN/api/v1/scans/<scan_id>/comparison"
+curl -sH "Authorization: Bearer $KEY" "$ORION/api/v1/me"
+curl -sH "Authorization: Bearer $KEY" "$ORION/api/v1/scans?status=completed&limit=5"
+curl -sH "Authorization: Bearer $KEY" "$ORION/api/v1/scans/<scan_id>/findings?severity=high&limit=50"
+curl -sH "Authorization: Bearer $KEY" "$ORION/api/v1/scans/<scan_id>/comparison"
 ```
 
 Use `-k` only for a self-signed certificate on a test installation.

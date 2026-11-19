@@ -9,7 +9,7 @@
                                           │ claim (FOR UPDATE SKIP LOCKED, advisory lock = global cap)
                                         worker ──spawn──► scan subprocess ──► tls_scanner engine ──► nmap / openssl
                                           │                       (no DB, stripped env)
-                                          └──► reports + raw results on the `data` volume (/var/lib/tls-scan)
+                                          └──► reports + raw results on the `data` volume (/var/lib/orion)
 ```
 
 ## Components
@@ -17,7 +17,7 @@
 | Component | Code | Role |
 |---|---|---|
 | Engine | `tls_scanner/` | Unchanged business logic. `tls_scanner/runner.py` is the only addition: a headless entry point (`execute_scan`) with strict input validation, cooperative cancellation and per-host hooks. The CLI (`cli.run_job`) now shares `collect_job_results` with it, so both modes run identical scan code. |
-| API | `backend/src/tls_scan_app/api/` | FastAPI. Every endpoint enforces its role server-side (`deps.require_role`). Cookie sessions + per-session CSRF token. |
+| API | `backend/src/orion_app/api/` | FastAPI. Every endpoint enforces its role server-side (`deps.require_role`). Cookie sessions + per-session CSRF token. |
 | Worker | `workers/worker.py`, `workers/child.py` | Polls the queue, runs each scan in a **separate OS process group**, heartbeats, honours cancellation and the maximum duration (SIGTERM → partial results, then SIGKILL of the whole group, including nmap), persists results, queues notifications, delivers SMTP, applies retention. |
 | Scheduler | `scheduler/scheduler.py` | Turns due schedules into queued runs, exactly once per occurrence. |
 | External access | `api/external.py`, `mcp_server.py`, `services/external_access.py`, `api/access.py` | Read-only REST API v1 (`/api/v1`) and MCP server (`/mcp`), both off by default, authenticated by hashed access keys instead of sessions; they reuse the results API's handlers and output schemas. Details below. |
@@ -78,8 +78,8 @@ endpoint, such as a protocol check on another port, is skipped). The adapter of 
 Two independent, read-only services share the API process (no extra container) and PostgreSQL. They are **not** the internal `/api/*` routes: the WebUI keeps its cookie session + CSRF, and external keys open nothing internal.
 
 ```
- client ──HTTPS──► nginx ──/api/v1/*──► FastAPI router `external`  (Bearer tls_scan_pat_…)  ──► handlers of `api/results.py` ──► same services/models as the WebUI
-                       └──/mcp──────► ASGI MCP app (official SDK, Streamable HTTP, mounted at the root) (Bearer tls_scan_mcp_…) ──► same handlers, closed tool list
+ client ──HTTPS──► nginx ──/api/v1/*──► FastAPI router `external`  (Bearer orion_pat_…)  ──► handlers of `api/results.py` ──► same services/models as the WebUI
+                       └──/mcp──────► ASGI MCP app (official SDK, Streamable HTTP, mounted at the root) (Bearer orion_mcp_…) ──► same handlers, closed tool list
 ```
 
 * **Gates, in order, on every request / tool call** (`services/external_access.authenticate`): key family (prefix) → global switch (`system_settings.external_access`) → key hash → expiry → revocation → user active → individual flag (`users.api_access_enabled` / `mcp_access_enabled`) → no pending password change. The role is read from the user row each time; nothing is frozen in the key.

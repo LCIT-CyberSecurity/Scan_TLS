@@ -1,6 +1,6 @@
-# TLS Scanner
+# Orion Standalone
 
-`TLS Scanner` is a Python tool that uses Nmap to scan hosts or IP address
+`Orion Standalone` (`orion.py`, formerly `tls_scan.py`, still accepted) is a Python tool that uses Nmap to scan hosts or IP address
 ranges for TLS versions, certificate validity, and cipher suites. It checks
 the detected configuration against current security standards and flags weak
 or outdated protocols.
@@ -10,9 +10,9 @@ or outdated protocols.
 | | **Standalone CLI** (historical) | **WebUI** (new) |
 |---|---|---|
 | Source of truth | YAML files in `config/` | PostgreSQL |
-| Run | `python3 tls_scan.py ...`, cron | web interface, worker, built-in scheduler |
+| Run | `python3 orion.py ...`, cron | web interface, worker, built-in scheduler |
 | Needs | Python 3.12+, Nmap | Docker Compose (see [installation](../admin/install.md)) |
-| Install | `./bootstrap_tls-scan-deployment.sh --mode standalone install` | `./bootstrap_tls-scan-deployment.sh --mode webui install` |
+| Install | `./bootstrap_orion-deployment.sh --mode standalone install` | `./bootstrap_orion-deployment.sh --mode webui install` |
 | Users / roles / SSO | none | AUDITOR, USER, OPERATOR, ADMIN, local admin, OIDC / Entra ID |
 | Results | files (HTML, Markdown, CSV, CBOM) | same files + history, comparison, notifications, audit |
 
@@ -24,7 +24,7 @@ manage everything in the interface and may import/export policies as YAML.
 **External access (WebUI only, off by default).** A read-only [REST API](../integrations/external-api.md) (`/api/v1`, Personal API Token) and an [MCP server](../integrations/mcp.md) (`/mcp`, official SDK, Streamable HTTP) let scripts and AI assistants consult scan results with the rights of a user. An administrator enables each service globally and authorises users one by one; users create their own revocable 90-day keys in *Preferences*. The Standalone CLI has no HTTP or MCP server.
 
 Both modes are installed and administered by one script, independently, on the same machine if you wish: run
-`./bootstrap_tls-scan-deployment.sh` for the interactive menu (Standalone / WebUI), or see
+`./bootstrap_orion-deployment.sh` for the interactive menu (Standalone / WebUI), or see
 [installation](../admin/install.md) for the non-interactive commands, backups and safety rules.
 
 WebUI documentation: [architecture](../architecture/overview.md) ·
@@ -86,13 +86,13 @@ python3 -m pip install -r requirements.txt
 Run an ad hoc scan with one or more comma-separated targets:
 
 ```bash
-python3 tls_scan.py [-i] [-c {standard,pqc}] [-p PORTS] [-e FILENAME] [--log-level LEVEL] [--log-file FILENAME] [--no-log-file] <targets> [csv_filename]
+python3 orion.py [-i] [-c {standard,pqc}] [-p PORTS] [-e FILENAME] [--log-level LEVEL] [--log-file FILENAME] [--no-log-file] <targets> [csv_filename]
 ```
 
 Run a configured report:
 
 ```bash
-python3 tls_scan.py --config config/config.yaml --report external_anssi_weekly
+python3 orion.py --config config/config.yaml --report external_anssi_weekly
 ```
 
 | Parameter | Description |
@@ -124,13 +124,13 @@ scan settings, logging and export settings.
 List configured reports:
 
 ```bash
-python3 tls_scan.py --config config/config.yaml --list-reports
+python3 orion.py --config config/config.yaml --list-reports
 ```
 
 Validate a report without running Nmap:
 
 ```bash
-python3 tls_scan.py --config config/config.yaml --report external_anssi_weekly --dry-run
+python3 orion.py --config config/config.yaml --report external_anssi_weekly --dry-run
 ```
 
 Example report config:
@@ -213,12 +213,12 @@ For example, this command keeps the configured report but scans only port
 `443` with debug logging:
 
 ```bash
-python3 tls_scan.py --config config/config.yaml --report external_anssi_weekly -p 443 --log-level debug
+python3 orion.py --config config/config.yaml --report external_anssi_weekly -p 443 --log-level debug
 ```
 
 ### Periodic scans with cron
 
-TLS Scanner can be scheduled with `crontab` for periodic controls. This is useful
+Orion Standalone can be scheduled with `crontab` for periodic controls. This is useful
 for daily external checks, weekly PQC readiness scans, monthly internal reviews,
 or separate scans for critical assets. Prefer one YAML config or one named report
 per scan scope so each scheduled job stays explicit and auditable.
@@ -236,22 +236,22 @@ Each file can define its own targets, ports, crypto profile, export formats,
 report name, policies and logging. Run them independently from the command line:
 
 ```bash
-python3 tls_scan.py --config config/scans/external-standard.yaml
-python3 tls_scan.py --config config/scans/external-pqc.yaml
-python3 tls_scan.py --config config/scans/internal-standard.yaml
+python3 orion.py --config config/scans/external-standard.yaml
+python3 orion.py --config config/scans/external-pqc.yaml
+python3 orion.py --config config/scans/internal-standard.yaml
 ```
 
 Example `crontab` entries:
 
 ```cron
 # Daily external TLS scan at 02:00
-0 2 * * * cd /home/cdev/Git/Scan_TLS && .venv/bin/python tls_scan.py --config config/scans/external-standard.yaml >> logs/cron-external-standard.log 2>&1
+0 2 * * * cd /home/cdev/Git/Scan_TLS && .venv/bin/python orion.py --config config/scans/external-standard.yaml >> logs/cron-external-standard.log 2>&1
 
 # Weekly PQC scan every Monday at 03:00
-0 3 * * 1 cd /home/cdev/Git/Scan_TLS && .venv/bin/python tls_scan.py --config config/scans/external-pqc.yaml >> logs/cron-external-pqc.log 2>&1
+0 3 * * 1 cd /home/cdev/Git/Scan_TLS && .venv/bin/python orion.py --config config/scans/external-pqc.yaml >> logs/cron-external-pqc.log 2>&1
 
 # Monthly internal scan on the first day of the month at 04:00
-0 4 1 * * cd /home/cdev/Git/Scan_TLS && .venv/bin/python tls_scan.py --config config/scans/internal-standard.yaml >> logs/cron-internal-standard.log 2>&1
+0 4 1 * * cd /home/cdev/Git/Scan_TLS && .venv/bin/python orion.py --config config/scans/internal-standard.yaml >> logs/cron-internal-standard.log 2>&1
 ```
 
 Operational recommendations for cron jobs:
@@ -360,15 +360,15 @@ Limitations: the scanner still depends on Nmap output for observed TLS/certifica
 Use `-e` to select the export format from the filename:
 
 ```bash
-python3 tls_scan.py example.com -e results.csv
-python3 tls_scan.py example.com -e results.cbom.json
-python3 tls_scan.py example.com -e results.md
+python3 orion.py example.com -e results.csv
+python3 orion.py example.com -e results.cbom.json
+python3 orion.py example.com -e results.md
 ```
 
 The legacy positional syntax remains available for CSV exports:
 
 ```bash
-python3 tls_scan.py example.com results.csv
+python3 orion.py example.com results.csv
 ```
 
 The terminal table and CSV export contain separate `IP` and `FQDN` columns.
@@ -467,20 +467,20 @@ no RSA key size provides post-quantum security.
 Example:
 
 ```bash
-python3 tls_scan.py -c pqc -p 443 server.example.com
+python3 orion.py -c pqc -p 443 server.example.com
 ```
 
 
 ## Public and Corporate PKI Trust Stores
 
-TLS Scan validates certificate chains against explicit trust stores. This is
+Orion validates certificate chains against explicit trust stores. This is
 separate from certificate inspection, self-signed detection, hostname
 validation, and revocation checks. A self-signed certificate can be trusted when
 it is configured as a trust anchor, and a non-self-signed certificate can be
 untrusted when no enabled store validates its chain.
 
 By default, certificate trust validation is enabled and uses the embedded
-`TLS Scan Public Web PKI` store. The store is a local, versioned,
+`Orion Public Web PKI` store. The store is a local, versioned,
 Mozilla-derived public trust-store snapshot stored in
 `tls_scanner/truststores/public_roots.pem`, with source metadata in
 `tls_scanner/truststores/public_roots_metadata.json`. Scans do not download CA
@@ -492,7 +492,7 @@ The bundled snapshot records the source package and version, for example:
 
 ```json
 {
-  "name": "TLS Scan Public Web PKI",
+  "name": "Orion Public Web PKI",
   "source": "Mozilla-derived public trust store",
   "source_package": "certifi",
   "source_version": "2023.11.17"
@@ -507,7 +507,7 @@ python3 scripts/update_public_trust_store.py
 ```
 
 The script locates `certifi.where()`, validates that the bundle contains X.509
-certificates, copies it into TLS Scan, counts certificates, calculates SHA-256,
+certificates, copies it into Orion, counts certificates, calculates SHA-256,
 and writes metadata. It does not install or upgrade `certifi`; obtaining a newer
 bundle remains an explicit maintenance operation.
 
@@ -573,7 +573,7 @@ Trust classifications are:
   unsupported protocol mode.
 - `ERROR`: a technical error prevented a conclusive result.
 
-TLS Scan validates the leaf certificate plus intermediates presented by the
+Orion validates the leaf certificate plus intermediates presented by the
 server against the enabled trust anchors. It does not fetch missing
 intermediates through AIA, and it does not implement hostname validation or SAN
 validation; those controls remain reported as not tested.
@@ -593,7 +593,7 @@ checks:
       allow_private_urls: false
 ```
 
-When enabled, TLS Scan checks OCSP responder URLs and CRL distribution points
+When enabled, Orion checks OCSP responder URLs and CRL distribution points
 declared by the leaf certificate, verifies signed responses against the issuer
 certificate presented by the server, and marks revoked certificates as
 non-compliant. Redirects are not followed, response size is bounded, and
@@ -624,72 +624,72 @@ Qualys SSL Labs algorithm.
 Scan multiple subnets using the default fast port discovery:
 
 ```bash
-python3 tls_scan.py 192.168.1.0/24,10.0.0.0/24
+python3 orion.py 192.168.1.0/24,10.0.0.0/24
 ```
 
 Scan several TCP ports:
 
 ```bash
-python3 tls_scan.py -p 443,8443,9443 192.168.1.0/24
+python3 orion.py -p 443,8443,9443 192.168.1.0/24
 ```
 
 Scan a port range and individual ports:
 
 ```bash
-python3 tls_scan.py -p 443,8000-8010,8443 server.example.com
+python3 orion.py -p 443,8000-8010,8443 server.example.com
 ```
 
 Quickly discover common TCP ports before testing TLS:
 
 ```bash
-python3 tls_scan.py -p fast 192.168.1.0/24
+python3 orion.py -p fast 192.168.1.0/24
 ```
 
 Scan standard SMTP and submission ports:
 
 ```bash
-python3 tls_scan.py -p 25,465,587 smtp.example.com
+python3 orion.py -p 25,465,587 smtp.example.com
 ```
 
 Discover all open TCP ports before testing TLS:
 
 ```bash
-python3 tls_scan.py -p all 192.168.1.10
+python3 orion.py -p all 192.168.1.10
 ```
 
 Scan multiple individual IP addresses without subnet notation:
 
 ```bash
-python3 tls_scan.py 192.168.1.10,192.168.1.20,10.0.0.5
+python3 orion.py 192.168.1.10,192.168.1.20,10.0.0.5
 ```
 
 Scan multiple FQDNs:
 
 ```bash
-python3 tls_scan.py web.example.com,mail.example.com
+python3 orion.py web.example.com,mail.example.com
 ```
 
 Scan a mix of subnets, individual IP addresses, and FQDNs, then export the
 results:
 
 ```bash
-python3 tls_scan.py 192.168.1.0/24,10.0.0.5,web.example.com results.csv
+python3 orion.py 192.168.1.0/24,10.0.0.5,web.example.com results.csv
 ```
 
 Disable DNS resolution and leave the `FQDN` column empty:
 
 ```bash
-python3 tls_scan.py -i 192.168.1.0/24,10.0.0.5,web.example.com results.csv
+python3 orion.py -i 192.168.1.0/24,10.0.0.5,web.example.com results.csv
 ```
 
 Combine fast port discovery, multiple targets, disabled DNS, and CSV export:
 
 ```bash
-python3 tls_scan.py -i -p fast 192.168.1.0/24,10.0.0.5 results.csv
+python3 orion.py -i -p fast 192.168.1.0/24,10.0.0.5 results.csv
 ```
 
 Display all command-line options:
 
 ```bash
-python3 tls_scan.py --help
+python3 orion.py --help
 ```

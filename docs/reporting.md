@@ -1,4 +1,4 @@
-# TLS Scan Reporting Architecture
+# Orion Reporting Architecture
 
 ## Common model
 

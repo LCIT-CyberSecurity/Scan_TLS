@@ -4,8 +4,8 @@ Connectors (*Administration → Settings*; secrets only from the environment, ne
 
 | Connector | Settings in the UI | Secret |
 |---|---|---|
-| **SMTP** | host, port, STARTTLS (certificate verified), username, sender | `TLS_SCAN_SMTP_PASSWORD[_FILE]` |
-| **Microsoft Graph** (`sendMail`, client-credentials) | tenant id, client id, sender mailbox | `TLS_SCAN_GRAPH_CLIENT_SECRET[_FILE]`; application permission `Mail.Send` with admin consent |
+| **SMTP** | host, port, STARTTLS (certificate verified), username, sender | `ORION_SMTP_PASSWORD[_FILE]` |
+| **Microsoft Graph** (`sendMail`, client-credentials) | tenant id, client id, sender mailbox | `ORION_GRAPH_CLIENT_SECRET[_FILE]`; application permission `Mail.Send` with admin consent |
 
 *Test connection* walks through the connector with a readable explanation per step: SMTP = DNS → TLS/authentication →
 send (e.g. "TLS certificate not trusted", "authentication refused"); Graph = token (`invalid_client`, tenant/client/secret

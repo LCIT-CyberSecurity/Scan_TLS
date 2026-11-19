@@ -1,6 +1,6 @@
 # Trust authorities (private PKI)
 
-TLS Scan verifies certificate chains against **trust stores**. The public Mozilla-derived store is built in. To verify
+Orion verifies certificate chains against **trust stores**. The public Mozilla-derived store is built in. To verify
 certificates issued by a customer's internal PKI, an administrator imports its CA certificates in
 **Administration → Trust authorities**, and a profile selects which stores to use.
 
