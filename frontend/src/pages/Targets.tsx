@@ -27,16 +27,20 @@ function detectKind(value: string): "fqdn" | "ip" | "cidr" {
   return "fqdn";
 }
 
-export function TargetDialog({ initial, systems, onClose, onSaved }: { initial?: Target; systems: SI[]; onClose: () => void; onSaved: (saved: Target) => void }) {
+export function TargetDialog({ initial, systems, onClose, onSaved, enableRows = false }: { initial?: Target; enableRows?: boolean; systems: SI[]; onClose: () => void; onSaved: (saved: Target) => void }) {
   const { t } = useI18n();
   const [form, setForm] = useState({ name: initial?.name ?? "", value: initial?.value ?? "", ports: initial?.ports ?? "", description: initial?.description ?? "", tags: initial?.tags ?? [], si_ids: initial?.si_ids ?? [] });
   const [kind, setKind] = useState<"fqdn" | "ip" | "cidr">((initial?.kind as "fqdn" | "ip" | "cidr") ?? "fqdn");
   const [error, setError] = useState<unknown>();
+  type Outcome = { status: "created" | "existing" | "duplicate" | "invalid" | "failed"; target?: Target; detail?: string };
+  const [rows, setRows] = useState<{ value: string; outcome?: Outcome }[]>([{ value: "" }]);
+  const [busy, setBusy] = useState(false);
+  const [batch, setBatch] = useState(false);
   // Creating accepts several values (FQDN, IP, subnet; one per line, comma or space): each becomes a target and,
   // when there are several, they are gathered in a group named after the target.
   const values = initial ? [form.value.trim()] : [...new Set(form.value.split(/[\s,;]+/).map((v) => v.trim()).filter(Boolean))];
   const multiple = values.length > 1;
-  async function save() {
+  async function saveLegacy() {
     if (!values.length) { setError(new Error(t("target.valueRequired"))); return; }
     if (!multiple && detectKind(values[0]) !== kind) { setError(new Error(t("target.kindMismatch"))); return; }
     try {
@@ -56,23 +60,77 @@ export function TargetDialog({ initial, systems, onClose, onSaved }: { initial?:
       saved.forEach(onSaved); onClose();
     } catch (e) { setError(e); }
   }
+  async function save() {
+    if (busy) return;
+    if (initial || !enableRows) { await saveLegacy(); return; }
+    setError(undefined);
+    setBusy(true);
+    try {
+      if (!batch) {
+        const value = rows[0].value.trim();
+        if (!value) throw new Error(t("target.valueRequired"));
+        onSaved(await api<Target>("/targets", {
+          method: "POST", body: { ...form, value },
+        }));
+        onClose();
+        return;
+      }
+      const pending = rows.filter((row) => row.outcome?.status !== "created");
+      if (!pending.length) { onClose(); return; }
+      const outcomes = await api<Outcome[]>("/targets/rows", {
+        method: "POST", body: { ...form, values: pending.map((row) => row.value) },
+      });
+      let index = 0;
+      setRows(rows.map((row) => row.outcome?.status === "created" ? row : { ...row, outcome: outcomes[index++] }));
+      const created = outcomes.find((outcome) => outcome.target)?.target;
+      if (created) onSaved(created);
+    } catch (e) { setError(e); }
+    finally { setBusy(false); }
+  }
   return (
-    <Dialog open onOpenChange={(o) => !o && onClose()} title={initial ? t("target.edit") : t("target.new")}>
+    <Dialog open onOpenChange={(o) => !o && !busy && onClose()} title={initial ? t("target.edit") : t("target.new")}>
       <div className="space-y-4">
         <Field label={t("target.name")} hint={t("target.nameHint")}><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} maxLength={160} /></Field>
+        {initial || !enableRows ? (
         <div className={`grid items-start gap-4 ${initial ? "sm:grid-cols-[210px_1fr]" : ""}`}>
           <Field label={t("target.type")}><Select className="h-[42px]" value={multiple ? "mixed" : kind} disabled={multiple} onChange={(e) => setKind(e.target.value as "fqdn" | "ip" | "cidr")}>{multiple && <option value="mixed">{t("target.kind.mixed")}</option>}{(["fqdn", "ip", "cidr"] as const).map((k) => <option key={k} value={k}>{t(`target.kind.${k}` as never)}</option>)}</Select></Field>
           <Field label={initial ? t("target.value") : t("target.values")} hint={multiple ? t("target.multiHint", { n: values.length }) : initial ? t(`target.valueHint.${kind}` as never) : t("target.valuesHint")}>
             {initial ? <Input className="h-[42px]" value={form.value} onChange={(e) => setForm({ ...form, value: e.target.value })} /> : <Textarea rows={3} value={form.value} onChange={(e) => setForm({ ...form, value: e.target.value })} placeholder={"www.example.org\n192.0.2.10\n10.20.0.0/24"} />}
           </Field>
         </div>
+        ) : (
+          <fieldset className="field">
+            <legend className="field-label">{t("target.values")}</legend>
+            <div className="space-y-2">
+              {rows.map((row, index) => (
+                <div key={index}>
+                  <div className="flex gap-2">
+                    <Input aria-label={`${t("target.value")} ${index + 1}`} value={row.value}
+                      placeholder="www.example.org, 192.0.2.10, 2001:db8::1, 192.0.2.0/24"
+                      disabled={busy || row.outcome?.status === "created"}
+                      onChange={(e) => setRows(rows.map((item, i) => i === index ? { value: e.target.value } : item))} />
+                    {rows.length > 1 && row.outcome?.status !== "created" && <Button type="button" variant="outline"
+                      aria-label={`${t("target.removeRow")} ${index + 1}`} disabled={busy}
+                      onClick={() => setRows(rows.filter((_, i) => i !== index))}><Trash2 /></Button>}
+                  </div>
+                  {row.outcome && <div role="status" className={row.outcome.status === "created" ? "text-sm" : "text-sm text-danger"}>
+                    {t(`target.row.${row.outcome.status}`)}{row.outcome.detail && ` · ${row.outcome.detail}`}
+                  </div>}
+                </div>
+              ))}
+              <Button type="button" variant="outline" disabled={busy || rows.length >= 50}
+                onClick={() => { setBatch(true); setRows([...rows, { value: "" }]); }}><Plus />{t("target.addRow")}</Button>
+            </div>
+            <span className="field-hint">{t("target.valuesHint")}</span>
+          </fieldset>
+        )}
         <Field label={t("target.ports")} hint={t("target.portsHint")}><Input value={form.ports} onChange={(e) => setForm({ ...form, ports: e.target.value })} placeholder="443,8443,9000-9010" /></Field>
         <Field label={t("col.description")}><Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} /></Field>
         <Field label={t("col.tags")} hint={t("hint.commaSeparated")}><TagsInput value={form.tags} onChange={(tags) => setForm({ ...form, tags })} /></Field>
         <Field label={t("col.si")}><CheckList items={systems.map((s) => ({ id: s.id, label: (s.parent_id ? "↳ " : "") + s.name }))} selected={form.si_ids} onChange={(si_ids) => setForm({ ...form, si_ids })} /></Field>
         {initial && <EndpointExposureEditor targetId={initial.id} />}
         <ErrorNote error={error} />
-        <div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>{t("action.cancel")}</Button><Button onClick={() => void save()}>{t("action.save")}</Button></div>
+        <div className="flex justify-end gap-2"><Button variant="outline" disabled={busy} onClick={onClose}>{t("action.cancel")}</Button><Button disabled={busy} onClick={() => void save()}>{t("action.save")}</Button></div>
       </div>
     </Dialog>
   );
@@ -227,7 +285,7 @@ export default function Targets() {
           <Card><div className="flex flex-wrap gap-2 p-5">{tags.data?.length ? tags.data.map((x) => <Badge key={x.id} tone="primary">{x.name}{atLeast("OPERATOR") && <button aria-label={t("confirm.delete")} className="ml-1 opacity-60 hover:opacity-100" onClick={() => { if (window.confirm(t("confirm.delete"))) void remove(`/tags/${x.id}`, tags.reload)(); }}>×</button>}</Badge>) : <span className="text-sm text-muted">{t("tags.empty")}</span>}</div></Card>
         </TabsContent>
       </Tabs>
-      {dialog === "target" && systems.data && <TargetDialog initial={editT} systems={systems.data} onClose={() => setDialog(null)} onSaved={() => { void targets.reload(); void tags.reload(); }} />}
+      {dialog === "target" && systems.data && <TargetDialog enableRows initial={editT} systems={systems.data} onClose={() => setDialog(null)} onSaved={() => { void targets.reload(); void tags.reload(); }} />}
       {dialog === "discover" && <DnsDiscoveryDialog resumeId={discoverId} onClose={closeDiscovery} onDone={() => { void targets.reload(); void groups.reload(); void tags.reload(); }} onViewTargets={(id) => { setOrigin(""); setQ(""); setTag(""); setSi(""); setMine(false); setImported(id); }} />}
       {prov && <ProvenanceDialog target={prov} onClose={() => setProv(undefined)} />}
       {dialog === "import" && <ImportDialog onClose={() => setDialog(null)} onDone={() => { void targets.reload(); }} />}
