@@ -6,7 +6,7 @@ import ipaddress
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SecretStr, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DbSession
 
@@ -25,20 +25,20 @@ class ConnectionBody(BaseModel):
     port: int = Field(default=9390, ge=1, le=65535)
     username: str = Field(default="", max_length=255)
     timeout: int = Field(default=15, ge=3, le=60)
+    password: SecretStr = Field(default=SecretStr(""), exclude=True)
 
 
-class DefinitionChoice(BaseModel):
-    task_id: str = Field(min_length=1, max_length=128)
-    profile_id: uuid.UUID
-    policy_ids: list[uuid.UUID] = Field(min_length=1, max_length=100)
+    @field_validator("password", mode="before")
+    @classmethod
+    def validate_password(cls, value: object) -> object:
+        if not isinstance(value, str) or len(value) > 1024:
+            raise HTTPException(422, "Mot de passe GMP invalide")
+        return value
 
 
 class ApplyBody(BaseModel):
     dry_run: bool = True
     selected: list[int] = Field(default_factory=list, max_length=5000)
-    import_groups: bool = True
-    add_tag: bool = True
-    definitions: list[DefinitionChoice] = Field(default_factory=list, max_length=500)
 
 
 def _config(db: DbSession) -> dict:
@@ -52,12 +52,18 @@ def _out(row: GreenboneImport) -> dict:
     if result and "apply_request" in result:
         result = {"pending": True}
     return {"id": str(row.id), "mode": row.mode, "source_name": row.source_name, "status": row.status,
+            "requested_by": str(row.requested_by) if row.requested_by else None,
             "created_at": row.created_at, "finished_at": row.finished_at, "error": row.error, "result": result, "progress": row.progress}
 
 
 @router.get("/connection")
 def get_connection(request: Request, db: DbSession = Depends(get_db), _: User = Depends(admin_only)) -> dict:
-    return _config(db) | {"password_configured": bool(request.app.state.settings.greenbone_password)}
+    config = _config(db)
+    try:
+        configured = bool(greenbone.connector_password(db, config, request.app.state.settings))
+    except greenbone.GreenboneError:
+        configured = False
+    return config | {"password_configured": configured}
 
 
 @router.put("/connection")
@@ -76,18 +82,30 @@ def put_connection(body: ConnectionBody, request: Request, db: DbSession = Depen
         raise HTTPException(422, "L’hôte doit être autorisé exactement dans TLS_SCAN_GREENBONE_ALLOWED_HOSTS côté serveur")
     value = body.model_dump() | {"host": host}
     row = db.get(SystemSetting, "greenbone_connection") or SystemSetting(key="greenbone_connection", value={})
-    row.value = value
+    previous = row.value or {}
+    encrypted = previous.get("encrypted_password")
+    password = body.password.get_secret_value()
+    if password:
+        try:
+            encrypted = greenbone.credential_cipher(runtime).encrypt(password.encode()).decode("ascii")
+        except greenbone.GreenboneError as error:
+            raise HTTPException(503, str(error)) from None
+    elif encrypted and any(previous.get(key) != value[key] for key in ("host", "port", "username")):
+        raise HTTPException(422, "Saisissez le mot de passe GMP pour modifier le serveur ou le compte")
+    row.value = value | ({"encrypted_password": encrypted} if encrypted else {})
     db.add(row)
     audit.record(db, "greenbone.connection.update", actor=actor, resource_type="greenbone_connection", resource_id="greenbone",
                  detail={"host": host, "port": body.port})
     db.commit()
-    return value | {"password_configured": bool(runtime.greenbone_password)}
+    return get_connection(request, db, actor)
 
 
 @router.post("/test")
 def test_connection(request: Request, db: DbSession = Depends(get_db), _: User = Depends(admin_only)) -> list[dict[str, str]]:
     try:
-        return greenbone.test_gmp(_config(db), request.app.state.settings)
+        config = _config(db)
+        settings = request.app.state.settings
+        return greenbone.test_gmp(config, settings, password=greenbone.connector_password(db, config, settings))
     except greenbone.GreenboneError as error:
         return [{"step": "Configuration", "status": "failed", "detail": str(error)}]
 
@@ -124,12 +142,11 @@ async def import_xml(request: Request, files: list[UploadFile] = File(...), db: 
     except greenbone.GreenboneError as error:
         raise HTTPException(422, str(error)) from error
     row = GreenboneImport(mode="xml", source_name=snapshot["source_name"][:160], requested_by=actor.id, snapshot=snapshot,
-                          status="done", finished_at=datetime.now(UTC), result={"objects": {key: len(snapshot[key]) for key in
-                          ("targets", "tasks", "port_lists", "scan_configs", "schedules", "tags")}})
+                          status="done", finished_at=datetime.now(UTC), result={"objects": {"targets": len(snapshot["targets"])}})
     db.add(row)
     db.flush()
     audit.record(db, "greenbone.import.xml_analyzed", actor=actor, resource_type="greenbone_import", resource_id=row.id,
-                 detail={"files": len(inputs), "objects": row.result["objects"]})
+                 detail={"files": len(inputs), "targets": row.result["objects"]["targets"]})
     db.commit()
     return _out(row)
 
@@ -173,24 +190,14 @@ def apply_import(import_id: uuid.UUID, body: ApplyBody, response: Response, db: 
     snapshot = dict(row.snapshot)
     snapshot["import_id"] = str(row.id)
     if body.dry_run:
-        if any(index < 0 or index >= len(greenbone.normalized_targets(snapshot)) for index in body.selected):
-            raise HTTPException(422, "Sélection de cible invalide")
-        if any(not greenbone.normalized_targets(snapshot)[index]["importable"] for index in body.selected):
-            raise HTTPException(422, "Une cible sélectionnée n’a pas de ports TCP transférables")
         planned = greenbone.preview(db, snapshot)
-        try:
-            definitions = greenbone.validate_definition_choices(db, snapshot, [choice.model_dump() for choice in body.definitions], body.selected)
-        except greenbone.GreenboneError as error:
-            raise HTTPException(422, str(error)) from error
-        return {"dry_run": True, "selected": [planned["targets"][i] for i in body.selected], "summary": planned["summary"],
-                "definitions": [{"task": choice["task"]["name"], "already_imported": bool(choice["existing_id"])} for choice in definitions]}
+        if any(index < 0 or index >= len(planned["targets"]) for index in body.selected):
+            raise HTTPException(422, "Sélection de cible invalide")
+        return {"dry_run": True, "selected": [planned["targets"][i] for i in body.selected], "summary": planned["summary"]}
     try:
-        targets = greenbone.normalized_targets(snapshot)
+        targets = greenbone.preview(db, snapshot)["targets"]
         if any(index < 0 or index >= len(targets) for index in body.selected):
             raise greenbone.GreenboneError("Sélection de cible invalide")
-        if any(not targets[index]["importable"] for index in body.selected):
-            raise greenbone.GreenboneError("Une cible sélectionnée n’a pas de ports TCP transférables")
-        greenbone.validate_definition_choices(db, snapshot, [choice.model_dump() for choice in body.definitions], body.selected)
     except greenbone.GreenboneError as error:
         raise HTTPException(422, str(error)) from error
     row.status = "apply_queued"

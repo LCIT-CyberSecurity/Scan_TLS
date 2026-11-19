@@ -1,6 +1,7 @@
 """Scan definitions: reusable configuration (targets/groups, profile, policies, template, classification)."""
 from __future__ import annotations
 
+import re
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -25,6 +26,8 @@ reader = require_role(Role.USER)  # AUDITOR only consults reports
 
 class DefinitionBody(BaseModel):
     name: str = Field(min_length=1, max_length=160)
+    control_type: str = "tls"
+    enabled_controls: list[str] | None = None
     description: str = ""
     target_ids: list[uuid.UUID] = []
     group_ids: list[uuid.UUID] = []
@@ -35,14 +38,21 @@ class DefinitionBody(BaseModel):
     tags: list[str] | None = None
     si_ids: list[uuid.UUID] | None = None
     exclusions: list[str] = Field(default_factory=list, max_length=500)  # IP, CIDR, FQDN or *.domain that this scan never touches
+    mail_security: dict | None = None
+    service_identification_enabled: bool = False
+    quic_enabled: bool | None = None
 
 
 def out(db: DbSession, d: ScanDefinition) -> dict:
     cls = classification_of(db, "definition", [d.id])[d.id]
     return {
         "id": str(d.id), "name": d.name, "description": d.description, "owner_id": str(d.owner_id) if d.owner_id else None,
-        "profile_id": str(d.profile_id), "report_template_id": str(d.report_template_id) if d.report_template_id else None,
+        "profile_id": str(d.profile_id), "control_type": d.control_type, "report_template_id": str(d.report_template_id) if d.report_template_id else None,
+        "enabled_controls": d.enabled_controls,
+        "service_identification_enabled": bool(d.service_identification_enabled),
+        "quic_enabled": d.quic_enabled,
         "policy_mode": d.policy_mode, "exclusions": d.exclusions or [], "tags": cls["tags"], "si_ids": cls["si"],
+        "mail_security": d.mail_security or {"enabled": False, "checks": {}, "dkim_selectors": []},
         "target_ids": [str(x) for x in db.execute(select(DefinitionTarget.target_id).where(DefinitionTarget.definition_id == d.id)).scalars()],
         "group_ids": [str(x) for x in db.execute(select(DefinitionGroup.group_id).where(DefinitionGroup.definition_id == d.id)).scalars()],
         "policy_ids": [str(x) for x in db.execute(select(DefinitionPolicy.policy_id).where(DefinitionPolicy.definition_id == d.id)).scalars()],
@@ -56,13 +66,63 @@ def _apply(db: DbSession, d: ScanDefinition, body: DefinitionBody) -> None:
         raise HTTPException(422, "Select at least one target or group")
     if not body.policy_ids:
         raise HTTPException(422, "Select at least one policy")
-    get_or_404(db, ScanProfile, body.profile_id, "Profile")
+    if body.control_type not in {"tls", "ipsec"}:
+        raise HTTPException(422, "control_type must be tls or ipsec")
+    enabled_controls = body.enabled_controls
+    if enabled_controls is not None:
+        if (not enabled_controls or len(set(enabled_controls)) != len(enabled_controls)
+                or set(enabled_controls) - {"tls", "ipsec", "ssh"}):
+            raise HTTPException(422, "enabled_controls must contain unique available technologies")
+    mail_security = body.mail_security if body.mail_security is not None else (d.mail_security or {"enabled": False, "checks": {}, "dkim_selectors": []})
+    allowed_mail_checks = {"spf", "dmarc", "dkim", "mta_sts", "tls_rpt", "dane"}
+    if not isinstance(mail_security, dict) or set(mail_security) - {"enabled", "checks", "dkim_selectors"}:
+        raise HTTPException(422, "mail_security contains unsupported fields")
+    enabled = mail_security.get("enabled", False)
+    selected_checks = mail_security.get("checks", {})
+    selectors = mail_security.get("dkim_selectors", [])
+    selected_checks = {} if selected_checks is None else selected_checks
+    selectors = [] if selectors is None else selectors
+    if not isinstance(enabled, bool) or not isinstance(selected_checks, dict) or set(selected_checks) - allowed_mail_checks:
+        raise HTTPException(422, "Invalid mail_security options")
+    if any(not isinstance(value, bool) for value in selected_checks.values()):
+        raise HTTPException(422, "mail_security check options must be booleans")
+    if not isinstance(selectors, list) or len(selectors) > 20 or any(not isinstance(item, str) or not item.strip() or len(item) > 63 for item in selectors):
+        raise HTTPException(422, "DKIM selectors must contain at most 20 non-empty values of 63 characters or fewer")
+    effective_controls = set(enabled_controls or [body.control_type])
+    if not isinstance(body.service_identification_enabled, bool):
+        raise HTTPException(422, "service_identification_enabled must be a boolean")
+    if body.quic_enabled is not None and not isinstance(body.quic_enabled, bool):
+        raise HTTPException(422, "quic_enabled must be a boolean or null")
+    if body.quic_enabled is True and "tls" not in effective_controls:
+        raise HTTPException(422, "QUIC checks are available only for TLS scan definitions")
+    if enabled and "tls" not in effective_controls:
+        raise HTTPException(422, "Mail security checks are available only for TLS scan definitions")
+    if enabled and not any(selected_checks.values()):
+        raise HTTPException(422, "Enable at least one mail security check")
+    if any(not re.fullmatch(r"[A-Za-z0-9_-]{1,63}", item.strip()) for item in selectors):
+        raise HTTPException(422, "DKIM selectors may contain only letters, digits, underscore and hyphen (up to 63 characters)")
+    profile = get_or_404(db, ScanProfile, body.profile_id, "Profile")
+    generic = enabled_controls is not None
+    if (profile.technology == "generic") != generic or (not generic and profile.technology != body.control_type):
+        raise HTTPException(422, "Select a generic profile for explicit technology controls")
     if body.report_template_id:
         get_or_404(db, ReportTemplate, body.report_template_id, "Report template")
     for model, ids, label in ((Target, body.target_ids, "Target"), (TargetGroup, body.group_ids, "Group"), (Policy, body.policy_ids, "Policy")):
         for i in ids:
-            get_or_404(db, model, i, label)
+            row = get_or_404(db, model, i, label)
+            if model is Policy and row.technology not in effective_controls:
+                raise HTTPException(422, "A selected policy technology is not enabled for this scan")
+    policy_technologies = {db.get(Policy, policy_id).technology for policy_id in body.policy_ids}
+    if effective_controls - policy_technologies:
+        raise HTTPException(422, "Select a policy for every enabled technology")
     d.name, d.description, d.profile_id = body.name.strip(), body.description, body.profile_id
+    d.control_type = "tls" if "tls" in effective_controls else "ipsec"
+    d.enabled_controls = list(enabled_controls) if generic else None
+    d.service_identification_enabled = body.service_identification_enabled
+    if "quic_enabled" in body.model_fields_set:
+        d.quic_enabled = body.quic_enabled
+    d.mail_security = {"enabled": enabled, "checks": {key: bool(selected_checks.get(key, False)) for key in allowed_mail_checks},
+                       "dkim_selectors": list(dict.fromkeys(item.strip() for item in selectors))}
     d.report_template_id, d.policy_mode = body.report_template_id, body.policy_mode
     try:
         d.exclusions = list(parse_entries(body.exclusions))

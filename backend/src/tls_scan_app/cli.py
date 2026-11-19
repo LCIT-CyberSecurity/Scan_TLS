@@ -22,7 +22,7 @@ def main(argv: list[str] | None = None) -> int:
     reset.add_argument("--default", action="store_true", help="reset to the deployment default password")
     args = parser.parse_args(argv)
     settings = get_settings()
-    factory = make_session_factory(make_engine(settings.database_url))
+    factory = make_session_factory(make_engine(settings.database_url, settings.database_password_file))
     with factory() as db:
         if args.command == "bootstrap":
             from tls_scan_app.services.bootstrap import ensure_bootstrap

@@ -54,6 +54,20 @@ class TestSchedules:
     def test_cron(self):
         assert next_after("cron", {"expr": "0 3 * * 1"}, "UTC", utc(2026, 10, 10)) == utc(2026, 10, 12, 3)
 
+    def test_dns_comparison_reports_observation_not_deletion(self):
+        from tls_scan_app.api.runs import compare_discovery_results
+
+        previous = {"observations": [{"fqdn": "a.example.org", "ips": ["192.0.2.1"]},
+                                      {"fqdn": "b.example.org", "ips": ["192.0.2.2"]}], "partial": False}
+        current = {"observations": [{"fqdn": "a.example.org", "ips": ["192.0.2.3"]},
+                                     {"fqdn": "c.example.org", "ips": ["192.0.2.4"]}], "partial": False}
+        changes = compare_discovery_results(previous, current)
+        assert changes["new_names"] == ["c.example.org"]
+        assert changes["not_observed"] == ["b.example.org"]
+        assert changes["ip_changed"] == [{"fqdn": "a.example.org", "previous": ["192.0.2.1"], "current": ["192.0.2.3"]}]
+        current["partial"] = True
+        assert compare_discovery_results(previous, current)["not_observed"] == []
+
     @pytest.mark.parametrize("kind,params", [("cron", {"expr": "*/1 * * * *"}), ("cron", {"expr": "bad"}), ("daily", {"time": "24:00"}), ("weekly", {"time": "01:00", "weekday": 7}), ("monthly", {"time": "01:00", "day": 0}), ("nope", {})])
     def test_invalid(self, kind, params):
         with pytest.raises(ScheduleError):

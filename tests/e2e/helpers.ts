@@ -15,3 +15,10 @@ export async function login(page: Page, username: string, password: string) {
   await page.getByRole("button", { name: /^(sign in|se connecter|anmelden)$/i }).click();
   await expect(page.getByRole("navigation", { name: "Main" })).toBeVisible(); // the login page has its own h1
 }
+
+export async function navigateSidebar(page: Page, group: string, label: string) {
+  const navigation = page.getByRole("navigation", { name: "Main" });
+  const toggle = navigation.getByRole("button", { name: group, exact: true });
+  if (await toggle.count() && await toggle.getAttribute("aria-expanded") !== "true") await toggle.click();
+  await navigation.getByRole("link", { name: label, exact: true }).click();
+}

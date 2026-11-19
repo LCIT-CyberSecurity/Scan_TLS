@@ -1,5 +1,5 @@
 import { expect, request, test, type APIRequestContext, type Page } from "@playwright/test";
-import { ADMIN, DEMO, login } from "./helpers";
+import { ADMIN, DEMO, login, navigateSidebar } from "./helpers";
 
 // Private PKI scenario of the lab (tests/lab): ACME Root CA -> Issuing CA -> intranet.acme.local on 8500 (chain sent) and 8501 (issuing CA not sent).
 const base = () => process.env.E2E_BASE_URL ?? "https://localhost:5100";
@@ -23,7 +23,7 @@ async function fetchLabFile(name: string): Promise<Buffer> {
 }
 
 async function openTrustTab(page: Page) {
-  await page.getByRole("link", { name: "Administration", exact: true }).first().click();
+  await navigateSidebar(page, "Administration", "Administration");
   await page.getByRole("tab", { name: "Trust authorities" }).click();
 }
 
@@ -78,7 +78,7 @@ test("admin: the built-in store is read-only, a private store is created from a 
 
 test("operator: the profile selects the private store explicitly, saves and publishes it", async ({ page }) => {
   await login(page, "operator@crashtest.example.com", DEMO);
-  await page.getByRole("link", { name: "Profiles" }).click();
+  await navigateSidebar(page, "Scanning", "Profiles");
   await page.getByRole("tab", { name: "Scan profiles" }).click();
   await page.getByRole("button", { name: "New", exact: true }).click();
   const dialog = page.getByRole("dialog");
@@ -156,7 +156,7 @@ test("the trust authorities tab works on a phone and in dark mode, without horiz
     const page = await context.newPage();
     await login(page, "admin", ADMIN);
     if (await page.getByRole("button", { name: "Open the menu" }).isVisible()) await page.getByRole("button", { name: "Open the menu" }).click();
-    await page.getByRole("link", { name: "Administration", exact: true }).first().click();
+    await navigateSidebar(page, "Administration", "Administration");
     await page.getByRole("tab", { name: "Trust authorities" }).click();
     await expect(page.getByRole("row", { name: /TLS Scan Public Web PKI/ })).toBeVisible();
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);

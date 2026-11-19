@@ -56,7 +56,7 @@ def test_production_directory_connector_forces_certificate_validation() -> None:
             return SystemSetting(key="directory", value={"kind": "ldap", "ldap": {"server_url": "ldaps://directory.example.org",
                                                                                   "base_dn": "dc=example,dc=org", "tls_verify": False}})
 
-    connector = build_connector(Db(), Settings(environment="production", session_secret="x" * 32))
+    connector = build_connector(Db(), Settings(environment="production", session_secret="x" * 32, cookie_secure=True))
     assert connector is not None and connector.cfg["tls_verify"] is True
 
 

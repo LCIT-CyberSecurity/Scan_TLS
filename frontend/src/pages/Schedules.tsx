@@ -16,9 +16,24 @@ import { formatDate, formatDuration } from "../lib/utils";
 
 const TZ = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 
-function ScheduleDialog({ defs, schedule, onClose, onSaved }: { defs: Definition[]; schedule?: Schedule; onClose: () => void; onSaved: () => void }) {
+function ScheduleDialog({ defs, allowDns, schedule, onClose, onSaved }: { defs: Definition[]; allowDns: boolean; schedule?: Schedule; onClose: () => void; onSaved: () => void }) {
   const { t } = useI18n();
+  const options = schedule?.task_config?.options ?? {};
+  const reverseAddresses = options.reverse_addresses ?? options.reverse ?? [];
   const [definition, setDefinition] = useState(schedule?.definition_id ?? defs[0]?.id ?? "");
+  const [taskType, setTaskType] = useState<"tls" | "dns_discovery">(schedule?.task_type ?? "tls");
+  const [domain, setDomain] = useState(schedule?.task_config?.domain ?? "");
+  const [authorized, setAuthorized] = useState(false);
+  const [mode, setMode] = useState<"fast" | "advanced">((options.mode as "fast" | "advanced") ?? "fast");
+  const [methods, setMethods] = useState<string[]>((options.methods as string[]) ?? ["dns", "axfr"]);
+  const [dnsServer, setDnsServer] = useState((options.dns_server as string) ?? "");
+  const [axfrServers, setAxfrServers] = useState(((options.axfr_servers as string[]) ?? []).join(", "));
+  const [dictionary, setDictionary] = useState((options.dictionary as string) ?? "small");
+  const [customWords, setCustomWords] = useState(((options.custom_words as string[]) ?? []).join(", "));
+  const [reverse, setReverse] = useState((reverseAddresses as string[]).join(", "));
+  const [timeout, setTimeout] = useState((options.timeout_seconds as number) ?? 5);
+  const [concurrency, setConcurrency] = useState((options.concurrency as number) ?? 20);
+  const [duration, setDuration] = useState((options.max_duration_seconds as number) ?? 300);
   const [kind, setKind] = useState(schedule?.kind ?? "daily");
   const [time, setTime] = useState((schedule?.params.time as string) ?? "03:00");
   const [weekday, setWeekday] = useState((schedule?.params.weekday as number) ?? 0);
@@ -28,13 +43,37 @@ function ScheduleDialog({ defs, schedule, onClose, onSaved }: { defs: Definition
   const [active, setActive] = useState(schedule?.active ?? true);
   const [error, setError] = useState<unknown>();
   const params = kind === "once" ? { at } : kind === "daily" ? { time } : kind === "weekly" ? { time, weekday } : kind === "monthly" ? { time, day } : { expr };
+  function toggleMethod(method: string) { setMethods((current) => current.includes(method) ? current.filter((x) => x !== method) : [...current, method]); }
+  const dnsOptions = { mode, methods, ...(dnsServer.trim() ? { dns_server: dnsServer.trim() } : {}),
+    axfr_servers: axfrServers.split(/[\s,;]+/).filter(Boolean), dictionary,
+    custom_words: customWords.split(/[\s,;]+/).filter(Boolean), reverse: reverse.split(/[\s,;]+/).filter(Boolean),
+    timeout_seconds: timeout, concurrency, max_duration_seconds: duration };
   async function save() {
-    try { await api(schedule ? `/schedules/${schedule.id}` : "/schedules", { method: schedule ? "PUT" : "POST", body: { definition_id: definition, kind, params, timezone: schedule?.timezone ?? TZ, active } }); onSaved(); onClose(); } catch (e) { setError(e); }
+    const body = taskType === "tls"
+      ? { task_type: "tls", definition_id: definition, kind, params, timezone: schedule?.timezone ?? TZ, active }
+      : { task_type: "dns_discovery", domain, authorized, dns_options: dnsOptions, kind, params, timezone: schedule?.timezone ?? TZ, active };
+    try { await api(schedule ? `/schedules/${schedule.id}` : "/schedules", { method: schedule ? "PUT" : "POST", body }); onSaved(); onClose(); } catch (e) { setError(e); }
   }
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()} title={schedule ? t("sched.edit") : t("sched.new")}>
       <div className="space-y-4">
-        <Field label={t("sched.definition")}>{schedule ? <p className="text-sm">{defs.find((d) => d.id === schedule.definition_id)?.name ?? schedule.definition_id}</p> : <Select value={definition} onChange={(e) => setDefinition(e.target.value)}>{defs.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</Select>}</Field>
+        {allowDns ? <Field label={t("sched.taskType")}><Select value={taskType} onChange={(e) => setTaskType(e.target.value as "tls" | "dns_discovery")}><option value="tls">{t("sched.task.tls")}</option><option value="dns_discovery">{t("sched.task.dns")}</option></Select></Field> : <p className="text-sm font-medium">{t("sched.task.tls")}</p>}
+        {taskType === "tls" ? <Field label={t("sched.definition")}><Select value={definition} onChange={(e) => setDefinition(e.target.value)}>{defs.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}</Select></Field> : <>
+          <Field label={t("sched.domain")}><Input value={domain} onChange={(e) => setDomain(e.target.value)} placeholder="example.org" /></Field>
+          <Field label={t("sched.mode")}><Select value={mode} onChange={(e) => { setMode(e.target.value as "fast" | "advanced"); if (e.target.value === "fast") setMethods((current) => current.filter((m) => m !== "reverse")); }}><option value="fast">{t("dd.mode.fast")}</option><option value="advanced">{t("dd.mode.advanced")}</option></Select></Field>
+          <fieldset className="space-y-2"><legend className="text-sm font-medium">{t("dd.methods")}</legend>{["dns", "axfr", "dictionary", "ct", ...(mode === "advanced" ? ["reverse"] : [])].map((m) => <label key={m} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={methods.includes(m)} onChange={() => toggleMethod(m)} />{t(`dd.m.${m}` as never)}</label>)}</fieldset>
+          {mode === "advanced" && <div className="grid gap-3 sm:grid-cols-2">
+            <Field label={t("dd.dnsServer")}><Input value={dnsServer} onChange={(e) => setDnsServer(e.target.value)} placeholder="10.0.0.53:53" /></Field>
+            <Field label={t("dd.axfrServers")}><Input value={axfrServers} onChange={(e) => setAxfrServers(e.target.value)} /></Field>
+            <Field label={t("dd.dictionary")}><Select value={dictionary} onChange={(e) => setDictionary(e.target.value)}><option value="small">{t("dd.dict.small")}</option><option value="extended">{t("dd.dict.extended")}</option><option value="custom">{t("dd.dict.custom")}</option></Select></Field>
+            {dictionary === "custom" && <Field label={t("dd.customWords")}><Input value={customWords} onChange={(e) => setCustomWords(e.target.value)} /></Field>}
+            <Field label={t("dd.reverse")}><Input value={reverse} onChange={(e) => setReverse(e.target.value)} placeholder="192.0.2.0/28" /></Field>
+            <Field label={t("dd.timeout")}><Input type="number" min={1} max={30} value={timeout} onChange={(e) => setTimeout(Number(e.target.value))} /></Field>
+            <Field label={t("dd.concurrency")}><Input type="number" min={1} max={50} value={concurrency} onChange={(e) => setConcurrency(Number(e.target.value))} /></Field>
+            <Field label={t("sched.duration")}><Input type="number" min={30} max={900} value={duration} onChange={(e) => setDuration(Number(e.target.value))} /></Field>
+          </div>}
+          <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={authorized} onChange={(e) => setAuthorized(e.target.checked)} /><span>{t("sched.authorized")}</span></label>
+        </>}
         <Field label={t("sched.frequency")}><Select value={kind} onChange={(e) => setKind(e.target.value)}>{["once", "daily", "weekly", "monthly", "cron"].map((k) => <option key={k} value={k}>{t(`sched.${k}` as never)}</option>)}</Select></Field>
         {kind === "once" && <Field label={t("sched.at")}><Input type="datetime-local" value={at} onChange={(e) => setAt(e.target.value)} /></Field>}
         {["daily", "weekly", "monthly"].includes(kind) && <Field label={t("sched.time")}><Input type="time" value={time} onChange={(e) => setTime(e.target.value)} /></Field>}
@@ -44,7 +83,7 @@ function ScheduleDialog({ defs, schedule, onClose, onSaved }: { defs: Definition
         <p className="text-xs text-muted">{t("sched.timezone")}: {schedule?.timezone ?? TZ}</p>
         {schedule && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />{t("sched.active")}</label>}
         <ErrorNote error={error} />
-        <div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>{t("action.cancel")}</Button><Button onClick={() => void save()}>{t("action.save")}</Button></div>
+        <div className="flex justify-end gap-2"><Button variant="outline" onClick={onClose}>{t("action.cancel")}</Button><Button disabled={taskType === "tls" ? !definition : !authorized || !domain.trim() || !methods.length} onClick={() => void save()}>{t("action.save")}</Button></div>
       </div>
     </Dialog>
   );
@@ -59,30 +98,30 @@ export default function Schedules() {
   const [editing, setEditing] = useState<Schedule | null>(null);
   const [detail, setDetail] = useState<Schedule | null>(null);
   const [err, setErr] = useState<unknown>();
-  const name = (id: string) => defs?.find((d) => d.id === id)?.name ?? id.slice(0, 8);
+  const name = (s: Schedule) => s.task_type === "dns_discovery" ? `${t("sched.task.dns")} · ${s.task_config?.domain ?? "—"}` : defs?.find((d) => d.id === s.definition_id)?.name ?? s.definition_id?.slice(0, 8) ?? "—";
   return (
     <>
-      <PageHeader title={t("nav.schedules")} subtitle={atLeast("OPERATOR") ? t("sched.allSubtitle") : t("sched.mineSubtitle")} actions={<Button onClick={() => setOpen(true)} disabled={!defs?.length}><Plus />{t("sched.new")}</Button>} />
+      <PageHeader title={t("nav.schedules")} subtitle={atLeast("OPERATOR") ? t("sched.allSubtitle") : t("sched.mineSubtitle")} actions={<Button onClick={() => setOpen(true)} disabled={!defs || (!defs.length && !atLeast("OPERATOR"))}><Plus />{t("sched.new")}</Button>} />
       <ErrorNote error={error ?? err} />
       <Card>{data?.length ? (
-        <Table><thead><tr><Th>{t("sched.definition")}</Th><Th>{t("sched.frequency")}</Th><Th>{t("sched.next")}</Th><Th>{t("sched.last")}</Th><Th>{t("col.status")}</Th><Th /></tr></thead>
+        <Table><thead><tr><Th>{t("sched.taskType")}</Th><Th>{t("sched.frequency")}</Th><Th>{t("sched.next")}</Th><Th>{t("sched.last")}</Th><Th>{t("col.status")}</Th><Th /></tr></thead>
           <tbody>{data.map((s) => (
-            <tr key={s.id}><Td className="font-medium">{name(s.definition_id)}</Td><Td>{t(`sched.${s.kind}` as never)}</Td><Td>{formatDate(s.next_run_at, locale)}</Td>
-              <Td>{s.last_run ? <Link to={`/scans/${s.last_run.id}`} className="row-link flex items-center gap-2"><StatusBadge status={s.last_run.status as never} />{formatDuration(s.last_run.duration_seconds)}</Link> : "—"}</Td>
+            <tr key={s.id}><Td className="font-medium">{name(s)}</Td><Td>{t(`sched.${s.kind}` as never)}</Td><Td>{formatDate(s.next_run_at, locale)}</Td>
+              <Td>{s.task_type === "dns_discovery" ? s.last_discovery ? <Link to={`/targets?discovery=${s.last_discovery.id}`} className="row-link"><Badge tone={s.last_discovery.status === "done" ? "success" : "warning"}>{t(`dd.status.${s.last_discovery.status}` as never)}</Badge></Link> : "—" : s.last_run ? <Link to={`/scans/${s.last_run.id}`} className="row-link flex items-center gap-2"><StatusBadge status={s.last_run.status as never} />{formatDuration(s.last_run.duration_seconds)}</Link> : "—"}</Td>
               <Td><Badge tone={s.active ? "success" : "neutral"}>{s.active ? t("sched.active") : t("sched.inactive")}</Badge></Td>
               <Td><div className="flex justify-end gap-2">
                 {(s.owner_id === user?.id || atLeast("OPERATOR")) && <Button size="sm" variant="outline" onClick={async () => setDetail(await api<Schedule>(`/schedules/${s.id}`))}>{t("sched.history")}</Button>}
-                {(s.owner_id === user?.id || atLeast("OPERATOR")) && <Button size="sm" variant="outline" aria-label={t("action.edit")} onClick={() => setEditing(s)}><Pencil /></Button>}
+                {(s.owner_id === user?.id || atLeast("OPERATOR")) && (s.task_type !== "dns_discovery" || atLeast("OPERATOR")) && <Button size="sm" variant="outline" aria-label={t("action.edit")} onClick={() => setEditing(s)}><Pencil /></Button>}
                 {(s.owner_id === user?.id || atLeast("OPERATOR")) && <ConfirmButton variant="outline" label={<Trash2 className="size-4" />} confirm={t("confirm.delete")} onConfirm={async () => { try { await api(`/schedules/${s.id}`, { method: "DELETE" }); void reload(); } catch (e) { setErr(e); } }} />}
               </div></Td></tr>
           ))}</tbody></Table>
       ) : <Empty>{t("sched.none")}</Empty>}</Card>
-      {open && defs && <ScheduleDialog defs={defs} onClose={() => setOpen(false)} onSaved={() => void reload()} />}
-      {editing && defs && <ScheduleDialog defs={defs} schedule={editing} onClose={() => setEditing(null)} onSaved={() => void reload()} />}
+      {open && defs && <ScheduleDialog defs={defs} allowDns={atLeast("OPERATOR")} onClose={() => setOpen(false)} onSaved={() => void reload()} />}
+      {editing && defs && <ScheduleDialog defs={defs} allowDns={atLeast("OPERATOR")} schedule={editing} onClose={() => setEditing(null)} onSaved={() => void reload()} />}
       {detail && (
         <Dialog open onOpenChange={(o) => !o && setDetail(null)} title={t("sched.history")} wide>
           <Table><thead><tr><Th>{t("sched.dueAt")}</Th><Th>{t("sched.outcome")}</Th><Th>{t("sched.reason")}</Th><Th /></tr></thead>
-            <tbody>{(detail.triggers ?? []).map((tr) => <tr key={tr.due_at}><Td>{formatDate(tr.due_at, locale)}</Td><Td><Badge tone={tr.outcome === "triggered" ? "success" : tr.outcome === "error" ? "danger" : "warning"}>{t(`sched.outcome.${tr.outcome}` as never)}</Badge></Td><Td className="text-xs text-muted">{tr.reason}</Td><Td>{tr.run_id && <Link className="text-primary hover:underline" to={`/scans/${tr.run_id}`}>→</Link>}</Td></tr>)}</tbody></Table>
+            <tbody>{(detail.triggers ?? []).map((tr) => <tr key={tr.due_at}><Td>{formatDate(tr.due_at, locale)}</Td><Td><Badge tone={tr.outcome === "triggered" ? "success" : tr.outcome === "error" ? "danger" : "warning"}>{t(`sched.outcome.${tr.outcome}` as never)}</Badge></Td><Td className="text-xs text-muted">{tr.reason}{tr.comparison && <div className="mt-1">{t("sched.comparison", { new: tr.comparison.new_names.length, absent: tr.comparison.not_observed.length, changed: tr.comparison.ip_changed.length })}{!tr.comparison.complete && <div>{t("sched.comparisonPartial")}</div>}</div>}</Td><Td>{tr.run_id && <Link className="text-primary hover:underline" to={`/scans/${tr.run_id}`}>→</Link>}{tr.discovery_id && <Link className="text-primary hover:underline" title={t("sched.openDiscovery")} to={`/targets?discovery=${tr.discovery_id}`}>{t("sched.openDiscovery")}</Link>}</Td></tr>)}</tbody></Table>
           {!(detail.triggers ?? []).length && <Empty>—</Empty>}
         </Dialog>
       )}

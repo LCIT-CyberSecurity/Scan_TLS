@@ -99,6 +99,7 @@ Two independent, read-only services share the API process (no extra container) a
 * No business restriction on scanned ranges (private networks are allowed), but limits apply: total
   addresses per scan, global concurrent scans, scan duration, workers per scan, container CPU/memory/pids.
 * Containers: `cap_drop: ALL`, `no-new-privileges`, read-only root fs, database network `internal`, worker
-  alone on the `scan` egress network.
+  alone on the `scan` egress network. Docker credentials are mounted as scoped file secrets from the protected host
+  directory; the database URL has no password and the frontend receives no credentials. See [secret handling](../admin/secrets.md).
 * Cookies `HttpOnly; SameSite=Lax; Secure` (production refuses `cookie_secure=false` and development secrets).
 * Reports are served with `Content-Security-Policy: sandbox`, `nosniff`.

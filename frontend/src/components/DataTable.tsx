@@ -1,6 +1,7 @@
 import { ArrowDown, ArrowUp, ArrowUpDown, Filter, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { getCoreRowModel, getFilteredRowModel, getSortedRowModel, useReactTable, type ColumnDef, type ColumnFiltersState, type SortingState } from "@tanstack/react-table";
 import { useI18n } from "../i18n";
 import { Empty } from "./common";
 import { Table } from "./ui/table";
@@ -60,15 +61,32 @@ export function DataTable<T>({ rows, columns, rowKey, empty, defaultSort }: { ro
   const [open, setOpen] = useState<{ key: string; anchor: HTMLElement } | null>(null);
 
   const options = useMemo(() => Object.fromEntries(columns.filter((c) => c.values).map((c) => [c.key, [...new Set(rows.flatMap((r) => c.values!(r)))].sort(collator.compare)])), [rows, columns]);
-  const visible = useMemo(() => {
-    let out = rows.filter((r) => columns.every((c) => { const f = filters[c.key]; return !f || !f.size || !c.values || c.values(r).some((v) => f.has(v)); }));
-    const col = columns.find((c) => c.key === sort?.key);
-    if (col && sort) {
-      const get = col.sort ?? ((r: T) => (col.values?.(r) ?? []).join(", "));
-      out = [...out].sort((a, b) => { const x = get(a), y = get(b); const c = typeof x === "number" && typeof y === "number" ? x - y : collator.compare(String(x), String(y)); return sort.dir === "asc" ? c : -c; });
-    }
-    return out;
-  }, [rows, columns, filters, sort]);
+  const tableColumns = useMemo<ColumnDef<T>[]>(() => columns.map((column) => ({
+    id: column.key,
+    accessorFn: (row) => row,
+    enableSorting: !!(column.sort || column.values),
+    enableColumnFilter: !!column.values,
+    sortingFn: (a, b) => {
+      const get = column.sort ?? ((row: T) => (column.values?.(row) ?? []).join(", "));
+      const x = get(a.original), y = get(b.original);
+      return typeof x === "number" && typeof y === "number" ? x - y : collator.compare(String(x), String(y));
+    },
+    filterFn: (row, _id, selected: Set<string>) => !selected.size || !!column.values?.(row.original).some((value) => selected.has(value)),
+  })), [columns]);
+  const sorting: SortingState = sort ? [{ id: sort.key, desc: sort.dir === "desc" }] : [];
+  const columnFilters: ColumnFiltersState = Object.entries(filters).filter(([, values]) => values.size).map(([id, value]) => ({ id, value }));
+  const table = useReactTable({
+    data: rows,
+    columns: tableColumns,
+    state: { sorting, columnFilters },
+    getCoreRowModel: getCoreRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    enableMultiSort: false,
+    onSortingChange: () => undefined,
+    onColumnFiltersChange: () => undefined,
+  });
+  const visible = table.getRowModel().rows.map((row) => row.original);
 
   const activeFilters = Object.values(filters).filter((f) => f.size).length;
   const cycle = (key: string) => setSort((s) => (s?.key !== key ? { key, dir: "asc" } : s.dir === "asc" ? { key, dir: "desc" } : null));
