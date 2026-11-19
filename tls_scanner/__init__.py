@@ -2,7 +2,7 @@
 Public facade for the `tls_scanner` package.
 
 Called by:
-- `tls_scan.py`, as the root-level command wrapper;
+- `orion.py` (and its former name `tls_scan.py`), as the root-level command wrappers;
 - tests and external scripts that still import the public API from the package.
 
 Produces:

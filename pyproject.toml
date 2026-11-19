@@ -1,7 +1,7 @@
 [project]
-name = "tls-scan-app"
+name = "orion-app"
 version = "0.1.0"
-description = "TLS Scan WebUI (API, worker, scheduler) around the tls_scanner engine"
+description = "Orion WebUI (API, worker, scheduler): network discovery, mapping and multi-protocol security analysis around the tls_scanner engine"
 requires-python = ">=3.12"
 dependencies = [
   "fastapi>=0.115",
@@ -31,7 +31,7 @@ dev = ["pytest>=8.2", "pytest-cov>=5.0", "ruff>=0.5", "aiosmtpd>=1.4"]
 
 [tool.setuptools.packages.find]
 where = ["backend/src", "."]
-include = ["tls_scan_app*", "tls_scanner*"]
+include = ["orion_app*", "tls_scan_app*", "tls_scanner*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests/backend"]

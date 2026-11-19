@@ -2,7 +2,7 @@
 Command-line interface and top-level TLS scan orchestration.
 
 Called by:
-- `tls_scan.py`, which is the root entry point;
+- `orion.py` (and its former name `tls_scan.py`), the root entry points;
 - CLI tests that validate parsing, dry-run behavior, and the main execution flow.
 
 Produces:
@@ -44,17 +44,17 @@ from .scanner import (
 
 
 STARTUP_BANNER = """
-████████╗██╗     ███████╗    ███████╗ ██████╗ █████╗ ███╗   ██╗
-╚══██╔══╝██║     ██╔════╝    ██╔════╝██╔════╝██╔══██╗████╗  ██║
-   ██║   ██║     ███████╗    ███████╗██║     ███████║██╔██╗ ██║
-   ██║   ██║     ╚════██║    ╚════██║██║     ██╔══██║██║╚██╗██║
-   ██║   ███████╗███████║    ███████║╚██████╗██║  ██║██║ ╚████║
-   ╚═╝   ╚══════╝╚══════╝    ╚══════╝ ╚═════╝╚═╝  ╚═╝╚═╝  ╚═══╝
+ ██████╗ ██████╗ ██╗ ██████╗ ███╗   ██╗
+██╔═══██╗██╔══██╗██║██╔═══██╗████╗  ██║
+██║   ██║██████╔╝██║██║   ██║██╔██╗ ██║
+██║   ██║██╔══██╗██║██║   ██║██║╚██╗██║
+╚██████╔╝██║  ██║██║╚██████╔╝██║ ╚████║
+ ╚═════╝ ╚═╝  ╚═╝╚═╝ ╚═════╝ ╚═╝  ╚═══╝
 
 ╔════════════════════════════════════════════════════════════════╗
 ║  LCIT Cybersecurity                                           ║
+║  Orion | Network discovery and multi-protocol security        ║
 ║  TLS Recon | Crypto Inventory | CBOM | PQC Readiness          ║
-║  Know your crypto surface.                                    ║
 ╚════════════════════════════════════════════════════════════════╝
 """.strip()
 

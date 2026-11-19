@@ -38,7 +38,9 @@ from .models import (
     TrustStoreValidation,
 )
 
-PUBLIC_TRUST_STORE_NAME = "TLS Scan Public Web PKI"
+PUBLIC_TRUST_STORE_NAME = "Orion Public Web PKI"
+# Name of the same built-in store before the Orion rebranding: found in historical results, reserved for custom stores.
+LEGACY_PUBLIC_TRUST_STORE_NAME = "TLS Scan Public Web PKI"
 PUBLIC_TRUST_STORE_DESCRIPTION = "Mozilla-derived public trust store"
 PUBLIC_TRUST_STORE_ID = "public-web-pki"
 PUBLIC_TRUST_STORE_PATH = Path(__file__).resolve().parent / "truststores" / "public_roots.pem"
@@ -357,7 +359,7 @@ def openssl_verify_chain(chain: tuple[x509.Certificate, ...], store: LoadedTrust
         return False, "openssl is required to validate certificate chains"
     if not chain:
         return False, "no peer certificate chain available"
-    with tempfile.TemporaryDirectory(prefix="tls-scan-pki-") as temp_dir:
+    with tempfile.TemporaryDirectory(prefix="orion-pki-") as temp_dir:
         root = Path(temp_dir)
         leaf_path = root / "leaf.pem"
         untrusted_path = root / "untrusted.pem"

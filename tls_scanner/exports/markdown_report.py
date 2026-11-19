@@ -439,7 +439,7 @@ def build_markdown_report(results, job, scan_timestamp):
     policies = job.policies or ()
     target_groups = job.target_groups or ()
     lines = [
-        f"# TLS Scan Dashboard - {job.report_name}",
+        f"# Orion TLS Dashboard - {job.report_name}",
         "",
         "**Vue exécutive de la posture TLS, des écarts de conformité et des actions prioritaires.**",
         "",
@@ -727,7 +727,7 @@ def build_markdown_report_from_model(model):
         "",
         "## Certificate Trust",
         "",
-        "TLS Scan Public Web PKI uses a Mozilla-derived public trust store snapshot bundled with TLS Scan.",
+        "Orion Public Web PKI uses a Mozilla-derived public trust store snapshot bundled with Orion.",
         "",
         "| Endpoint | Trust Classification | Chain Validation | Trusted By | Trust Anchor |",
         "| --- | --- | --- | --- | --- |",

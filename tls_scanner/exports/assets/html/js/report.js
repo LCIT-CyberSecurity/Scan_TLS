@@ -106,7 +106,7 @@
   }
 
   function safeFilename(value){
-    return String(value || 'tls_scan_report').replace(/[^a-z0-9._-]+/gi, '_').replace(/^_+|_+$/g, '') || 'tls_scan_report';
+    return String(value || 'orion_report').replace(/[^a-z0-9._-]+/gi, '_').replace(/^_+|_+$/g, '') || 'orion_report';
   }
 
   function downloadCsv(){
@@ -827,7 +827,7 @@
       ['PRIVATE_TRUSTED', 'Validated by a configured private store.'],
       ['UNTRUSTED', 'No executed trust store validated the chain.'],
       ['NOT_TESTED', 'Trust validation was not executed or inconclusive.'],
-      ['ERROR', 'A technical error prevented TLS Scan from reaching a conclusive trust result.'],
+      ['ERROR', 'A technical error prevented Orion from reaching a conclusive trust result.'],
     ];
     const wrap = el('div','trust-definition-grid');
     definitions.forEach(([label, text]) => {
@@ -886,7 +886,7 @@
       item.append(el('span','',key), el('strong','',value));
       root.append(item);
     });
-    root.append(el('p','muted','This is an internal TLS Scan indicator, not a certification or an official standard.'));
+    root.append(el('p','muted','This is an internal Orion indicator, not a certification or an official standard.'));
   }
 
   const tlsCheckLabels = {

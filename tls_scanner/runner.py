@@ -4,7 +4,7 @@ Headless execution interface of the scan engine.
 Called by:
 - `tls_scanner.cli.run_job`, which shares `collect_job_results` so the CLI and the WebUI worker
   run exactly the same scan code;
-- the WebUI worker (`backend/src/tls_scan_app/workers`), through `execute_scan`.
+- the WebUI worker (`backend/src/orion_app/workers`), through `execute_scan`.
 
 Produces:
 - `ScanOutcome`: result rows, endpoint findings, written files, the structured report model,

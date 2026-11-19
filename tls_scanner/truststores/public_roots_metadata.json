@@ -1,5 +1,5 @@
 {
-  "name": "TLS Scan Public Web PKI",
+  "name": "Orion Public Web PKI",
   "source": "Mozilla-derived public trust store",
   "source_package": "certifi",
   "source_version": "2023.11.17",
