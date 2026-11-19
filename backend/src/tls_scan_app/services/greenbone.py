@@ -1,6 +1,8 @@
 """Read-only Greenbone extraction and the shared normalized import model."""
 from __future__ import annotations
 
+from pathlib import Path
+
 import hashlib
 import ipaddress
 import logging
@@ -107,13 +109,42 @@ def _paginate_targets(method: Any, *, maximum: int = MAX_OBJECTS) -> list[dict[s
     raise GreenboneError(f"Limite de {maximum} objets atteinte ; récupération potentiellement partielle")
 
 
-def retrieve_gmp(config: dict[str, Any], settings: Any, progress=lambda _: None) -> dict[str, Any]:
+def credential_cipher(settings: Any):
+    """Read the deployment key separately from the encrypted database setting."""
+    import base64
+    from cryptography.fernet import Fernet
+
+    try:
+        key = bytes.fromhex(Path(settings.greenbone_credential_key_file).read_text().strip())
+        return Fernet(base64.urlsafe_b64encode(key))
+    except (OSError, ValueError):
+        raise GreenboneError("Clé de chiffrement GMP indisponible ou invalide") from None
+
+
+def connector_password(db: Any, config: dict, settings: Any) -> str:
+    from cryptography.fernet import InvalidToken
+    from tls_scan_app.models import SystemSetting
+
+    row = db.get(SystemSetting, "greenbone_connection", populate_existing=True)
+    stored = row.value if row else {}
+    encrypted = stored.get("encrypted_password")
+    if not encrypted:
+        return settings.greenbone_password
+    if any(config.get(field) != stored.get(field) for field in ("host", "port", "username")):
+        raise GreenboneError("La connexion GMP a changé. Relancez la récupération.")
+    try:
+        return credential_cipher(settings).decrypt(encrypted.encode("ascii")).decode()
+    except (InvalidToken, UnicodeError):
+        raise GreenboneError("Mot de passe GMP enregistré illisible") from None
+
+
+def retrieve_gmp(config: dict[str, Any], settings: Any, progress=lambda _: None, *, password: str | None = None) -> dict[str, Any]:
     host = config["host"].strip().lower().rstrip(".")
     allowed = {value.strip().lower().rstrip(".") for value in settings.greenbone_allowed_hosts.split(",") if value.strip()}
     if not allowed or host not in allowed:
         raise GreenboneError("Hôte refusé : configurez son nom exact dans TLS_SCAN_GREENBONE_ALLOWED_HOSTS")
     username = settings.greenbone_username or config.get("username", "")
-    password = settings.greenbone_password
+    password = settings.greenbone_password if password is None else password
     if not username or not password:
         raise GreenboneError("Identifiants GMP absents (TLS_SCAN_GREENBONE_USERNAME et mot de passe/fichier secret)")
     try:
@@ -149,7 +180,7 @@ def retrieve_gmp(config: dict[str, Any], settings: Any, progress=lambda _: None)
     return {"source_id": source_id, "source_name": host, "mode": "gmp", "gmp_version": version, "targets": targets}
 
 
-def test_gmp(config: dict[str, Any], settings: Any) -> list[dict[str, str]]:
+def test_gmp(config: dict[str, Any], settings: Any, *, password: str | None = None) -> list[dict[str, str]]:
     """Perform bounded diagnostics; a TCP/TLS success is never reported as an auth success."""
     host = config["host"].strip().lower().rstrip(".")
     allowed = {value.strip().lower().rstrip(".") for value in settings.greenbone_allowed_hosts.split(",") if value.strip()}
@@ -180,7 +211,7 @@ def test_gmp(config: dict[str, Any], settings: Any) -> list[dict[str, str]]:
         from gvm.protocols.gmp import GMP
         from gvm.transforms import EtreeCheckCommandTransform
         username = settings.greenbone_username or config.get("username", "")
-        password = settings.greenbone_password
+        password = (settings.greenbone_password if password is None else password)
         if not username or not password:
             mark(2, "not_tested", "TLS non testé : identifiants GMP absents")
             mark(3, "not_tested", "Identifiants GMP absents")
@@ -420,7 +451,8 @@ def process_next(db: Any, settings: Any) -> bool:
             current.heartbeat_at = datetime.now(UTC)
             db.commit()
     try:
-        snapshot = retrieve_gmp(connection, settings, progress=update_progress)
+        snapshot = retrieve_gmp(connection, settings, progress=update_progress,
+                                password=connector_password(db, connection, settings))
         summary = {"targets": len(snapshot.get("targets", []))}
         current = db.get(GreenboneImport, row.id)
         current.snapshot = snapshot

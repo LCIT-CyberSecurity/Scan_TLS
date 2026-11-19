@@ -6,7 +6,7 @@ import ipaddress
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, SecretStr, field_validator
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DbSession
 
@@ -25,6 +25,15 @@ class ConnectionBody(BaseModel):
     port: int = Field(default=9390, ge=1, le=65535)
     username: str = Field(default="", max_length=255)
     timeout: int = Field(default=15, ge=3, le=60)
+    password: SecretStr = Field(default=SecretStr(""), exclude=True)
+
+
+    @field_validator("password", mode="before")
+    @classmethod
+    def validate_password(cls, value: object) -> object:
+        if not isinstance(value, str) or len(value) > 1024:
+            raise HTTPException(422, "Mot de passe GMP invalide")
+        return value
 
 
 class ApplyBody(BaseModel):
@@ -49,7 +58,12 @@ def _out(row: GreenboneImport) -> dict:
 
 @router.get("/connection")
 def get_connection(request: Request, db: DbSession = Depends(get_db), _: User = Depends(admin_only)) -> dict:
-    return _config(db) | {"password_configured": bool(request.app.state.settings.greenbone_password)}
+    config = _config(db)
+    try:
+        configured = bool(greenbone.connector_password(db, config, request.app.state.settings))
+    except greenbone.GreenboneError:
+        configured = False
+    return config | {"password_configured": configured}
 
 
 @router.put("/connection")
@@ -68,18 +82,30 @@ def put_connection(body: ConnectionBody, request: Request, db: DbSession = Depen
         raise HTTPException(422, "L’hôte doit être autorisé exactement dans TLS_SCAN_GREENBONE_ALLOWED_HOSTS côté serveur")
     value = body.model_dump() | {"host": host}
     row = db.get(SystemSetting, "greenbone_connection") or SystemSetting(key="greenbone_connection", value={})
-    row.value = value
+    previous = row.value or {}
+    encrypted = previous.get("encrypted_password")
+    password = body.password.get_secret_value()
+    if password:
+        try:
+            encrypted = greenbone.credential_cipher(runtime).encrypt(password.encode()).decode("ascii")
+        except greenbone.GreenboneError as error:
+            raise HTTPException(503, str(error)) from None
+    elif encrypted and any(previous.get(key) != value[key] for key in ("host", "port", "username")):
+        raise HTTPException(422, "Saisissez le mot de passe GMP pour modifier le serveur ou le compte")
+    row.value = value | ({"encrypted_password": encrypted} if encrypted else {})
     db.add(row)
     audit.record(db, "greenbone.connection.update", actor=actor, resource_type="greenbone_connection", resource_id="greenbone",
                  detail={"host": host, "port": body.port})
     db.commit()
-    return value | {"password_configured": bool(runtime.greenbone_password)}
+    return get_connection(request, db, actor)
 
 
 @router.post("/test")
 def test_connection(request: Request, db: DbSession = Depends(get_db), _: User = Depends(admin_only)) -> list[dict[str, str]]:
     try:
-        return greenbone.test_gmp(_config(db), request.app.state.settings)
+        config = _config(db)
+        settings = request.app.state.settings
+        return greenbone.test_gmp(config, settings, password=greenbone.connector_password(db, config, settings))
     except greenbone.GreenboneError as error:
         return [{"step": "Configuration", "status": "failed", "detail": str(error)}]
 

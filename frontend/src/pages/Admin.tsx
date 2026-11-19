@@ -263,6 +263,7 @@ function GreenboneImports() {
   const [preview, setPreview] = useState<GbPreview | null>(null);
   const [selected, setSelected] = useState<number[]>([]);
   const [message, setMessage] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<unknown>();
   const reload = async () => setJobs(await api<GbJob[]>("/admin/greenbone/imports"));
   useEffect(() => {
@@ -291,7 +292,8 @@ function GreenboneImports() {
   };
   const save = async () => {
     if (!config) return;
-    setConfig(await api<GbConnection>("/admin/greenbone/connection", { method: "PUT", body: config }));
+    setConfig(await api<GbConnection>("/admin/greenbone/connection", { method: "PUT", body: { ...config, password } }));
+    setPassword("");
     setMessage(t("admin.saved"));
   };
   return (
@@ -307,7 +309,11 @@ function GreenboneImports() {
             <Field label={t("admin.gbUsername")}><Input value={config.username} onChange={(e) => setConfig({ ...config, username: e.target.value })} /></Field>
             <Field label={t("admin.gbTimeout")}><Input type="number" min={3} max={60} value={config.timeout} onChange={(e) => setConfig({ ...config, timeout: Number(e.target.value) })} /></Field>
           </div>
-          <p className="text-xs text-muted">{t("admin.gbSecret")} {!config.password_configured && <span className="text-danger">{t("admin.gbNoPassword")}</span>}</p>
+          <Field label={t("admin.gbPassword")} hint={t("admin.gbSecret")}>
+            <Input type="password" autoComplete="new-password" value={password} maxLength={1024}
+              onChange={(e) => setPassword(e.target.value)} />
+          </Field>
+          <p className="text-xs text-muted" role="status">{config.password_configured ? t("admin.gbPasswordConfigured") : t("admin.gbNoPassword")}</p>
           <div className="flex flex-wrap gap-2">
             <Button onClick={() => void run(save)}>{t("admin.gbSave")}</Button>
             <Button variant="outline" onClick={() => void run(async () => setSteps(await api<Step[]>("/admin/greenbone/test", { method: "POST" })))}>{t("admin.gbTest")}</Button>

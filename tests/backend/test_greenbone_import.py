@@ -203,3 +203,32 @@ def test_gmp_retrieval_and_connection_test_only_call_get_targets(monkeypatch):
     assert checks[4]["status"] == "ok" and checks[5]["status"] == "ok"
     assert FakeGMP.calls.count("get_targets") == 1
     assert not set(FakeGMP.calls) & {"get_tasks", "get_port_lists", "get_scan_configs", "get_schedules", "get_tags"}
+
+
+def test_gmp_password_write_only_and_replaced(tmp_path, monkeypatch):
+    from tls_scan_app.api import greenbone as route
+    from tls_scan_app.services import greenbone
+
+    key = tmp_path / "key"
+    key.write_text("ab" * 32)
+    settings = SimpleNamespace(greenbone_credential_key_file=str(key), greenbone_password="deploy-secret",
+                               greenbone_allowed_hosts="gvm.example.test")
+    request = SimpleNamespace(app=SimpleNamespace(state=SimpleNamespace(settings=settings)))
+    row = SimpleNamespace(value={})
+    db = SimpleNamespace(get=lambda *args, **kwargs: row, add=lambda *_: None, commit=lambda: None)
+    monkeypatch.setattr(route.audit, "record", lambda *_args, **_kwargs: None)
+    assert greenbone.connector_password(db, {}, settings) == "deploy-secret"
+    common = {"host": "gvm.example.test", "username": "collector"}
+    for password in ("first-secret", "", "replacement-secret"):
+        result = route.put_connection(route.ConnectionBody(**common, password=password), request, db, None)
+        assert result["password_configured"]
+        assert "password" not in result and "encrypted_password" not in result
+        assert "secret" not in row.value["encrypted_password"]
+        expected = password or "first-secret"
+        assert greenbone.connector_password(db, result, settings) == expected
+
+
+def test_gmp_password_setting_requires_admin(auditor):
+    result = auditor.put("/api/admin/greenbone/connection", json={"host": "gvm.example.test", "password": "test-only"})
+    assert result.status_code == 403
+    assert "test-only" not in result.text

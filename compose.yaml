@@ -30,6 +30,15 @@ x-backend: &backend
   cap_drop: [ALL]
   networks: [backend]
 
+x-greenbone-env: &greenbone-env
+  TLS_SCAN_GREENBONE_PASSWORD_FILE: /run/secrets/greenbone_password
+  TLS_SCAN_GREENBONE_ALLOWED_HOSTS: ${TLS_SCAN_GREENBONE_ALLOWED_HOSTS:-}
+  TLS_SCAN_GREENBONE_USERNAME: ${TLS_SCAN_GREENBONE_USERNAME:-}
+  TLS_SCAN_GREENBONE_CA_FILE: ${TLS_SCAN_GREENBONE_CA_FILE:-}
+  TLS_SCAN_GREENBONE_CLIENT_CERT_FILE: ${TLS_SCAN_GREENBONE_CLIENT_CERT_FILE:-}
+  TLS_SCAN_GREENBONE_CLIENT_KEY_FILE: ${TLS_SCAN_GREENBONE_CLIENT_KEY_FILE:-}
+  TLS_SCAN_GREENBONE_CREDENTIAL_KEY_FILE: /run/secrets/greenbone_credential_key
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -48,14 +57,13 @@ services:
     <<: *backend
     command: sh -c "cd backend && alembic upgrade head && cd .. && uvicorn --factory tls_scan_app.app:create_app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips='*'"
     environment:
-      <<: *backend-environment
+      <<: [*backend-environment, *greenbone-env]
       TLS_SCAN_SESSION_SECRET_FILE: /run/secrets/session_secret
       TLS_SCAN_LOCAL_ADMIN_PASSWORD_FILE: /run/secrets/local_admin_password
       TLS_SCAN_OIDC_CLIENT_SECRET_FILE: /run/secrets/oidc_client_secret
       TLS_SCAN_GOOGLE_CLIENT_SECRET_FILE: /run/secrets/google_client_secret
       TLS_SCAN_DIRECTORY_CLIENT_SECRET_FILE: /run/secrets/directory_client_secret
       TLS_SCAN_LDAP_BIND_PASSWORD_FILE: /run/secrets/ldap_bind_password
-      TLS_SCAN_GREENBONE_PASSWORD_FILE: /run/secrets/greenbone_password
       TLS_SCAN_SMTP_PASSWORD_FILE: /run/secrets/smtp_password
       TLS_SCAN_GRAPH_CLIENT_SECRET_FILE: /run/secrets/graph_client_secret
       TLS_SCAN_SNMP_V3_AUTH_KEY_FILE: /run/secrets/snmp_v3_auth_key
@@ -67,12 +75,7 @@ services:
       TLS_SCAN_OIDC_DEFAULT_ROLE: ${TLS_SCAN_OIDC_DEFAULT_ROLE:-USER}
       TLS_SCAN_GOOGLE_ISSUER: ${TLS_SCAN_GOOGLE_ISSUER:-}
       TLS_SCAN_SSO_AUTO_PROVISION: ${TLS_SCAN_SSO_AUTO_PROVISION:-}
-      TLS_SCAN_GREENBONE_ALLOWED_HOSTS: ${TLS_SCAN_GREENBONE_ALLOWED_HOSTS:-}
-      TLS_SCAN_GREENBONE_USERNAME: ${TLS_SCAN_GREENBONE_USERNAME:-}
       TLS_SCAN_SNMP_V3_USERNAME: ${TLS_SCAN_SNMP_V3_USERNAME:-}
-      TLS_SCAN_GREENBONE_CA_FILE: ${TLS_SCAN_GREENBONE_CA_FILE:-}
-      TLS_SCAN_GREENBONE_CLIENT_CERT_FILE: ${TLS_SCAN_GREENBONE_CLIENT_CERT_FILE:-}
-      TLS_SCAN_GREENBONE_CLIENT_KEY_FILE: ${TLS_SCAN_GREENBONE_CLIENT_KEY_FILE:-}
       TLS_SCAN_GOOGLE_DIRECTORY_KEY_FILE: ${TLS_SCAN_GOOGLE_DIRECTORY_KEY_FILE:-}
     secrets:
       - database_password
@@ -82,6 +85,7 @@ services:
       - google_client_secret
       - directory_client_secret
       - ldap_bind_password
+      - greenbone_credential_key
       - greenbone_password
       - smtp_password
       - graph_client_secret
@@ -107,7 +111,7 @@ services:
     <<: *backend
     command: python -m tls_scan_app.workers.worker
     environment:
-      <<: *backend-environment
+      <<: [*backend-environment, *greenbone-env]
       # Background workers do not serve sessions and must not receive the API session secret.
       TLS_SCAN_SESSION_SECRET_REQUIRED: "false"
       TLS_SCAN_SMTP_PASSWORD_FILE: /run/secrets/smtp_password
@@ -116,7 +120,20 @@ services:
       TLS_SCAN_SNMP_V3_AUTH_KEY_FILE: /run/secrets/snmp_v3_auth_key
       TLS_SCAN_SNMP_V3_PRIV_KEY_FILE: /run/secrets/snmp_v3_priv_key
       TLS_SCAN_SNMP_SECRETS_DIR: /run/secrets
-    secrets: [database_password, smtp_password, graph_client_secret, snmp_v3_auth_key, snmp_v3_priv_key]
+    secrets:
+      - database_password
+      - smtp_password
+      - graph_client_secret
+      - snmp_v3_auth_key
+      - snmp_v3_priv_key
+      - greenbone_password
+      - greenbone_credential_key
+      - source: greenbone_ca
+        target: greenbone_ca.pem
+      - source: greenbone_client_cert
+        target: greenbone_client.crt
+      - source: greenbone_client_key
+        target: greenbone_client.key
     volumes: [data:/var/lib/tls-scan]
     depends_on: {api: {condition: service_healthy}}
     networks: [backend, scan]
@@ -165,6 +182,7 @@ secrets:
   google_client_secret: {file: "${TLS_SCAN_SECRET_DIR:-./data/secrets}/google_client_secret"}
   directory_client_secret: {file: "${TLS_SCAN_SECRET_DIR:-./data/secrets}/directory_client_secret"}
   ldap_bind_password: {file: "${TLS_SCAN_SECRET_DIR:-./data/secrets}/ldap_bind_password"}
+  greenbone_credential_key: {file: "${TLS_SCAN_SECRET_DIR:-./data/secrets}/greenbone_credential_key"}
   greenbone_password: {file: "${TLS_SCAN_SECRET_DIR:-./data/secrets}/greenbone_password"}
   smtp_password: {file: "${TLS_SCAN_SECRET_DIR:-./data/secrets}/smtp_password"}
   graph_client_secret: {file: "${TLS_SCAN_SECRET_DIR:-./data/secrets}/graph_client_secret"}

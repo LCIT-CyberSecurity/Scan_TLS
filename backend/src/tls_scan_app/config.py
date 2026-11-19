@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     greenbone_username: str = ""
     greenbone_password: str = Field(default="", repr=False)
     greenbone_password_file: str = ""
+    greenbone_credential_key_file: str = ""
     greenbone_ca_file: str = ""
     greenbone_client_cert_file: str = ""
     greenbone_client_key_file: str = ""

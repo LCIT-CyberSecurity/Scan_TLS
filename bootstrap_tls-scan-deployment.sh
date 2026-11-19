@@ -470,6 +470,12 @@ prepare_secret_files() {
         return 1
     fi
 
+    file="$dir/greenbone_credential_key"
+    if [ ! -e "$file" ]; then
+        write_secret_value "$file" "$(random_hex 32)" || return 1
+    fi
+    protect_secret_file "$file" || return 1
+
     local name
     local names=(local_admin_password oidc_client_secret google_client_secret directory_client_secret ldap_bind_password \
         greenbone_password smtp_password graph_client_secret snmp_v3_auth_key snmp_v3_priv_key \
