@@ -20,6 +20,7 @@
 #   restore FILE         verify the archive, then replace the data after a typed confirmation    (webui)
 #   reset-admin          reset the local administrator password (one-time or default)           (webui)
 #   logs [SERVICE]       follow the technical logs                                                (webui)
+#   rollback-secrets     restore legacy direct .env variables from the protected secret files     (webui)
 #   reinstall            START FROM SCRATCH: removes the data (backup + typed confirmation)
 #   uninstall            remove the mode's components; data is asked about separately
 #
@@ -318,8 +319,199 @@ web_show_status() {
 
 # --- WebUI mode: building blocks --------------------------------------------------------------------
 
-# Creates .env when absent and fills only the secrets that are EMPTY. A database volume without its
-# password is refused: a regenerated password would lock the existing data away.
+secret_dir() {
+    local dir; dir="$(env_get TLS_SCAN_SECRET_DIR)"; dir="${dir:-./data/secrets}"
+    case "$dir" in /*) printf '%s' "$dir" ;; *) printf '%s/%s' "$ROOT" "$dir" ;; esac
+}
+
+secret_gid() { local gid; gid="$(env_get TLS_SCAN_SECRET_GID)"; printf '%s' "${gid:-$(id -g)}"; }
+
+secret_file_path() { printf '%s/%s' "$(secret_dir)" "$1"; }
+
+# Create a host file readable only by the deploying user's group. Compose grants that numeric group
+# to only the services that need the file; Docker Compose file secrets preserve host bind-mount mode.
+protect_secret_file() {
+    local file="$1" gid; gid="$(secret_gid)"
+    chgrp "$gid" "$file" 2>/dev/null || { echo "Impossible d'attribuer le groupe $gid au fichier secret (vérifiez TLS_SCAN_SECRET_GID)."; return 1; }
+    chmod 0440 "$file" || return 1
+}
+
+write_secret_value() {
+    local file="$1" value="$2" tmp
+    mkdir -p "$(dirname "$file")" || return 1
+    tmp="$(mktemp "$(dirname "$file")/.secret.XXXXXX")" || return 1
+    ( umask 077; printf '%s' "$value" >"$tmp" ) || { rm -f "$tmp"; return 1; }
+    chmod 0600 "$tmp" || { rm -f "$tmp"; return 1; }
+    mv -f "$tmp" "$file" || return 1
+    protect_secret_file "$file"
+}
+
+copy_secret_file() {
+    local source="$1" dest="$2" tmp
+    [ -f "$source" ] && [ -r "$source" ] || { echo "Un fichier secret configuré est inaccessible; copiez-le dans $(secret_dir) et relancez."; return 1; }
+    mkdir -p "$(dirname "$dest")" || return 1
+    tmp="$(mktemp "$(dirname "$dest")/.secret.XXXXXX")" || return 1
+    ( umask 077; cat -- "$source" >"$tmp" ) || { rm -f "$tmp"; return 1; }
+    chmod 0600 "$tmp" || { rm -f "$tmp"; return 1; }
+    mv -f "$tmp" "$dest" || return 1
+    protect_secret_file "$dest"
+}
+
+resolve_host_secret_path() {
+    local configured="$1" name="$2" dir
+    [ -n "$configured" ] || return 1
+    dir="$(secret_dir)"
+    case "$configured" in
+        /run/secrets/*) printf '%s/%s' "$dir" "${configured##*/}" ;;
+        /*) printf '%s' "$configured" ;;
+        *) printf '%s/%s' "$ROOT" "$configured" ;;
+    esac
+}
+
+# Direct .env credentials are copied only after an explicit confirmation, then their .env values are
+# blanked. Existing files are never silently overwritten or rotated.
+migrate_env_secrets() {
+    local direct=(POSTGRES_PASSWORD TLS_SCAN_SESSION_SECRET TLS_SCAN_LOCAL_ADMIN_PASSWORD TLS_SCAN_OIDC_CLIENT_SECRET \
+        TLS_SCAN_GOOGLE_CLIENT_SECRET TLS_SCAN_DIRECTORY_CLIENT_SECRET TLS_SCAN_LDAP_BIND_PASSWORD \
+        TLS_SCAN_GREENBONE_PASSWORD TLS_SCAN_SMTP_PASSWORD TLS_SCAN_GRAPH_CLIENT_SECRET \
+        TLS_SCAN_SNMP_V3_AUTH_KEY TLS_SCAN_SNMP_V3_PRIV_KEY)
+    local names=(postgres_password session_secret local_admin_password oidc_client_secret google_client_secret \
+        directory_client_secret ldap_bind_password greenbone_password smtp_password graph_client_secret \
+        snmp_v3_auth_key snmp_v3_priv_key)
+    local path_keys=(TLS_SCAN_SESSION_SECRET_FILE TLS_SCAN_LOCAL_ADMIN_PASSWORD_FILE TLS_SCAN_OIDC_CLIENT_SECRET_FILE \
+        TLS_SCAN_GOOGLE_CLIENT_SECRET_FILE TLS_SCAN_DIRECTORY_CLIENT_SECRET_FILE TLS_SCAN_LDAP_BIND_PASSWORD_FILE \
+        TLS_SCAN_GREENBONE_PASSWORD_FILE TLS_SCAN_SMTP_PASSWORD_FILE TLS_SCAN_GRAPH_CLIENT_SECRET_FILE \
+        TLS_SCAN_SNMP_V3_AUTH_KEY_FILE TLS_SCAN_SNMP_V3_PRIV_KEY_FILE TLS_SCAN_GREENBONE_CA_FILE \
+        TLS_SCAN_GREENBONE_CLIENT_CERT_FILE TLS_SCAN_GREENBONE_CLIENT_KEY_FILE TLS_SCAN_GOOGLE_DIRECTORY_KEY_FILE)
+    local path_names=(session_secret local_admin_password oidc_client_secret google_client_secret directory_client_secret \
+        ldap_bind_password greenbone_password smtp_password graph_client_secret snmp_v3_auth_key snmp_v3_priv_key \
+        greenbone_ca.pem greenbone_client.crt greenbone_client.key google_directory_key.json)
+    local i value file source pending=0
+    for i in "${!direct[@]}"; do
+        value="$(env_get "${direct[$i]}")"; file="$(secret_file_path "${names[$i]}")"
+        if [ -n "$value" ]; then
+            pending=1
+            if [ -s "$file" ] && ! printf '%s' "$value" | cmp -s - "$file"; then
+                echo "La valeur de ${direct[$i]} diffère déjà du fichier protégé ${names[$i]} ; aucune valeur n'a été remplacée."
+                return 1
+            fi
+        fi
+    done
+    for i in "${!path_keys[@]}"; do
+        value="$(env_get "${path_keys[$i]}")"
+        [ -n "$value" ] || continue
+        source="$(resolve_host_secret_path "$value" "${path_names[$i]}")"
+        file="$(secret_file_path "${path_names[$i]}")"
+        if [ "$value" = "/run/secrets/${path_names[$i]}" ] && [ ! -f "$source" ]; then
+            echo "Le fichier protégé configuré pour ${path_keys[$i]} est absent (${path_names[$i]}); restaurez-le avant de continuer."
+            return 1
+        fi
+        if [ "$value" != "/run/secrets/${path_names[$i]}" ] || { [ "$source" != "$file" ] && [ -f "$source" ]; }; then pending=1; fi
+    done
+    [ "$pending" = 1 ] || return 0
+    echo "Migration explicite des secrets .env/fichiers vers $(secret_dir) : les identifiants restent inchangés; .env sera expurgé après copie."
+    ask_go "Copier et protéger les fichiers secrets maintenant ?" || { echo "Migration refusée : aucune modification des identifiants n'a été faite."; return 1; }
+    mkdir -p "$(secret_dir)" || return 1
+    chmod 0710 "$(secret_dir)" || return 1
+    local gid; gid="$(secret_gid)"
+    chgrp "$gid" "$(secret_dir)" 2>/dev/null || { echo "Impossible d'attribuer le groupe $gid au répertoire secret."; return 1; }
+
+    for i in "${!direct[@]}"; do
+        value="$(env_get "${direct[$i]}")"; file="$(secret_file_path "${names[$i]}")"
+        if [ -n "$value" ]; then
+            if [ ! -s "$file" ]; then write_secret_value "$file" "$value" || return 1; fi
+            env_set "${direct[$i]}" ""
+            unset "${direct[$i]}" || true
+        fi
+    done
+    for i in "${!path_keys[@]}"; do
+        value="$(env_get "${path_keys[$i]}")"; [ -n "$value" ] || continue
+        source="$(resolve_host_secret_path "$value" "${path_names[$i]}")"
+        file="$(secret_file_path "${path_names[$i]}")"
+        if [ "$source" != "$file" ]; then
+            [ -f "$source" ] || { echo "Le fichier associé à ${path_keys[$i]} est absent; placez-le sous $(secret_dir) et relancez."; return 1; }
+            [ -s "$file" ] || copy_secret_file "$source" "$file" || return 1
+        fi
+        env_set "${path_keys[$i]}" "/run/secrets/${path_names[$i]}"
+        unset "${path_keys[$i]}" || true
+    done
+    return 0
+}
+
+prepare_secret_files() {
+    local dir gid file direct_value
+    dir="$(secret_dir)"; gid="$(secret_gid)"
+    mkdir -p "$dir" || return 1
+    chmod 0710 "$dir" || return 1
+    chgrp "$gid" "$dir" 2>/dev/null || { echo "Impossible d'attribuer le groupe $gid au répertoire secret."; return 1; }
+
+    # A fresh install gets new credentials only if no password volume already exists.
+    file="$dir/postgres_password"
+    if [ ! -s "$file" ]; then
+        direct_value="$(env_get POSTGRES_PASSWORD)"
+        if [ -n "$direct_value" ]; then write_secret_value "$file" "$direct_value" || return 1
+        elif docker volume ls -q --filter "label=com.docker.compose.project=$PROJECT" | grep -q 'pgdata$'; then
+            echo "Un volume PostgreSQL existe mais aucun secret postgres_password n'est disponible. Restaurez le mot de passe existant; aucune rotation ne sera faite."
+            return 1
+        else write_secret_value "$file" "$(random_hex 24)" || return 1; echo "Secret PostgreSQL créé dans le répertoire protégé"; fi
+    fi
+    file="$dir/session_secret"
+    if [ ! -s "$file" ]; then
+        direct_value="$(env_get TLS_SCAN_SESSION_SECRET)"
+        if [ -n "$direct_value" ]; then write_secret_value "$file" "$direct_value" || return 1
+        else write_secret_value "$file" "$(random_hex 32)" || return 1; echo "Secret de session créé dans le répertoire protégé"; fi
+    fi
+    protect_secret_file "$dir/postgres_password" || return 1
+    protect_secret_file "$dir/session_secret" || return 1
+    file="$dir/database_password"
+    if [ ! -s "$file" ]; then copy_secret_file "$dir/postgres_password" "$file" || return 1
+    elif ! cmp -s "$dir/postgres_password" "$file"; then
+        echo "Les copies de mot de passe PostgreSQL ne correspondent pas. Vérifiez les deux fichiers avant tout redémarrage."
+        return 1
+    fi
+
+    file="$dir/greenbone_credential_key"
+    if [ ! -e "$file" ]; then
+        write_secret_value "$file" "$(random_hex 32)" || return 1
+    fi
+    protect_secret_file "$file" || return 1
+
+    local name
+    local names=(local_admin_password oidc_client_secret google_client_secret directory_client_secret ldap_bind_password \
+        greenbone_password smtp_password graph_client_secret snmp_v3_auth_key snmp_v3_priv_key \
+        greenbone_ca.pem greenbone_client.crt greenbone_client.key google_directory_key.json)
+    for name in "${names[@]}"; do
+        file="$dir/$name"
+        [ -e "$file" ] || ( umask 077; : >"$file" ) || return 1
+        protect_secret_file "$file" || return 1
+    done
+}
+
+# Rebuild the legacy Compose env-file values into protected files; this reverses the migration without
+# inventing or rotating credentials, for rollback to a version that still uses direct variables.
+rollback_env_secrets() {
+    local keys=(POSTGRES_PASSWORD TLS_SCAN_SESSION_SECRET TLS_SCAN_LOCAL_ADMIN_PASSWORD TLS_SCAN_OIDC_CLIENT_SECRET \
+        TLS_SCAN_GOOGLE_CLIENT_SECRET TLS_SCAN_DIRECTORY_CLIENT_SECRET TLS_SCAN_LDAP_BIND_PASSWORD \
+        TLS_SCAN_GREENBONE_PASSWORD TLS_SCAN_SMTP_PASSWORD TLS_SCAN_GRAPH_CLIENT_SECRET \
+        TLS_SCAN_SNMP_V3_AUTH_KEY TLS_SCAN_SNMP_V3_PRIV_KEY)
+    local names=(postgres_password session_secret local_admin_password oidc_client_secret google_client_secret \
+        directory_client_secret ldap_bind_password greenbone_password smtp_password graph_client_secret \
+        snmp_v3_auth_key snmp_v3_priv_key)
+    local i file value
+    [ -f "$ENV_FILE" ] || { echo ".env introuvable."; return 1; }
+    echo "Cette commande réinscrit explicitement les secrets dans .env pour un ancien Compose. Protégez ensuite .env (0600)."
+    ask_go "Restaurer les variables secrètes directes dans .env ?" || return 1
+    for i in "${!keys[@]}"; do
+        file="$(secret_file_path "${names[$i]}")"
+        [ -f "$file" ] || { echo "Fichier protégé absent : ${names[$i]}"; return 1; }
+        value="$(cat -- "$file")"
+        env_set "${keys[$i]}" "$value"
+    done
+    chmod 600 "$ENV_FILE"
+}
+
+# Refuses to start with a stale/unredacted runtime configuration or a missing secret file. Values in
+# .env are always host-only interpolation inputs; only explicit non-secret compose environment entries reach services.
 create_env() {
     if [ ! -f "$ENV_FILE" ]; then
         [ -f "$ROOT/.env.example" ] || { echo ".env.example est introuvable."; return 1; }
@@ -327,19 +519,16 @@ create_env() {
         echo ".env créé à partir de .env.example"
     fi
     chmod 600 "$ENV_FILE"
-    if [ -z "$(env_get POSTGRES_PASSWORD)" ]; then
-        if docker volume ls -q --filter "label=com.docker.compose.project=$PROJECT" | grep -q 'pgdata$'; then
-            echo "Un volume PostgreSQL existe mais POSTGRES_PASSWORD est vide dans .env."
-            echo "Restaurez le .env d'origine : un nouveau mot de passe rendrait la base inaccessible."
-            return 1
-        fi
-        env_set POSTGRES_PASSWORD "$(random_hex 24)"
-        echo "POSTGRES_PASSWORD généré"
-    fi
-    if [ -z "$(env_get TLS_SCAN_SESSION_SECRET)" ]; then
-        env_set TLS_SCAN_SESSION_SECRET "$(random_hex 32)"
-        echo "TLS_SCAN_SESSION_SECRET généré"
-    fi
+    [ -n "$(env_get TLS_SCAN_SECRET_DIR)" ] || env_set TLS_SCAN_SECRET_DIR "./data/secrets"
+    [ -n "$(env_get TLS_SCAN_SECRET_GID)" ] || env_set TLS_SCAN_SECRET_GID "$(id -g)"
+    migrate_env_secrets || return 1
+    prepare_secret_files || return 1
+    local secret_key
+    for secret_key in POSTGRES_PASSWORD TLS_SCAN_SESSION_SECRET TLS_SCAN_LOCAL_ADMIN_PASSWORD TLS_SCAN_OIDC_CLIENT_SECRET \
+        TLS_SCAN_GOOGLE_CLIENT_SECRET TLS_SCAN_DIRECTORY_CLIENT_SECRET TLS_SCAN_LDAP_BIND_PASSWORD TLS_SCAN_GREENBONE_PASSWORD \
+        TLS_SCAN_SMTP_PASSWORD TLS_SCAN_GRAPH_CLIENT_SECRET TLS_SCAN_SNMP_V3_AUTH_KEY TLS_SCAN_SNMP_V3_PRIV_KEY; do
+        [ -z "$(env_get "$secret_key")" ] || { echo "La variable $secret_key doit être migrée hors de .env; aucune valeur directe ne sera transmise."; return 1; }
+    done
     return 0
 }
 
@@ -550,7 +739,7 @@ web_do_update() {
     banner
     say "MISE À JOUR / REDÉPLOIEMENT — les données sont conservées."
     say ""
-    begin_steps 10
+    begin_steps 11
     step "Vérification des prérequis Docker" web_check_prerequisites || return 1
     [ -f "$ENV_FILE" ] || die "Aucun .env : lancez d'abord l'installation."
     update_git_phase || return 1
@@ -561,6 +750,7 @@ web_do_update() {
     else
         step_skipped "Mise à jour du code (aucune nouvelle version)"
     fi
+    step "Migration/protection des fichiers secrets" create_env || return 1
     step "Certificat HTTPS" check_certificate || return 1
     step "Validation Docker Compose" check_compose || return 1
     step "Construction des images" build_images || return 1
@@ -658,6 +848,11 @@ web_do_reset_admin() {
     [ "$RESET_DEFAULT" = 1 ] && args+=(--default)
     # Run directly (not through the step log): the one-time password is shown on the terminal only.
     dc exec -T api python -m tls_scan_app.cli reset-admin-password ${args[@]+"${args[@]}"}
+}
+
+web_do_rollback_secrets() {
+    rollback_env_secrets || die "Restauration des variables .env interrompue."
+    say "Variables directes restaurées dans .env. Revenez au Compose précédent et protégez .env (0600)."
 }
 
 web_do_logs() {
@@ -1142,7 +1337,7 @@ if [ "$MODE" = "standalone" ]; then
 fi
 
 case "$COMMAND" in
-    install|update|redeploy|status|verify|backup|restore|reset-admin|logs|reinstall|uninstall) check_project_name ;;
+    install|update|redeploy|status|verify|backup|restore|reset-admin|logs|reinstall|uninstall|rollback-secrets) check_project_name ;;
     *) echo "Commande inconnue : $COMMAND" >&2; usage >&2; exit 2 ;;
 esac
 case "$COMMAND" in
@@ -1152,6 +1347,7 @@ case "$COMMAND" in
     backup)          web_do_backup "${ARGS[0]:-}" ;;
     restore)         web_do_restore "${ARGS[0]:-}" ;;
     reset-admin)     web_do_reset_admin ;;
+    rollback-secrets) web_do_rollback_secrets ;;
     logs)            web_do_logs "${ARGS[0]:-}" ;;
     reinstall)       web_do_reinstall ;;
     uninstall)       web_do_uninstall ;;

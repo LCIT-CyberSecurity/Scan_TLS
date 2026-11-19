@@ -192,6 +192,9 @@ function exposureMetrics(node: MapNode, t: Translate) {
   const exposure = node.exposure;
   if (node.kind === "host") {
     const scan = exposure && "endpoints" in exposure ? exposure : undefined;
+    const endpointCount = scan && "run_id" in scan
+      ? scan.endpoints.length
+      : scan?.endpoint_count ?? scan?.endpoints?.length ?? 0;
     const severity = scan?.severity ?? {};
     const findingSummary = [
       severity.critical ? `${t("map.criticalShort")}${severity.critical}` : "",
@@ -201,8 +204,8 @@ function exposureMetrics(node: MapNode, t: Translate) {
     ].filter(Boolean).join("   ");
     return {
       subtitle: [node.value || node.name, node.ports ? `:${node.ports}` : ""].filter(Boolean).join(" · "),
-      metrics: scan ? `${scan.endpoints.length} ${t("map.endpoints")}` : t("map.notScannedState"),
-      severity: scan ? findingSummary || (scan.endpoints.length ? t("map.noFindings") : t("map.notScannedState")) : "",
+      metrics: scan ? `${endpointCount} ${t("map.endpoints")}` : t("map.notScannedState"),
+      severity: scan ? findingSummary || (endpointCount ? t("map.noFindings") : t("map.notScannedState")) : "",
       ratio: scan ? 1 : 0,
     };
   }

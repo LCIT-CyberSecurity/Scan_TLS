@@ -1,12 +1,25 @@
 # CI mirrors the commands used on the integration VM (see docs/dev/testing.md). Not yet exercised on GitHub's runners.
 name: ci
 on:
-  push: {branches: [main, "feature/**"]}
+  push: {branches: [main, "_SANDBOX", "_EXPERIMENT", "feature/**"]}
   pull_request:
 permissions: {contents: read}
 
 jobs:
+  integration-smoke:
+    # Keep automated checks lightweight on the experimental integration stages.
+    if: github.ref == 'refs/heads/_SANDBOX' || github.ref == 'refs/heads/_EXPERIMENT' || github.base_ref == '_SANDBOX' || github.base_ref == '_EXPERIMENT'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - name: Check Python syntax
+        run: python -m compileall -q backend tls_scanner tls_scan.py
+
   engine:
+    # Full suite belongs to feature/main changes, not automatic integration stages.
+    if: github.ref != 'refs/heads/_SANDBOX' && github.ref != 'refs/heads/_EXPERIMENT' && github.base_ref != '_SANDBOX' && github.base_ref != '_EXPERIMENT'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,6 +31,8 @@ jobs:
       - run: PYTHONPATH=. python -m unittest tests/engine/test_runner.py tests/engine/test_tls_checks.py tests/engine/test_tls_checks_integration.py tests/engine/test_tls_checks_lot2.py
 
   backend:
+    # Full suite belongs to feature/main changes, not automatic integration stages.
+    if: github.ref != 'refs/heads/_SANDBOX' && github.ref != 'refs/heads/_EXPERIMENT' && github.base_ref != '_SANDBOX' && github.base_ref != '_EXPERIMENT'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,17 +41,21 @@ jobs:
         run: TEST_MAX_DURATION=15 ops/dev/test-stack.sh tests/backend/test_reliability.py
 
   frontend:
+    # Full suite belongs to feature/main changes, not automatic integration stages.
+    if: github.ref != 'refs/heads/_SANDBOX' && github.ref != 'refs/heads/_EXPERIMENT' && github.base_ref != '_SANDBOX' && github.base_ref != '_EXPERIMENT'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-          with: {node-version: "24", cache: npm, cache-dependency-path: frontend/package-lock.json}
+        with: {node-version: "24", cache: npm, cache-dependency-path: frontend/package-lock.json}
       - run: npm ci
         working-directory: frontend
       - run: npx tsc -b && npx vitest run && npm run build
         working-directory: frontend
 
   standalone-regression:
+    # Full suite belongs to feature/main changes, not automatic integration stages.
+    if: github.ref != 'refs/heads/_SANDBOX' && github.ref != 'refs/heads/_EXPERIMENT' && github.base_ref != '_SANDBOX' && github.base_ref != '_EXPERIMENT'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

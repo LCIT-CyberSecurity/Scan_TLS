@@ -1,11 +1,12 @@
 import { FileText, Play, Plus, RotateCcw, Trash2, Pencil } from "lucide-react";
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api, downloadUrl } from "../api/client";
-import type { Definition, Group, Run, SI, Target, Template, Versioned } from "../api/types";
+import type { Definition, Group, MailSecurityConfig, Run, SI, Target, Template, Versioned } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { CheckList, ConfirmButton, Empty, ErrorNote, PageHeader, StatusBadge, TagList, TagsInput, useLoad } from "../components/common";
 import { Button } from "../components/ui/button";
+import { Badge } from "../components/ui/badge";
 import { Dialog } from "../components/ui/dialog";
 import { Field, Input, Select, Textarea } from "../components/ui/input";
 import { Card } from "../components/ui/card";
@@ -15,24 +16,46 @@ import { GroupedRuns } from "../components/GroupedRuns";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "../components/ui/tabs";
 import { useI18n } from "../i18n";
 import { formatDate, formatDuration } from "../lib/utils";
+import Reports from "./Reports";
+import { DnsScanTargetImport } from "../components/DnsScanTargetImport";
 
-const blank = { name: "", description: "", target_ids: [] as string[], group_ids: [] as string[], policy_ids: [] as string[], profile_id: "", report_template_id: "", policy_mode: "strict_all", tags: [] as string[], si_ids: [] as string[] };
+const DEFAULT_MAIL_SECURITY: MailSecurityConfig = { enabled: false, checks: { spf: true, dmarc: true, dkim: false, mta_sts: true, tls_rpt: true, dane: false }, dkim_selectors: [] };
+const MAIL_CHECKS = ["spf", "dmarc", "dkim", "mta_sts", "tls_rpt", "dane"] as const;
+type Technology = "tls" | "ipsec" | "ssh";
+interface DefinitionForm { name: string; description: string; control_type: Technology; enabled_controls?: Technology[]; service_identification_enabled: boolean; quic_enabled: boolean | null; target_ids: string[]; group_ids: string[]; policy_ids: string[]; profile_id: string; report_template_id: string; policy_mode: string; tags: string[]; si_ids: string[]; mail_security: MailSecurityConfig }
+const blank: DefinitionForm = { name: "", description: "", control_type: "tls", enabled_controls: ["tls", "ipsec"], service_identification_enabled: false, quic_enabled: null, target_ids: [], group_ids: [], policy_ids: [], profile_id: "", report_template_id: "", policy_mode: "strict_all", tags: [], si_ids: [], mail_security: DEFAULT_MAIL_SECURITY };
 
 function DefinitionDialog({ initial, onClose, onSaved }: { initial?: Definition; onClose: () => void; onSaved: () => void }) {
   const { t } = useI18n();
-  const [form, setForm] = useState(initial ? { ...blank, ...initial, report_template_id: initial.report_template_id ?? "" } : blank);
+  const { atLeast } = useAuth();
+  const [form, setForm] = useState<DefinitionForm>(initial ? { ...blank, ...initial, control_type: initial.control_type === "ipsec" ? "ipsec" : "tls", enabled_controls: initial.enabled_controls?.filter((x): x is Technology => x === "tls" || x === "ipsec" || x === "ssh") ?? undefined, service_identification_enabled: initial.service_identification_enabled ?? false, quic_enabled: initial.quic_enabled ?? null, report_template_id: initial.report_template_id ?? "" } : blank);
   const [error, setError] = useState<unknown>();
   const { data: targets, reload: reloadTargets } = useLoad(() => api<Target[]>("/targets"));
   const [newTarget, setNewTarget] = useState(false);
   const { data: groups } = useLoad(() => api<Group[]>("/target-groups"));
-  const { data: policies } = useLoad(() => api<Versioned[]>("/policies"));
-  const { data: profiles } = useLoad(() => api<Versioned[]>("/profiles"));
+  const activeControls = form.enabled_controls ?? [form.control_type];
+  const policyPath = activeControls.length > 1 ? "multi" : activeControls[0] === "ipsec" ? "/policies?technology=ipsec" : activeControls[0] === "ssh" ? "/policies?technology=ssh" : "/policies";
+  const profilePath = form.enabled_controls ? "/profiles?technology=generic" : form.control_type === "tls" ? "/profiles" : "/profiles?technology=ipsec";
+  const { data: policies } = useLoad(() => policyPath === "multi"
+    ? Promise.all([api<Versioned[]>("/policies"), api<Versioned[]>("/policies?technology=ipsec"), api<Versioned[]>("/policies?technology=ssh")]).then((items) => items.flat())
+    : api<Versioned[]>(policyPath), [policyPath]);
+  const { data: profiles } = useLoad(() => api<Versioned[]>(profilePath), [profilePath]);
   const { data: templates } = useLoad(() => api<Template[]>("/report-templates"));
   const { data: systems } = useLoad(() => api<SI[]>("/information-systems"));
   const publishedPolicies = policies?.filter((p) => !p.archived && p.versions.some((v) => v.status === "published")) ?? [];
   const publishedProfiles = profiles?.filter((p) => !p.archived && p.versions.some((v) => v.status === "published")) ?? [];
+  const selectedProfile = publishedProfiles.find((p) => p.id === form.profile_id);
+  const selectedProfileContent = selectedProfile?.versions.find((v) => v.status === "published")?.content as Record<string, any> | undefined; // eslint-disable-line @typescript-eslint/no-explicit-any
+  const quicProfile = form.enabled_controls ? selectedProfileContent?.tls?.scan?.quic : selectedProfileContent?.scan?.quic;
+  const quicInherited = quicProfile?.enabled === true;
+  const quicEnabled = form.quic_enabled ?? quicInherited;
   const [exclText, setExclText] = useState((initial?.exclusions ?? []).join("\n"));
   const set = <K extends keyof typeof form>(k: K, v: (typeof form)[K]) => setForm((f) => ({ ...f, [k]: v }));
+  const mail = form.mail_security ?? DEFAULT_MAIL_SECURITY;
+  const setMail = (patch: Partial<MailSecurityConfig>) => setForm((f) => {
+    const current = f.mail_security ?? DEFAULT_MAIL_SECURITY;
+    return { ...f, mail_security: { ...current, ...patch } };
+  });
 
   async function save() {
     try {
@@ -45,11 +68,49 @@ function DefinitionDialog({ initial, onClose, onSaved }: { initial?: Definition;
     <Dialog open onOpenChange={(o) => !o && onClose()} title={initial ? t("def.edit") : t("def.new")} wide>
       <div className="space-y-4">
         <Field label={t("col.name")}><Input value={form.name} onChange={(e) => set("name", e.target.value)} /></Field>
+        <fieldset className="space-y-2"><legend className="text-sm font-medium">{t("scan.controlType")}</legend>
+          {([ ["tls", "TLS"], ["ipsec", "VPN IPsec / IKE"], ["ssh", "SSH (ssh-audit)"] ] as const).map(([key, label]) => <label key={key} className="flex items-center gap-2 text-sm">
+            <input type="checkbox" checked={activeControls.includes(key)} onChange={(e) => setForm((f) => {
+              const current = f.enabled_controls ?? [f.control_type];
+              const next = e.target.checked ? [...new Set([...current, key])] : current.filter((x) => x !== key);
+              if (!next.length) return f;
+              return { ...f, enabled_controls: next, control_type: next.includes("tls") ? "tls" : next.includes("ipsec") ? "ipsec" : "tls", profile_id: "", policy_ids: [], ...(key === "tls" && !e.target.checked ? { mail_security: { ...f.mail_security, enabled: false }, quic_enabled: null } : {}) };
+            })} />{label}
+          </label>)}
+        </fieldset>
+        <fieldset className="space-y-2 rounded-sm border border-hairline p-3">
+          <legend className="px-1 text-sm font-medium">{t("service.title" as never)}</legend>
+          <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={form.service_identification_enabled} onChange={(e) => set("service_identification_enabled", e.target.checked)} /><span>{t("service.enable" as never)}<small className="mt-1 block text-xs text-muted">{t("service.scanHint" as never)}</small></span></label>
+        </fieldset>
+        {activeControls.includes("tls") && <fieldset className="space-y-2 rounded-sm border border-hairline p-3">
+          <legend className="px-1 text-sm font-medium">{t("quic.title" as never)}</legend>
+          <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={quicEnabled} onChange={(e) => set("quic_enabled", e.target.checked)} /><span>{t("quic.scanEnable" as never)}<small className="mt-1 block text-xs text-muted">{form.quic_enabled === null ? t(quicInherited ? "quic.inheritedOn" as never : "quic.inheritedOff" as never) : t("quic.scanOverride" as never)}</small></span></label>
+          {form.quic_enabled !== null && <Button type="button" size="sm" variant="outline" onClick={() => set("quic_enabled", null)}>{t("quic.useProfile" as never)}</Button>}
+        </fieldset>}
         <Field label={t("col.description")}><Textarea value={form.description} onChange={(e) => set("description", e.target.value)} /></Field>
         <Field label={t("def.targets")}><CheckList items={(targets ?? []).map((x) => ({ id: x.id, label: x.name || x.value, sub: [x.name ? x.value : "", x.ports].filter(Boolean).join(" · ") }))} selected={form.target_ids} onChange={(v) => set("target_ids", v)} empty={t("def.noTargets")} /></Field>
+        {atLeast("OPERATOR") && <DnsScanTargetImport onImported={(imported) => {
+          void reloadTargets();
+          setForm((f) => ({ ...f, target_ids: [...new Set([...f.target_ids, ...imported.map((target) => target.id)])] }));
+        }} />}
         <div><Button type="button" variant="outline" size="sm" onClick={() => setNewTarget(true)}><Plus />{t("target.new")}</Button></div>
         <Field label={t("def.groups")}><CheckList items={(groups ?? []).map((x) => ({ id: x.id, label: x.name, sub: `${x.target_ids.length}` }))} selected={form.group_ids} onChange={(v) => set("group_ids", v)} empty={t("def.noGroups")} /></Field>
         <Field label={t("excl.label")} hint={t("excl.hint")}><Textarea rows={3} value={exclText} onChange={(e) => setExclText(e.target.value)} placeholder={"10.20.0.0/24\nlegacy.example.org\n*.test.example.org"} className="font-mono text-xs" /></Field>
+        {activeControls.includes("tls") && <details className="rounded-sm border border-hairline p-3">
+          <summary className="cursor-pointer text-sm font-medium">{t("mail.title")}</summary>
+          <div className="mt-3 space-y-3">
+            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={mail.enabled} onChange={(e) => setMail({ enabled: e.target.checked })} />{t("mail.enable")}</label>
+            {mail.enabled && <>
+              <p className="text-xs text-muted">{t("mail.scope")}</p>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {(["spf", "dmarc", "dkim", "mta_sts", "tls_rpt", "dane"] as const).map((check) => <label key={check} className="flex items-center gap-2 text-sm">
+                  <input type="checkbox" checked={!!mail.checks[check]} onChange={(e) => setMail({ checks: { ...mail.checks, [check]: e.target.checked } })} />{t(`mail.${check}` as never)}
+                </label>)}
+              </div>
+              {mail.checks.dkim && <Field label={t("mail.dkimSelectors")} hint={t("mail.dkimHint")}><Input value={mail.dkim_selectors.join(", ")} onChange={(e) => setMail({ dkim_selectors: [...new Set(e.target.value.split(/[\s,;]+/).map((x) => x.trim()).filter(Boolean))].slice(0, 20) })} placeholder="selector1, selector2" /></Field>}
+            </>}
+          </div>
+        </details>}
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label={t("def.profile")}><Select value={form.profile_id} onChange={(e) => set("profile_id", e.target.value)}><option value="">—</option>{publishedProfiles.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></Field>
           <Field label={t("def.template")}><Select value={form.report_template_id} onChange={(e) => set("report_template_id", e.target.value)}><option value="">{t("def.defaultTemplate")}</option>{templates?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></Field>
@@ -71,10 +132,17 @@ export default function Scans() {
   const { t, locale } = useI18n();
   const { user, atLeast } = useAuth();
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [mine, setMine] = useState(!atLeast("OPERATOR"));
   const [status, setStatus] = useState("");
   const [grouped, setGrouped] = useState(true);
-  const [tab, setTab] = useState("runs");
+  const requestedTab = searchParams.get("tab");
+  const tab = requestedTab === "scans" || requestedTab === "reports" ? requestedTab : "history";
+  const setTab = (value: string) => {
+    const next = new URLSearchParams(searchParams);
+    next.set("tab", value);
+    setSearchParams(next);
+  };
   const [editing, setEditing] = useState<Definition | "new" | null>(null);
   const [error, setError] = useState<unknown>();
   const { data: runs, reload } = useLoad(() => api<Run[]>("/scan-runs", { params: { mine, status } }), [mine, status], 5000);
@@ -86,16 +154,27 @@ export default function Scans() {
   const canEdit = (d: Definition) => atLeast("OPERATOR") || d.owner_id === user?.id;
 
   const phaseText = (r: Run) => `${r.status === "running" ? t(`phase.${r.phase}` as never) : ""}${r.progress ? ` ${r.progress.hosts_done}/${r.progress.hosts_total}` : ""}`.trim();
+  const runMailChecks = (r: Run) => {
+    const planned = r.plan?.mail_security?.checks ?? r.mail_security?.checks ?? [];
+    if (planned.length) return planned;
+    return [...new Set((r.mail_security_results ?? []).flatMap((domain) => domain.checks.map((check) => check.check)).filter((check) => MAIL_CHECKS.includes(check as (typeof MAIL_CHECKS)[number])))];
+  };
+  const mailBadges = (checks: string[]) => checks.length
+    ? <div className="flex flex-wrap gap-1">{checks.map((check) => <Badge key={check} tone="info">{t(`mail.${check}` as never)}</Badge>)}</div>
+    : <span className="text-muted">—</span>;
   const runColumns: Column<Run>[] = [
     { key: "name", header: t("col.name"), values: (r) => [r.name], sort: (r) => r.name, render: (r) => <><Link className="row-link" to={`/scans/${r.id}`}>{r.name}</Link>{r.schedule_id && <span className="ml-2 text-xs text-muted">⏱</span>}</> },
     { key: "status", header: t("col.status"), values: (r) => [r.status], render: (r) => <StatusBadge status={r.status} /> },
     { key: "phase", header: t("col.phase"), sort: phaseText, render: (r) => <span className="text-muted">{phaseText(r)}</span> },
+    { key: "mail", header: t("scans.mailControls"), values: (r) => runMailChecks(r).map((check) => t(`mail.${check}` as never)), render: (r) => mailBadges(runMailChecks(r)) },
     { key: "date", header: t("col.date"), sort: (r) => r.queued_at, values: (r) => [new Date(r.queued_at).toLocaleDateString(locale)], render: (r) => formatDate(r.queued_at, locale) },
     { key: "duration", header: t("col.duration"), sort: (r) => r.duration_seconds ?? -1, render: (r) => formatDuration(r.duration_seconds) },
     { key: "nc", header: t("col.nonCompliant"), sort: (r) => r.summary?.non_compliant_endpoints ?? -1, values: (r) => [String(r.summary?.non_compliant_endpoints ?? "—")], render: (r) => r.summary?.non_compliant_endpoints ?? "—" },
     { key: "actions", header: "", render: (r) => (
       <div className="row-actions">
         {r.reports.some((x) => x.format === "html") && <Button asChild size="sm" variant="outline"><a href={downloadUrl(r.id, "html", true)} target="_blank" rel="noreferrer"><FileText />{t("action.report")}</a></Button>}
+        {r.reports.some((x) => x.format === "ipsec_html") && <Button asChild size="sm" variant="outline"><a href={downloadUrl(r.id, "ipsec_html", true)} target="_blank" rel="noreferrer"><FileText />IPsec</a></Button>}
+        {r.reports.some((x) => x.format === "ssh_html") && <Button asChild size="sm" variant="outline"><a href={downloadUrl(r.id, "ssh_html", true)} target="_blank" rel="noreferrer"><FileText />SSH</a></Button>}
         {r.definition_id && !(r.status === "queued" || r.status === "running") && <Button size="sm" variant="outline" onClick={() => void launch(r.definition_id as string)}><RotateCcw />{t("scans.rescan")}</Button>}
         {atLeast("OPERATOR") && !(r.status === "queued" || r.status === "running") && <ConfirmButton variant="outline" label={<Trash2 className="size-4" />} confirm={t("confirm.deleteScan")} onConfirm={async () => { try { await api(`/scan-runs/${r.id}`, { method: "DELETE" }); void reload(); } catch (e) { setError(e); } }} />}
         {(r.status === "queued" || r.status === "running") && (r.initiated_by === user?.id || atLeast("OPERATOR")) && <ConfirmButton variant="outline" label={t("action.cancelScan")} confirm={t("confirm.cancelScan")} onConfirm={async () => { try { await api(`/scan-runs/${r.id}/cancel`, { method: "POST" }); void reload(); } catch (e) { setError(e); } }} />}
@@ -103,6 +182,7 @@ export default function Scans() {
   ];
   const defColumns: Column<Definition>[] = [
     { key: "name", header: t("col.name"), values: (d) => [d.name], sort: (d) => d.name, render: (d) => <>{d.name}<div className="text-xs font-normal text-muted">{d.description}</div></> },
+    { key: "mail", header: t("scans.mailControls"), values: (d) => MAIL_CHECKS.filter((check) => d.mail_security?.enabled && d.mail_security.checks[check]).map((check) => t(`mail.${check}` as never)), render: (d) => mailBadges(MAIL_CHECKS.filter((check) => d.mail_security?.enabled && d.mail_security.checks[check])) },
     { key: "tags", header: t("col.tags"), values: (d) => d.tags, render: (d) => <TagList tags={d.tags} /> },
     { key: "targets", header: t("def.targets"), sort: (d) => d.target_ids.length + d.group_ids.length, render: (d) => d.target_ids.length + d.group_ids.length },
     { key: "actions", header: "", render: (d) => (
@@ -118,8 +198,8 @@ export default function Scans() {
       <PageHeader title={t("nav.scans")} actions={<Button onClick={() => setEditing("new")}><Plus />{t("def.new")}</Button>} />
       <ErrorNote error={error} />
       <Tabs value={tab} onValueChange={setTab}>
-        <TabsList><TabsTrigger value="runs">{t("scans.runs")}</TabsTrigger><TabsTrigger value="defs">{t("scans.definitions")}</TabsTrigger></TabsList>
-        <TabsContent value="runs">
+        <TabsList><TabsTrigger value="scans">{t("nav.scans")}</TabsTrigger><TabsTrigger value="history">{t("scans.history")}</TabsTrigger><TabsTrigger value="reports">{t("nav.reports")}</TabsTrigger></TabsList>
+        <TabsContent value="history">
           <div className="mb-3 flex flex-wrap items-center gap-3">
             {atLeast("OPERATOR") && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} />{t("scans.onlyMine")}</label>}
             <Select aria-label={t("col.status")} className="w-44" value={status} onChange={(e) => setStatus(e.target.value)}><option value="">{t("filter.allStatuses")}</option>{["queued", "running", "completed", "partial", "failed", "cancelled", "expired"].map((s) => <option key={s} value={s}>{t(`status.${s}` as never)}</option>)}</Select>
@@ -134,11 +214,12 @@ export default function Scans() {
                 onDelete={async (id) => { try { await api(`/scan-runs/${id}`, { method: "DELETE" }); void reload(); } catch (e) { setError(e); } }} /></div>
             : <DataTable rows={runs} rowKey={(r) => r.id} columns={runColumns} defaultSort={{ key: "date", dir: "desc" }} />) : <Empty>{t("scans.none")}</Empty>}</Card>
         </TabsContent>
-        <TabsContent value="defs">
+        <TabsContent value="scans">
           <Card>{defs?.length ? <DataTable rows={defs} rowKey={(d) => d.id} columns={defColumns} /> : <Empty>{t("def.none")}</Empty>}</Card>
         </TabsContent>
+        <TabsContent value="reports"><Reports embedded /></TabsContent>
       </Tabs>
-      {editing && <DefinitionDialog initial={editing === "new" ? undefined : editing} onClose={() => setEditing(null)} onSaved={() => { void reloadDefs(); setTab("defs"); }} />}
+      {editing && <DefinitionDialog initial={editing === "new" ? undefined : editing} onClose={() => setEditing(null)} onSaved={() => { void reloadDefs(); setTab("scans"); }} />}
     </>
   );
 }

@@ -5,20 +5,50 @@ x-backend: &backend
   build: {context: ., dockerfile: ops/docker/backend.Dockerfile}
   image: tls-scan-backend:${TLS_SCAN_VERSION:-local}
   restart: unless-stopped
-  env_file: .env
-  environment:
+  group_add: ["${TLS_SCAN_SECRET_GID:-1000}"]
+  environment: &backend-environment
     TLS_SCAN_ENVIRONMENT: production
-    TLS_SCAN_DATABASE_URL: postgresql+psycopg://tls_scan:${POSTGRES_PASSWORD}@postgres:5432/tls_scan
+    TLS_SCAN_DATABASE_URL: postgresql+psycopg://tls_scan@postgres:5432/tls_scan
+    TLS_SCAN_DATABASE_PASSWORD_FILE: /run/secrets/database_password
     TLS_SCAN_STORAGE_ROOT: /var/lib/tls-scan
+    TLS_SCAN_LOG_LEVEL: ${TLS_SCAN_LOG_LEVEL:-INFO}
+    TLS_SCAN_PUBLIC_BASE_URL: ${TLS_SCAN_PUBLIC_BASE_URL:-https://localhost:8443}
+    TLS_SCAN_COOKIE_SECURE: ${TLS_SCAN_COOKIE_SECURE:-true}
+    TLS_SCAN_SESSION_IDLE_TIMEOUT_MINUTES: ${TLS_SCAN_SESSION_IDLE_TIMEOUT_MINUTES:-60}
+    TLS_SCAN_SESSION_ABSOLUTE_TIMEOUT_HOURS: ${TLS_SCAN_SESSION_ABSOLUTE_TIMEOUT_HOURS:-12}
+    TLS_SCAN_MAX_CONCURRENT_SCANS: ${TLS_SCAN_MAX_CONCURRENT_SCANS:-2}
+    TLS_SCAN_MAX_SCAN_DURATION_SECONDS: ${TLS_SCAN_MAX_SCAN_DURATION_SECONDS:-3600}
+    TLS_SCAN_MAX_TARGETS_PER_SCAN: ${TLS_SCAN_MAX_TARGETS_PER_SCAN:-4096}
+    TLS_SCAN_MAX_SCAN_WORKERS: ${TLS_SCAN_MAX_SCAN_WORKERS:-8}
+    TLS_SCAN_WORKER_POLL_SECONDS: ${TLS_SCAN_WORKER_POLL_SECONDS:-2}
+    TLS_SCAN_SCHEDULER_POLL_SECONDS: ${TLS_SCAN_SCHEDULER_POLL_SECONDS:-15}
+    TLS_SCAN_RATE_LIMIT_ENABLED: ${TLS_SCAN_RATE_LIMIT_ENABLED:-true}
+    TLS_SCAN_TIMEZONE: ${TLS_SCAN_TIMEZONE:-Europe/Paris}
+    TLS_SCAN_GRAPH_LOGIN_URL: ${TLS_SCAN_GRAPH_LOGIN_URL:-https://login.microsoftonline.com}
+    TLS_SCAN_GRAPH_BASE_URL: ${TLS_SCAN_GRAPH_BASE_URL:-https://graph.microsoft.com/v1.0}
   security_opt: ["no-new-privileges:true"]
   cap_drop: [ALL]
   networks: [backend]
+
+x-greenbone-env: &greenbone-env
+  TLS_SCAN_GREENBONE_PASSWORD_FILE: /run/secrets/greenbone_password
+  TLS_SCAN_GREENBONE_ALLOWED_HOSTS: ${TLS_SCAN_GREENBONE_ALLOWED_HOSTS:-}
+  TLS_SCAN_GREENBONE_USERNAME: ${TLS_SCAN_GREENBONE_USERNAME:-}
+  TLS_SCAN_GREENBONE_CA_FILE: ${TLS_SCAN_GREENBONE_CA_FILE:-}
+  TLS_SCAN_GREENBONE_CLIENT_CERT_FILE: ${TLS_SCAN_GREENBONE_CLIENT_CERT_FILE:-}
+  TLS_SCAN_GREENBONE_CLIENT_KEY_FILE: ${TLS_SCAN_GREENBONE_CLIENT_KEY_FILE:-}
+  TLS_SCAN_GREENBONE_CREDENTIAL_KEY_FILE: /run/secrets/greenbone_credential_key
 
 services:
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
-    environment: {POSTGRES_USER: tls_scan, POSTGRES_DB: tls_scan, POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?run the bootstrap}"}
+    group_add: ["${TLS_SCAN_SECRET_GID:-1000}"]
+    environment:
+      POSTGRES_USER: tls_scan
+      POSTGRES_DB: tls_scan
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+    secrets: [postgres_password]
     volumes: [pgdata:/var/lib/postgresql/data]
     networks: [backend]
     healthcheck: {test: ["CMD-SHELL", "pg_isready -U tls_scan"], interval: 5s, retries: 20}
@@ -26,6 +56,49 @@ services:
   api:
     <<: *backend
     command: sh -c "cd backend && alembic upgrade head && cd .. && uvicorn --factory tls_scan_app.app:create_app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips='*'"
+    environment:
+      <<: [*backend-environment, *greenbone-env]
+      TLS_SCAN_SESSION_SECRET_FILE: /run/secrets/session_secret
+      TLS_SCAN_LOCAL_ADMIN_PASSWORD_FILE: /run/secrets/local_admin_password
+      TLS_SCAN_OIDC_CLIENT_SECRET_FILE: /run/secrets/oidc_client_secret
+      TLS_SCAN_GOOGLE_CLIENT_SECRET_FILE: /run/secrets/google_client_secret
+      TLS_SCAN_DIRECTORY_CLIENT_SECRET_FILE: /run/secrets/directory_client_secret
+      TLS_SCAN_LDAP_BIND_PASSWORD_FILE: /run/secrets/ldap_bind_password
+      TLS_SCAN_SMTP_PASSWORD_FILE: /run/secrets/smtp_password
+      TLS_SCAN_GRAPH_CLIENT_SECRET_FILE: /run/secrets/graph_client_secret
+      TLS_SCAN_SNMP_V3_AUTH_KEY_FILE: /run/secrets/snmp_v3_auth_key
+      TLS_SCAN_SNMP_V3_PRIV_KEY_FILE: /run/secrets/snmp_v3_priv_key
+      TLS_SCAN_SNMP_SECRETS_DIR: /run/secrets
+      TLS_SCAN_OIDC_PROVIDER: ${TLS_SCAN_OIDC_PROVIDER:-}
+      TLS_SCAN_OIDC_ISSUER: ${TLS_SCAN_OIDC_ISSUER:-}
+      TLS_SCAN_OIDC_CLIENT_ID: ${TLS_SCAN_OIDC_CLIENT_ID:-}
+      TLS_SCAN_OIDC_DEFAULT_ROLE: ${TLS_SCAN_OIDC_DEFAULT_ROLE:-USER}
+      TLS_SCAN_GOOGLE_ISSUER: ${TLS_SCAN_GOOGLE_ISSUER:-}
+      TLS_SCAN_SSO_AUTO_PROVISION: ${TLS_SCAN_SSO_AUTO_PROVISION:-}
+      TLS_SCAN_SNMP_V3_USERNAME: ${TLS_SCAN_SNMP_V3_USERNAME:-}
+      TLS_SCAN_GOOGLE_DIRECTORY_KEY_FILE: ${TLS_SCAN_GOOGLE_DIRECTORY_KEY_FILE:-}
+    secrets:
+      - database_password
+      - session_secret
+      - local_admin_password
+      - oidc_client_secret
+      - google_client_secret
+      - directory_client_secret
+      - ldap_bind_password
+      - greenbone_credential_key
+      - greenbone_password
+      - smtp_password
+      - graph_client_secret
+      - snmp_v3_auth_key
+      - snmp_v3_priv_key
+      - source: greenbone_ca
+        target: greenbone_ca.pem
+      - source: greenbone_client_cert
+        target: greenbone_client.crt
+      - source: greenbone_client_key
+        target: greenbone_client.key
+      - source: google_directory_key
+        target: google_directory_key.json
     volumes: [data:/var/lib/tls-scan]
     depends_on: {postgres: {condition: service_healthy}}
     read_only: true
@@ -33,11 +106,34 @@ services:
     healthcheck: {test: ["CMD", "curl", "-fs", "http://localhost:8000/api/health/ready"], interval: 10s, retries: 10, start_period: 20s}
     networks: [backend]
 
-  # Runs the scans. Egress to the networks being scanned goes through the `scan` network only; the
-  # database network is internal. The engine subprocess it spawns gets a stripped environment (no secrets).
+  # Runs scans and notifications. It sees only its database, mail and SNMP credentials.
   worker:
     <<: *backend
     command: python -m tls_scan_app.workers.worker
+    environment:
+      <<: [*backend-environment, *greenbone-env]
+      # Background workers do not serve sessions and must not receive the API session secret.
+      TLS_SCAN_SESSION_SECRET_REQUIRED: "false"
+      TLS_SCAN_SMTP_PASSWORD_FILE: /run/secrets/smtp_password
+      TLS_SCAN_GRAPH_CLIENT_SECRET_FILE: /run/secrets/graph_client_secret
+      TLS_SCAN_SNMP_V3_USERNAME: ${TLS_SCAN_SNMP_V3_USERNAME:-}
+      TLS_SCAN_SNMP_V3_AUTH_KEY_FILE: /run/secrets/snmp_v3_auth_key
+      TLS_SCAN_SNMP_V3_PRIV_KEY_FILE: /run/secrets/snmp_v3_priv_key
+      TLS_SCAN_SNMP_SECRETS_DIR: /run/secrets
+    secrets:
+      - database_password
+      - smtp_password
+      - graph_client_secret
+      - snmp_v3_auth_key
+      - snmp_v3_priv_key
+      - greenbone_password
+      - greenbone_credential_key
+      - source: greenbone_ca
+        target: greenbone_ca.pem
+      - source: greenbone_client_cert
+        target: greenbone_client.crt
+      - source: greenbone_client_key
+        target: greenbone_client.key
     volumes: [data:/var/lib/tls-scan]
     depends_on: {api: {condition: service_healthy}}
     networks: [backend, scan]
@@ -50,6 +146,13 @@ services:
   scheduler:
     <<: *backend
     command: python -m tls_scan_app.scheduler.scheduler
+    environment:
+      <<: *backend-environment
+      # The scheduler does not serve sessions and must not receive the API session secret.
+      TLS_SCAN_SESSION_SECRET_REQUIRED: "false"
+      TLS_SCAN_SMTP_PASSWORD_FILE: /run/secrets/smtp_password
+      TLS_SCAN_GRAPH_CLIENT_SECRET_FILE: /run/secrets/graph_client_secret
+    secrets: [database_password, smtp_password, graph_client_secret]
     depends_on: {api: {condition: service_healthy}}
     read_only: true
     tmpfs: [/tmp]
@@ -69,6 +172,26 @@ networks:
   backend: {internal: true}
   frontend: {}
   scan: {}
+
+secrets:
+  postgres_password: {file: "${TLS_SCAN_SECRET_DIR:-./data/secrets}/postgres_password"}
+  database_password: {file: "${TLS_SCAN_SECRET_DIR:-./data/secrets}/database_password"}
+  session_secret: {file: "${TLS_SCAN_SECRET_DIR:-./data/secrets}/session_secret"}
+  local_admin_password: {file: "${TLS_SCAN_SECRET_DIR:-./data/secrets}/local_admin_password"}
+  oidc_client_secret: {file: "${TLS_SCAN_SECRET_DIR:-./data/secrets}/oidc_client_secret"}
+  google_client_secret: {file: "${TLS_SCAN_SECRET_DIR:-./data/secrets}/google_client_secret"}
+  directory_client_secret: {file: "${TLS_SCAN_SECRET_DIR:-./data/secrets}/directory_client_secret"}
+  ldap_bind_password: {file: "${TLS_SCAN_SECRET_DIR:-./data/secrets}/ldap_bind_password"}
+  greenbone_credential_key: {file: "${TLS_SCAN_SECRET_DIR:-./data/secrets}/greenbone_credential_key"}
+  greenbone_password: {file: "${TLS_SCAN_SECRET_DIR:-./data/secrets}/greenbone_password"}
+  smtp_password: {file: "${TLS_SCAN_SECRET_DIR:-./data/secrets}/smtp_password"}
+  graph_client_secret: {file: "${TLS_SCAN_SECRET_DIR:-./data/secrets}/graph_client_secret"}
+  snmp_v3_auth_key: {file: "${TLS_SCAN_SECRET_DIR:-./data/secrets}/snmp_v3_auth_key"}
+  snmp_v3_priv_key: {file: "${TLS_SCAN_SECRET_DIR:-./data/secrets}/snmp_v3_priv_key"}
+  greenbone_ca: {file: "${TLS_SCAN_SECRET_DIR:-./data/secrets}/greenbone_ca.pem"}
+  greenbone_client_cert: {file: "${TLS_SCAN_SECRET_DIR:-./data/secrets}/greenbone_client.crt"}
+  greenbone_client_key: {file: "${TLS_SCAN_SECRET_DIR:-./data/secrets}/greenbone_client.key"}
+  google_directory_key: {file: "${TLS_SCAN_SECRET_DIR:-./data/secrets}/google_directory_key.json"}
 
 volumes:
   pgdata:

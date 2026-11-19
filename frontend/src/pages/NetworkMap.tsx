@@ -106,6 +106,17 @@ export default function NetworkMap() {
     zoneTrail.unshift(trailItem);
     trailItem = trailItem.parent_zone_id ? zones.find((item) => item.id === trailItem?.parent_zone_id) : undefined;
   }
+  const backToParentView = useCallback(() => {
+    if (zoneId) {
+      const parentZoneId = zones.find((item) => item.id === zoneId)?.parent_zone_id ?? "";
+      setZoneId(parentZoneId);
+    } else if (groupId) {
+      setGroupId("");
+    }
+    setFocusTargetId("");
+    setSelected(undefined);
+    setHost(undefined);
+  }, [groupId, zoneId, zones]);
   const chooseNode = useCallback((node: MapNode) => {
     if (node.id) graph.current?.setElementState(node.id, "selected");
     setSelected(node);
@@ -228,11 +239,11 @@ export default function NetworkMap() {
 
   useEffect(() => {
     function escape(event: KeyboardEvent) {
-      if (event.key === "Escape") { setSelected(undefined); setHost(undefined); }
+      if (event.key === "Escape") backToParentView();
     }
     window.addEventListener("keydown", escape);
     return () => window.removeEventListener("keydown", escape);
-  }, []);
+  }, [backToParentView]);
 
   async function refreshMap() { await reload(); setRevision((value) => value + 1); }
   async function ensureTargets() {
@@ -363,6 +374,7 @@ export default function NetworkMap() {
           {si && <><span>/</span><button type="button" onClick={() => { setZoneId(""); setGroupId(""); setSelected(undefined); }}>{si.name}</button></>}
           {group && <><span>/</span><button type="button" className="is-current">{group.name}</button></>}
           {zoneTrail.map((item, index) => <Fragment key={item.id}><span>/</span><button type="button" className={index === zoneTrail.length - 1 ? "is-current" : ""} onClick={() => { setZoneId(item.id); setGroupId(""); }}>{item.name}</button></Fragment>)}
+          {(zoneId || groupId) && <Button type="button" variant="ghost" size="icon" aria-label={t("map.backToParent" as never)} title={t("map.backToParent" as never)} onClick={backToParentView}><X size={16} /></Button>}
         </div>
         <div className="network-map-tools">
           <label className="network-map-search"><Search size={16} /><input value={searchText} placeholder={t("map.search")} onChange={(event) => setSearchText(event.target.value)} onKeyDown={(event) => event.key === "Enter" && void runSearch()} /><button type="button" aria-label={t("action.search")} onClick={() => void runSearch()}><Search size={15} /></button></label>
@@ -409,12 +421,21 @@ export default function NetworkMap() {
           <div className="network-map-detail-meta"><span>{[...systems.filter((item) => host.target.si_ids.includes(item.id)).map((item) => item.name), ...host.target.zones.map((item) => item.name)].join(" · ") || t("map.zone")}</span><span>{host.target.ports || t("map.profilePorts")}</span></div>
           {!host.scan ? <p className="network-map-no-scan">{t("map.noScan")}</p> : <>
             <div className="network-map-scan-summary"><span>{t("map.lastScan")}</span><time>{new Date(host.scan.finished_at).toLocaleString(locale)}</time><strong>{host.scan.status}</strong></div>
+            {!!host.scan.services?.length && <><h3>{t("service.results" as never)} <small>{host.scan.services.length}</small></h3>
+              <p className="text-xs text-muted">{t("service.lastObserved" as never)} {host.scan.service_scan_finished_at ? new Date(host.scan.service_scan_finished_at).toLocaleString(locale) : "—"}</p>
+              <div className="network-map-endpoints">{host.scan.services.map((service, index) => <article key={`${service.target}:${service.port ?? "none"}:${index}`}>
+                <div><strong>{service.service || t("service.unknown" as never)}</strong><span>{service.port ? `:${service.port}/${service.transport}` : ""}</span></div>
+                <small>{[service.product, service.version].filter(Boolean).join(" ") || service.extra_info || "—"}</small>
+                <small>{service.address && service.address !== service.target ? `${service.address} · ` : ""}{service.status} · {Math.round(service.confidence * 100)}% · {service.source}</small>
+              </article>)}</div>
+            </>}
             <div className="network-map-severity-list">{severityEntries.map(([key, count]) => <span key={key} className={`severity-${key}`}>{t(`map.${key}` as never)} <b>{count}</b></span>)}</div>
             <h3>{t("map.endpoints")} <small>{host.scan.endpoints.length}</small></h3>
             <div className="network-map-endpoints">{host.scan.endpoints.map((endpoint) => <article key={endpoint.endpoint_id}>
               <div><strong>{endpoint.hostname || endpoint.ip_address || host.target.value}</strong><span>:{endpoint.port ?? "—"}</span></div>
               <span className={`network-map-status network-map-status--${endpoint.compliance_status || "unknown"}`}>{endpoint.compliance_status || t("map.unknown")}</span>
               <small>{endpoint.tls_versions.join(" · ") || "—"} {endpoint.certificate?.valid_until ? `· ${t("map.validUntil")}: ${endpoint.certificate.valid_until}` : ""}</small>
+              <small title={[endpoint.exposure?.source, endpoint.exposure?.evidence_method, endpoint.exposure?.justification].filter(Boolean).join(" · ")}>{t("exposure.state" as never)}: {t(`exposure.${endpoint.exposure?.state ?? "unknown"}` as never)}{endpoint.exposure?.validated ? ` · ${t("exposure.validated" as never)}` : ` · ${t("exposure.notEvaluated" as never)}`}</small>
               {endpoint.certificate && <small>{t("map.issuer")}: {String(endpoint.certificate.issuer ?? "—")} · {t("map.trust")}: {String(endpoint.certificate.trust_classification ?? "—")}</small>}
             </article>)}</div>
             {host.findings.length > 0 && <><h3>{t("map.findings")} <small>{host.findings.length}</small></h3><ul className="network-map-findings">{host.findings.map((finding) => <li key={`${finding.finding_id}:${finding.title}`}><span className={`severity-${finding.severity}`}>{finding.severity}</span><span>{finding.title}</span></li>)}</ul></>}
