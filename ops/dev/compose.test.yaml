@@ -82,7 +82,9 @@ services:
       TEST_LAB_HOST: lab-tls
       TEST_SNMP_HOST: lab-snmp
       TEST_LDAP_CA_FILE: /ldap-certs/ca.crt
-    volumes: [data:/var/lib/orion, "../../tests:/app/tests:ro", "./.ldap-certs:/ldap-certs:ro"]
+    # compose.yaml and .env.example are checked by tests/backend/test_secret_files.py and test_orion_identity.py
+    volumes: [data:/var/lib/orion, "../../tests:/app/tests:ro", "./.ldap-certs:/ldap-certs:ro", "../../compose.yaml:/app/compose.yaml:ro",
+              "../../.env.example:/app/.env.example:ro"]
     depends_on: {api: {condition: service_healthy}, worker: {condition: service_started}, lab-tls: {condition: service_started}, lab-dns: {condition: service_started}, lab-snmp: {condition: service_healthy}}
     profiles: [tests]
     command: pytest -x -q tests/backend

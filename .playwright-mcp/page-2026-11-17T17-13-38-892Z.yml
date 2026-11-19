@@ -1,0 +1,26 @@
+- generic [ref=f11e4]:
+  - complementary [ref=f11e5]:
+    - generic [ref=f11e11]:
+      - strong [ref=f11e12]: TLS SCAN
+      - generic [ref=f11e13]: Conformité TLS & cryptographie
+    - heading "Maîtrisez votre exposition TLS" [level=2] [ref=f11e15]
+    - generic [ref=f11e16]:
+      - text: Un produit
+      - strong [ref=f11e17]: LCIT Cybersecurity
+  - main [ref=f11e18]:
+    - generic [ref=f11e19]:
+      - generic [ref=f11e20]:
+        - img "LCIT" [ref=f11e21]
+        - generic [ref=f11e22]:
+          - strong [ref=f11e23]: LCIT Cybersecurity
+          - generic [ref=f11e24]: Console de scan TLS
+      - generic [ref=f11e25]:
+        - generic [ref=f11e26]: ACCÈS SÉCURISÉ
+        - heading "Connexion" [level=1] [ref=f11e27]
+        - paragraph [ref=f11e28]: Connectez-vous avec votre compte pour configurer, lancer et consulter vos scans TLS.
+        - status [ref=f11e29]: Chargement des méthodes de connexion…
+        - generic [ref=f11e30]:
+          - button "FR" [ref=f11e31] [cursor=pointer]
+          - button "EN" [ref=f11e32] [cursor=pointer]
+          - button "DE" [ref=f11e33] [cursor=pointer]
+      - paragraph [ref=f11e34]: Espace protégé — avec le SSO, votre mot de passe n'est jamais saisi ici.

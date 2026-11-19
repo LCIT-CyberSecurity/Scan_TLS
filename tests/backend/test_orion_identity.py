@@ -159,3 +159,14 @@ def test_session_cookie_from_before_the_rebranding_is_still_honoured(admin):
     logout = legacy.post("/api/auth/logout", headers={"x-csrf-token": fresh.csrf})
     assert logout.status_code == 200
     assert legacy.get("/api/auth/me").status_code == 401
+
+
+# ---------- report template branding on Orion reports and on reports generated before the rebranding ----------
+@pytest.mark.parametrize("mark", ["O", "TS"])
+def test_template_logo_replaces_the_report_mark(tmp_path, mark):
+    from orion_app.services.report_branding import apply_to_html
+    report = tmp_path / "report.html"
+    report.write_text(f'<html><head></head><body><div class="brand-mark large" aria-hidden="true">{mark}</div></body></html>', encoding="utf-8")
+    assert apply_to_html(report, {"logo": "data:image/png;base64,AAAA"})
+    text = report.read_text(encoding="utf-8")
+    assert 'src="data:image/png;base64,AAAA"' in text and "brand-mark" not in text

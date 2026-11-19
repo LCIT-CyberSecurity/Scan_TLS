@@ -1,0 +1,107 @@
+- generic [ref=f16e3]:
+  - complementary [ref=f16e4]:
+    - generic [ref=f16e5]:
+      - img "LCIT" [ref=f16e6]
+      - generic [ref=f16e7]:
+        - generic [ref=f16e8]: TLS Scan
+        - generic [ref=f16e9]: Conformité TLS
+      - button "Réduire la barre latérale" [expanded] [ref=f16e10] [cursor=pointer]
+    - navigation "Main" [ref=f16e14]:
+      - generic [ref=f16e15]:
+        - button "Mon espace" [expanded] [ref=f16e16] [cursor=pointer]
+        - generic [ref=f16e20]:
+          - link "Tableau de bord" [ref=f16e21] [cursor=pointer]:
+            - /url: /
+          - link "Mes tâches" [ref=f16e25] [cursor=pointer]:
+            - /url: /tasks
+      - button "Analyse" [ref=f16e31] [cursor=pointer]
+      - button "Résultats" [ref=f16e36] [cursor=pointer]
+      - button "Administration" [ref=f16e41] [cursor=pointer]
+    - generic [ref=f16e45]:
+      - strong [ref=f16e46]: LCIT Cybersecurity
+      - text: Connecté en tant que admin
+  - generic [ref=f16e50]:
+    - banner [ref=f16e51]:
+      - generic [ref=f16e52]:
+        - generic [ref=f16e53]: TLS Scan
+        - strong [ref=f16e56]: Tableau de bord
+      - group [ref=f16e58]:
+        - generic "Compte et réglages" [ref=f16e59] [cursor=pointer]:
+          - generic [ref=f16e60]: DA
+          - generic [ref=f16e61]:
+            - text: Demo Admin
+            - generic [ref=f16e62]: ADMIN
+    - main [ref=f16e65]:
+      - generic [ref=f16e66]:
+        - heading "Tableau de bord" [level=1] [ref=f16e68]
+        - generic [ref=f16e69]:
+          - combobox "Périmètre" [ref=f16e70]:
+            - option "Mes scans" [selected]
+            - option "Tous les scans"
+          - combobox "SI" [ref=f16e71]:
+            - option "Tous les SI" [selected]
+          - combobox "Tag" [ref=f16e72]:
+            - option "Tous les tags" [selected]
+      - region "Sécurité et conformité" [ref=f16e73]:
+        - generic [ref=f16e74]:
+          - generic [ref=f16e75]:
+            - generic [ref=f16e76]: Conformité TLS
+            - strong [ref=f16e82]: Non disponible
+            - generic [ref=f16e83]: Lancez un scan pour voir la conformité ici.
+            - button "Endpoints conformes ÷ (conformes + non conformes), sur le dernier résultat de chaque endpoint distinct. Les endpoints en erreur ou non testés sont présentés à part et jamais comptés comme conformes." [ref=f16e84]
+          - generic [ref=f16e87]:
+            - generic [ref=f16e88]: Endpoints non conformes
+            - strong [ref=f16e95]: Non disponible
+            - generic [ref=f16e96]: Endpoints distincts, dernier résultat de chacun
+          - generic [ref=f16e97]:
+            - generic [ref=f16e98]: Constats critiques et élevés
+            - strong [ref=f16e103]: Non disponible
+            - generic [ref=f16e104]: Lancez un scan pour voir la conformité ici.
+          - generic [ref=f16e105]:
+            - generic [ref=f16e106]: Certificats à surveiller
+            - strong [ref=f16e113]: Non disponible
+            - generic [ref=f16e114]: Lancez un scan pour voir la conformité ici.
+            - button "Un certificat est compté une seule fois, quel que soit le nombre d'endpoints qui le présentent. Les jours restants sont ceux mesurés par le scan, diminués du temps écoulé depuis." [ref=f16e115]
+        - generic [ref=f16e118]:
+          - generic [ref=f16e119]:
+            - heading "Répartition de la conformité" [level=2] [ref=f16e121]
+            - paragraph [ref=f16e123]: Lancez un scan pour voir la conformité ici.
+          - generic [ref=f16e124]:
+            - heading "Évolution de la conformité" [level=2] [ref=f16e126]
+            - paragraph [ref=f16e128]: Pas encore assez de scans terminés.
+        - generic [ref=f16e129]:
+          - generic [ref=f16e130]:
+            - heading "Évolution entre deux dates" [level=2] [ref=f16e131]
+            - generic [ref=f16e132]:
+              - generic [ref=f16e133]:
+                - text: Du
+                - textbox "Du" [ref=f16e134]: 2026-10-18
+              - generic [ref=f16e135]:
+                - text: Au
+                - textbox "Au" [ref=f16e136]: 2026-11-17
+          - paragraph [ref=f16e138]: Pas encore assez de scans terminés.
+        - generic [ref=f16e139]:
+          - heading "Points de vigilance prioritaires" [level=2] [ref=f16e141]
+          - paragraph [ref=f16e143]: Aucune anomalie constatée dans les derniers résultats.
+      - region "Activité des scans" [ref=f16e147]:
+        - heading "Activité des scans" [level=2] [ref=f16e148]
+        - generic [ref=f16e149]:
+          - link "En cours 0" [ref=f16e150] [cursor=pointer]:
+            - /url: /scans
+            - generic [ref=f16e151]: En cours
+            - strong [ref=f16e156]: "0"
+          - link "Terminés 0" [ref=f16e157] [cursor=pointer]:
+            - /url: /scans
+            - generic [ref=f16e158]: Terminés
+            - strong [ref=f16e164]: "0"
+          - link "En échec 0" [ref=f16e165] [cursor=pointer]:
+            - /url: /scans
+            - generic [ref=f16e166]: En échec
+            - strong [ref=f16e173]: "0"
+        - generic [ref=f16e174]:
+          - generic [ref=f16e175]:
+            - heading "Scans récents" [level=2] [ref=f16e177]
+            - strong [ref=f16e183]: Aucun scan pour le moment.
+          - generic [ref=f16e184]:
+            - heading "Prochaines exécutions" [level=2] [ref=f16e186]
+            - paragraph [ref=f16e188]: Aucune planification à venir.
