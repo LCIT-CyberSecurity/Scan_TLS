@@ -282,6 +282,40 @@ def create_target(body: TargetBody, db: DbSession = Depends(get_db), user: User 
     return target_out(target, classification_of(db, "target", [target.id])[target.id])
 
 
+class TargetRowsBody(TargetBody):
+    value: str = ""
+    values: list[str] = Field(min_length=1, max_length=50)
+
+
+@router.post("/targets/rows")
+def create_target_rows(
+    body: TargetRowsBody, db: DbSession = Depends(get_db), user: User = Depends(user_only),
+) -> list[dict]:
+    seen: set[str] = set()
+    results: list[dict] = []
+    for raw in body.values:
+        row = TargetBody(**body.model_dump(exclude={"value", "values"}), value=raw)
+        try:
+            value, _, ports = _validated(row)
+            if value in seen:
+                results.append({"status": "duplicate"})
+                continue
+            seen.add(value)
+            if db.scalar(select(Target.id).where(Target.value == value).limit(1)):
+                results.append({"status": "existing"})
+                continue
+            results.append({"status": "created", "target": create_target(row, db, user)})
+        except HTTPException as error:
+            db.rollback()
+            status = {409: "existing", 422: "invalid"}.get(error.status_code, "failed")
+            results.append({"status": status, "detail": str(error.detail)})
+        except IntegrityError:
+            db.rollback()
+            exists = db.scalar(select(Target.id).where(Target.value == value, Target.ports == ports))
+            results.append({"status": "existing" if exists else "failed"})
+    return results
+
+
 @router.put("/targets/{target_id}")
 def update_target(target_id: uuid.UUID, body: TargetBody, db: DbSession = Depends(get_db), user: User = Depends(user_only)) -> dict:
     target = get_or_404(db, Target, target_id, "Target")
