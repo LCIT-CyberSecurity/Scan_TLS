@@ -10,7 +10,9 @@ Use a dedicated Greenbone account with read-only visibility of Targets. Retrieva
 
 The backend must be able to reach gvmd from its container. GMP is not the Greenbone web UI or a REST/JSON API. This connector supports TLS transport only. Do not expose GMP to the public Internet. Prefer a private network or protected tunnel and configure the exact destination hostname/IP in `TLS_SCAN_GREENBONE_ALLOWED_HOSTS` (comma-separated if multiple administrative endpoints are intentionally allowed).
 
-Configure the GMP login secret through the deployment secret mechanism, not the UI or database:
+A TLS Scan administrator can set **New GMP password** under **Administration → Imports → OpenVAS / Greenbone**. Leave it empty to preserve the current value. A saved password takes precedence over the deployment password. The deployment script provisions a dedicated `greenbone_credential_key` secret for API and worker. PostgreSQL stores the encrypted password and the UI only shows whether it is configured. Back up the key separately from the database, using your secret backup procedure. Changing the host, port or account with a saved password requires submitting the password again.
+
+The existing deployment secret remains the default until a password is entered in the UI:
 
 ```text
 TLS_SCAN_GREENBONE_ALLOWED_HOSTS=greenbone.internal
@@ -22,7 +24,7 @@ TLS_SCAN_GREENBONE_CA_FILE=/run/secrets/greenbone_ca.pem
 # TLS_SCAN_GREENBONE_CLIENT_KEY_FILE=/run/secrets/greenbone_client.key
 ```
 
-The CA and optional client-certificate paths refer to files mounted into API and worker containers. Server certificate verification is always enabled. GMP application credentials are separate from TLS transport credentials. The UI stores only connection label, host, port, username and timeout in PostgreSQL; it never returns the password or certificate material. The configured host must exactly match the server-side allowlist, and resolved loopback/link-local/multicast/unspecified addresses are rejected.
+The CA and optional client-certificate paths refer to files mounted into API and worker containers. Server certificate verification is always enabled. GMP application credentials are separate from TLS transport credentials. The API never returns the password, encrypted value or certificate material. The configured host must exactly match the server-side allowlist, and resolved loopback/link-local/multicast/unspecified addresses are rejected.
 
 Use Administration → Imports → OpenVAS / Greenbone → Test connection to inspect DNS, TCP, TLS, GMP, authentication and read access to Targets. A passing TCP or TLS step alone does not mean the GMP login works.
 
