@@ -1,0 +1,13 @@
+- generic [ref=f3e2]:
+  - generic [ref=f3e5]:
+    - heading "Votre connexion n'est pas privée" [level=1] [ref=f3e6]
+    - paragraph [ref=f3e7]:
+      - text: Des pirates informatiques tentent peut-être de voler vos informations sur
+      - strong [ref=f3e8]: 192.168.1.7
+      - text: (mots de passe, messages ou cartes de crédit, par exemple).
+      - link "En savoir plus sur cet avertissement" [ref=f3e9] [cursor=pointer]:
+        - /url: "#"
+    - button "net::ERR_CERT_AUTHORITY_INVALID" [ref=f3e11]
+  - generic [ref=f3e12]:
+    - button "Revenir en lieu sûr" [ref=f3e13] [cursor=pointer]
+    - button "Paramètres avancés" [ref=f3e14] [cursor=pointer]
