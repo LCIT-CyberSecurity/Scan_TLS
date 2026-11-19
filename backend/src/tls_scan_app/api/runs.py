@@ -18,7 +18,7 @@ from tls_scan_app.models import (
     DnsDiscovery, Role, RunEndpoint, RunFinding, RunIpsecObservation, RunSshObservation, ScanDefinition, ScanRun, ScanRunRequester, ScanSchedule,
     ScheduleTrigger, User,
 )
-from tls_scan_app.models.scan import ACTIVE_STATUSES, FINAL_STATUSES
+from tls_scan_app.models.scan import ACTIVE_STATUSES
 from tls_scan_app.models.user import role_at_least
 from tls_scan_app.services import audit, comparison, dashboard as dashboard_service, evolution as evolution_service, results, runs
 from tls_scan_app.services.schedule_calc import ScheduleError, next_after, validate

@@ -3,8 +3,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0022_endpoint_exposure_context"
-down_revision = "0021_quic_observations"
+revision = "0023_endpoint_exposure_context"
+down_revision = "0022_dns_lookalike_monitoring"
 branch_labels = None
 depends_on = None
 JSON = sa.JSON().with_variant(postgresql.JSONB(), "postgresql")

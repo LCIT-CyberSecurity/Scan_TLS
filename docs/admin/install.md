@@ -58,9 +58,7 @@ git clone <repo> && cd Scan_TLS
 The installation:
 
 1. checks Docker, the daemon and Compose; 2. checks the project name and that the HTTPS/HTTP ports are free;
-3. creates `.env` from `.env.example` if absent (**never overwritten**) and generates only the secrets that are empty
-   (`POSTGRES_PASSWORD`, `TLS_SCAN_SESSION_SECRET`; mode 600). An empty `POSTGRES_PASSWORD` next to an existing database
-   volume is refused: a new password would lock the data away;
+3. creates `.env` from `.env.example` if absent (**never overwritten**), migrates legacy direct secrets only after explicit confirmation, and creates protected secret files under `TLS_SCAN_SECRET_DIR` (default `data/secrets`). Existing credentials are preserved; a missing database password beside an existing volume is refused;
 4. prepares the HTTPS certificate: existing files are kept; a self-signed one is generated only if **both** files are
    absent (`data/certs`); a missing file, a certificate/key mismatch is a failure (nothing is replaced); an expired or
    soon-to-expire certificate is reported; loose key permissions are tightened to 600;
@@ -69,7 +67,7 @@ The installation:
 7. prints the URL and the initial administrator: `admin` / `SecretPassword` (deployment default, same convention as
    LCIT-Sign). **It must be changed at first sign-in**; `TLS_SCAN_LOCAL_ADMIN_PASSWORD` overrides the default at first start.
 
-Edit `.env` first if needed: `TLS_SCAN_PUBLIC_BASE_URL` (SSO redirects and e-mail links), `TLS_SCAN_HTTPS_PORT`, scan limits, OIDC.
+Edit `.env` first if needed: `TLS_SCAN_PUBLIC_BASE_URL` (SSO redirects and e-mail links), `TLS_SCAN_HTTPS_PORT`, scan limits, OIDC. Keep credential values out of `.env`; see [secret handling](secrets.md) for migration and recovery.
 
 | Command | Purpose |
 |---|---|

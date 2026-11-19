@@ -77,7 +77,7 @@ The **Scanning → Exposure map** explores information systems, explicitly assoc
 
 ## Several targets at once
 
-In *New target*, the *Targets* field accepts several values (FQDN, IP address or network in CIDR notation, one per line or separated by commas). Each becomes a target; with several values they are gathered in a group named after the label you typed.
+In **Targets → New target**, enter one IPv4 or IPv6 address, hostname or CIDR network per row. Use **Add a row** for up to 50 entries. Each entry becomes a separate target with the same label, ports, description, tags and SI selections. The form shows the result for each row. Correct failed rows and save again; successfully created rows are retained and skipped on retry. A CIDR stays a single network target. Saving creates no group or scan.
 
 
 See also: [Exclusions](exclusions.md) (what a scan must never touch), [Trust authorities](trust-authorities.md), [DNS discovery](dns-discovery.md).

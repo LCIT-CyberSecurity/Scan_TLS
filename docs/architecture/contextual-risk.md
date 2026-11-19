@@ -26,6 +26,6 @@ The bounded order is low → medium → high → critical. The matrix leaves inf
 
 ## Migration and operations
 
-Migration `0022_endpoint_exposure_context` adds the evidence table and nullable-history-compatible JSON snapshots with empty defaults. Apply it using the normal Docker upgrade procedure in [installation](../admin/install.md). Rollback removes only these new fields/table and discards their saved context; back up before downgrading after recording evidence.
+Migration `0023_endpoint_exposure_context` follows `0022_dns_lookalike_monitoring` and adds the evidence table and nullable-history-compatible JSON snapshots with empty defaults. Apply it using the normal Docker upgrade procedure in [installation](../admin/install.md). Rollback removes only these new fields/table and discards their saved context; back up before downgrading after recording evidence.
 
 No external probing is enabled. To validate a deployment, run backend/frontend suites, build the image, apply migrations, create a target, add a pending record, confirm it as ADMIN, queue a scan and inspect its immutable endpoint snapshot and per-finding risk. Confirm historical runs are unchanged after editing the current exposure. Docker Sandbox validation is still required before rollout.

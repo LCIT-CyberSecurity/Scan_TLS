@@ -120,7 +120,7 @@ def run_subprocess(settings: Settings, session_factory, run_id) -> None:
 def main() -> None:
     settings = get_settings()
     configure_logging(settings, "worker")
-    engine = make_engine(settings.database_url)
+    engine = make_engine(settings.database_url, settings.database_password_file)
     session_factory = make_session_factory(engine)
     worker_id = f"{socket.gethostname()}-{os.getpid()}"
     stop = {"flag": False}

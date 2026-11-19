@@ -9,7 +9,8 @@ import { Field, Input, Select } from "../components/ui/input";
 import { LOCALES, useI18n, type Locale } from "../i18n";
 import { APPEARANCES, THEMES, applyAppearance, applyTheme, readAppearance, readTheme, type Appearance, type ThemeId } from "../theme";
 
-const EVENTS = ["scan_completed", "scan_failed", "scan_cancelled", "new_noncompliance", "certificate_expiring", "schedule_problem"] as const;
+const EVENTS = ["scan_completed", "scan_failed", "scan_cancelled", "new_noncompliance", "certificate_expiring", "schedule_problem", "dns_lookalike"] as const;
+const DEFAULT_EVENTS = EVENTS.filter((event) => event !== "dns_lookalike");
 
 export default function Preferences() {
   const { t, locale, setLocale } = useI18n();
@@ -19,7 +20,7 @@ export default function Preferences() {
   const [pw, setPw] = useState({ current_password: "", new_password: "" });
   const [msg, setMsg] = useState("");
   const [error, setError] = useState<unknown>();
-  const events = user?.notify_events ?? [...EVENTS];
+  const events = user?.notify_events ?? [...DEFAULT_EVENTS];
 
   const patch = async (body: Record<string, unknown>) => { try { await api("/auth/preferences", { method: "PATCH", body }); await refresh(); setError(undefined); } catch (e) { setError(e); } };
   return (

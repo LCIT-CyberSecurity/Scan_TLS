@@ -154,6 +154,22 @@ class DnsDiscovery(Base):
     cancel_requested: Mapped[bool] = mapped_column(default=False, server_default="false")
 
 
+class DnsLookalikeMonitor(Base):
+    """Explicitly enabled, per-domain lookalike monitoring; disabled and silent by default."""
+
+    __tablename__ = "dns_lookalike_monitors"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    domain: Mapped[str] = mapped_column(String(253), index=True)
+    owner_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    enabled: Mapped[bool] = mapped_column(default=False, server_default="false", index=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    options: Mapped[dict] = mapped_column(JsonType, default=dict)
+    schedule_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("scan_schedules.id", ondelete="SET NULL"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 class TargetDnsObservation(Base):
     """What DNS discoveries observed about a target's FQDN. Technical, additive and bounded; never edits the target's own (manual) fields."""
 
