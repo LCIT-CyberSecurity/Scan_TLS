@@ -814,7 +814,7 @@ reports:
         self.assertIn("Print / Save as PDF", html_report)
         self.assertIn("Communication Security", html_report)
         self.assertIn("communicationTable", html_report)
-        self.assertNotIn("# TLS Scan Dashboard", html_report)
+        self.assertNotIn("# Orion TLS Dashboard", html_report)
 
 
 
@@ -970,7 +970,7 @@ class ProfessionalReportTests(unittest.TestCase):
         self.assertIn("PRIVATE_TRUSTED", script)
         self.assertIn("UNTRUSTED", script)
         self.assertIn("NOT_TESTED", script)
-        self.assertIn("A technical error prevented TLS Scan", script)
+        self.assertIn("A technical error prevented Orion", script)
 
     def test_multi_format_exports_create_scan_folder_resources_and_metadata(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -1039,7 +1039,7 @@ class TerminalOutputTests(unittest.TestCase):
             3072,
             "sha256WithRSAEncryption",
             "PUBLIC_TRUSTED",
-            "TLS Scan Public Web PKI",
+            "Orion Public Web PKI",
             "Demo Public Root CA",
             "Passed",
             "Not Tested",
