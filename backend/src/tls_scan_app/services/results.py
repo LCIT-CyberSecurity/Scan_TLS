@@ -9,7 +9,14 @@ from sqlalchemy import Select, or_, select
 from sqlalchemy.orm import Session as DbSession
 
 from tls_scan_app.api.common import classification_of, ids_matching_filter
-from tls_scan_app.models import RunEndpoint, RunFinding, ScanRun, ScanRunRequester, Target, User
+from tls_scan_app.models import (
+    RunEndpoint,
+    RunFinding,
+    ScanRun,
+    ScanRunRequester,
+    Target,
+    User,
+)
 
 
 def filter_runs(stmt: Select, db: DbSession, *, mine_of: User | None = None, requested_by: uuid.UUID | None = None, status: str | None = None,
@@ -55,9 +62,12 @@ def endpoint_out(e: RunEndpoint, by_value: dict[str, set[str]]) -> dict[str, Any
             "compliance_status": e.compliance_status, "highest_severity": e.highest_severity, "tls_versions": e.supported_tls_versions,
             "certificate": e.certificate, "errors": e.errors, "untested_checks": e.untested_checks,
             "tls_checks": e.tls_checks or [],
+            "exposure": e.exposure_snapshot or {"state": "unknown", "validated": False},
+            "contextual_risk": e.contextual_risk or {},
             "tags": sorted(by_value.get(e.hostname, set()) | by_value.get(e.ip_address, set()))}
 
 
 def finding_out(f: RunFinding) -> dict[str, Any]:
     return {"finding_id": f.finding_id, "title": f.title, "severity": f.severity, "status": f.status, "category": f.category,
-            "evidence": f.evidence, "remediation": f.remediation, "affected_endpoint_ids": f.affected_endpoint_ids}
+            "evidence": f.evidence, "remediation": f.remediation, "affected_endpoint_ids": f.affected_endpoint_ids,
+            "contextual_risk_by_endpoint": f.contextual_risk_by_endpoint or {}}

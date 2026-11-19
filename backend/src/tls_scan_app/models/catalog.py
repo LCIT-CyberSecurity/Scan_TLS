@@ -9,7 +9,17 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, Text, UniqueConstraint, func
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from tls_scan_app.database import Base, JsonType
@@ -95,6 +105,31 @@ class TargetGroupMember(Base):
     target_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("targets.id", ondelete="CASCADE"), primary_key=True)
 
 
+class EndpointExposure(Base):
+    """Evidence-backed Internet reachability context for a target protocol and port."""
+
+    __tablename__ = "endpoint_exposures"
+    __table_args__ = (UniqueConstraint("target_id", "protocol", "port", "sni", name="uq_endpoint_exposure_target_protocol_port_sni"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    target_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("targets.id", ondelete="CASCADE"), index=True)
+    protocol: Mapped[str] = mapped_column(String(12))  # tls | ipsec | ssh
+    port: Mapped[int] = mapped_column(Integer)
+    sni: Mapped[str] = mapped_column(String(255), default="")
+    state: Mapped[str] = mapped_column(String(32), default="unknown", server_default="unknown")
+    zone_context: Mapped[str] = mapped_column(String(32), default="unknown", server_default="unknown")
+    evidence_method: Mapped[str] = mapped_column(String(40), default="")
+    source: Mapped[str] = mapped_column(String(255), default="")
+    justification: Mapped[str] = mapped_column(Text, default="")
+    confidence: Mapped[str] = mapped_column(String(12), default="unknown", server_default="unknown")
+    validated: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    recorded_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    validated_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    observed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    validated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
 class DnsDiscovery(Base):
     """A DNS discovery request for one domain (name-server lookup + zone-transfer attempt), run by the worker.
 
@@ -117,6 +152,22 @@ class DnsDiscovery(Base):
     progress: Mapped[dict | None] = mapped_column(JsonType)
     heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     cancel_requested: Mapped[bool] = mapped_column(default=False, server_default="false")
+
+
+class DnsLookalikeMonitor(Base):
+    """Explicitly enabled, per-domain lookalike monitoring; disabled and silent by default."""
+
+    __tablename__ = "dns_lookalike_monitors"
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    domain: Mapped[str] = mapped_column(String(253), index=True)
+    owner_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    enabled: Mapped[bool] = mapped_column(default=False, server_default="false", index=True)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    options: Mapped[dict] = mapped_column(JsonType, default=dict)
+    schedule_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("scan_schedules.id", ondelete="SET NULL"), index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
 class TargetDnsObservation(Base):

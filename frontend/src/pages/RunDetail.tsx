@@ -2,7 +2,7 @@ import { Download, GitCompare, Trash2, XCircle } from "lucide-react";
 import { useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api, downloadUrl } from "../api/client";
-import type { Comparison, Endpoint, Finding, FindingBrief, RunDetail as Detail } from "../api/types";
+import type { Comparison, Endpoint, Finding, FindingBrief, RunDetail as Detail, ServiceObservation, QuicObservation } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { ConfirmButton, Empty, ErrorNote, Loading, Metric, Note, PageHeader, SeverityBadge, StatusBadge, TagList, useLoad } from "../components/common";
 import { Badge } from "../components/ui/badge";
@@ -25,6 +25,7 @@ function endpointColumns(t: (key: never) => string): Column<Endpoint>[] {
     { key: "endpoint", header: "Endpoint", values: (e) => [e.hostname || e.ip_address], sort: endpointLabel, render: (e) => <span className="row-link">{endpointLabel(e)}</span> },
     { key: "tags", header: tr("col.tags"), values: (e) => e.tags ?? [], render: (e) => (e.tags?.length ? <TagList tags={e.tags} /> : "—") },
     { key: "grade", header: tr("run.grade"), values: (e) => [e.grade], render: (e) => e.grade },
+    { key: "exposure", header: tr("exposure.state"), values: (e) => [e.exposure?.state ?? "unknown"], render: (e) => <span className="text-xs" title={[e.exposure?.source, e.exposure?.evidence_method, e.exposure?.justification].filter(Boolean).join(" · ")}>{tr(`exposure.${e.exposure?.state ?? "unknown"}`)}{e.exposure?.validated ? ` · ${tr("exposure.validated")}` : ""}</span> },
     { key: "status", header: tr("col.status"), values: (e) => [e.compliance_status], render: (e) => e.compliance_status },
     { key: "tls", header: "TLS", values: (e) => e.tls_versions, sort: (e) => e.tls_versions.join(", "), render: (e) => e.tls_versions.join(", ") },
     { key: "cert", header: tr("run.certificate"), values: (e) => [String(e.certificate.subject ?? "")], sort: (e) => String(e.certificate.valid_until ?? ""),
@@ -51,7 +52,7 @@ function findingColumns(t: (key: never) => string, endpoints: Endpoint[]): Colum
   return [
     { key: "severity", header: tr("run.severity"), values: (f) => [f.severity], sort: (f) => SEVERITY_RANK[f.severity.toLowerCase()] ?? 0, render: (f) => <SeverityBadge severity={f.severity} /> },
     { key: "finding", header: tr("run.finding"), sort: (f) => f.title, values: (f) => [f.title],
-      render: (f) => <><div className="font-medium">{f.title}</div><div className="text-xs text-muted">{f.evidence}</div><div className="mt-1 text-xs">{f.remediation}</div></> },
+      render: (f) => <><div className="font-medium">{f.title}</div><div className="text-xs text-muted">{f.evidence}</div><div className="mt-1 text-xs">{f.remediation}</div><ul className="mt-2 space-y-1 text-xs">{f.affected_endpoint_ids.map((id) => { const risk = f.contextual_risk_by_endpoint?.[id]; const endpoint = byId.get(id); return <li key={id} title={[risk?.reason, risk?.source, risk?.evidence_method, risk?.justification].filter(Boolean).join(" · ")}>{endpoint ? endpointLabel(endpoint) : id} · {tr("exposure.contextualRisk")}: {risk?.contextual_severity ?? tr("exposure.notEvaluated")}</li>; })}</ul></> },
     { key: "category", header: "Category", values: (f) => [f.category], render: (f) => f.category || "—" },
     { key: "affected", header: tr("run.affected"), values: (f) => f.affected_endpoint_ids.map((id) => { const e = byId.get(id); return e ? endpointLabel(e) : id; }), sort: (f) => f.affected_endpoint_ids.map((id) => { const e = byId.get(id); return e ? endpointLabel(e) : id; }).join(", "), render: (f) => (
       <span className="text-xs">
@@ -114,7 +115,7 @@ export default function RunDetail() {
         <>
           <StatusBadge status={run.status} />
           {active && (run.initiated_by === user?.id || atLeast("OPERATOR")) && <ConfirmButton label={<><XCircle className="size-4" />{t("action.cancelScan")}</>} confirm={t("confirm.cancelScan")} onConfirm={async () => { try { await api(`/scan-runs/${id}/cancel`, { method: "POST" }); void reload(); } catch (e) { setError(e); } }} />}
-          {atLeast("USER") && !active && <Button variant="outline" onClick={() => setCmp(!cmp)}><GitCompare />{t("cmp.title")}</Button>}
+          {atLeast("USER") && !active && run.control_type !== "ipsec" && <Button variant="outline" onClick={() => setCmp(!cmp)}><GitCompare />{t("cmp.title")}</Button>}
           {atLeast("OPERATOR") && !active && <ConfirmButton label={<><Trash2 className="size-4" />{t("action.delete")}</>} confirm={t("confirm.deleteScan")} onConfirm={async () => { try { await api(`/scan-runs/${id}`, { method: "DELETE" }); navigate("/scans"); } catch (e) { setError(e); } }} />}
         </>
       } />
@@ -126,23 +127,23 @@ export default function RunDetail() {
           {run.exclusions.partial_targets.length > 0 && <p className="mt-2 text-xs text-muted">{t("excl.partial", { list: run.exclusions.partial_targets.join(", ") })}</p>}</details>
       )}
       {run.error && <ErrorNote error={new Error(run.error)} />}
-      {run.status === "completed" && run.endpoints.length === 0 && <Note tone="info" className="mb-4">{t("run.noTls")}</Note>}
+      {run.status === "completed" && run.control_type === "tls" && run.endpoints.length === 0 && <Note tone="info" className="mb-4">{t("run.noTls")}</Note>}
       {run.status === "partial" || run.skipped_hosts?.length ? <Note tone="warning" className="mb-4">{t("run.partial")} {run.skipped_hosts?.length ? `(${t("run.skipped")}: ${run.skipped_hosts.join(", ")})` : ""}</Note> : null}
-      {s && (
+      {s && run.control_type !== "ipsec" && (
         <div className="metrics">
           {([[t("run.endpoints"), s.total_endpoints, ""], [t("run.compliant"), s.compliant_endpoints, "green"], [t("run.nonCompliant"), s.non_compliant_endpoints, s.non_compliant_endpoints ? "red" : ""], [t("run.critical"), s.critical_findings, s.critical_findings ? "red" : ""], [t("run.grade"), s.overall_grade, ""], [t("run.errors"), s.endpoints_with_errors, s.endpoints_with_errors ? "amber" : ""], [t("run.notTested"), s.checks_not_tested, ""]] as [string, unknown, string][]).map(([l, v, tone]) => (
             <Metric key={l} label={l} value={String(v ?? "—")} tone={tone === "red" || tone === "green" || tone === "amber" ? tone : undefined} />
           ))}
         </div>
       )}
-      {cmp && <div className="mb-6"><ComparisonView runId={id} withRun={withRun} /></div>}
+      {cmp && run.control_type !== "ipsec" && <div className="mb-6"><ComparisonView runId={id} withRun={withRun} /></div>}
       {run.reports.length > 0 && (
         <Card className="mb-6"><CardHeader><CardTitle>{t("nav.reports")}</CardTitle></CardHeader><CardContent className="flex flex-wrap gap-2">
-          {run.reports.filter((r) => ["html", "md", "csv", "cbom", "findings_csv"].includes(r.format)).map((r) => <Button key={r.format} asChild variant="outline" size="sm"><a href={downloadUrl(id, r.format)}><Download />{r.format.toUpperCase()}</a></Button>)}
-          {run.reports.some((r) => r.format === "html") && <Button asChild size="sm"><a href={downloadUrl(id, "html", true)} target="_blank" rel="noreferrer">{t("run.openHtml")}</a></Button>}
+      {run.reports.filter((r) => ["html", "md", "csv", "cbom", "findings_csv", "contextual_risk_csv", "mail_security_csv", "service_csv", "ipsec_html", "ipsec_md", "ipsec_csv", "ssh_html", "ssh_md", "ssh_csv"].includes(r.format)).map((r) => <Button key={r.format} asChild variant="outline" size="sm"><a href={downloadUrl(id, r.format)}><Download />{r.format === "service_csv" ? "SERVICES CSV" : r.format === "mail_security_csv" ? "MAIL CSV" : r.format === "contextual_risk_csv" ? "CONTEXTUAL RISK CSV" : r.format.replaceAll("_", " ").toUpperCase()}</a></Button>)}
+          {run.reports.filter((r) => ["html", "ipsec_html", "ssh_html"].includes(r.format)).map((r) => <Button key={`${r.format}-open`} asChild size="sm"><a href={downloadUrl(id, r.format, true)} target="_blank" rel="noreferrer">{t("run.openHtml")} · {r.format.replace("_html", "").toUpperCase()}</a></Button>)}
         </CardContent></Card>
       )}
-      <Card className="mb-6">
+      {run.control_type !== "ipsec" && <Card className="mb-6">
         <CardHeader><CardTitle>{t("run.endpointsTitle")}</CardTitle>
           <div className="segmented" role="group" aria-label={t("run.endpointsTitle")}>
             <button type="button" aria-pressed={byHost} className={byHost ? "active" : ""} onClick={() => setByHost(true)}>{t("run.byHost")}</button>
@@ -150,17 +151,78 @@ export default function RunDetail() {
           </div>
         </CardHeader>
         {run.endpoints.length ? (byHost ? <GroupedEndpoints rows={run.endpoints} columns={endpointColumns(t as never)} /> : <DataTable rows={run.endpoints} rowKey={(e) => e.endpoint_id} columns={endpointColumns(t as never)} />) : <Empty>—</Empty>}
-      </Card>
-      <PkiTrust endpoints={run.endpoints} stores={run.trust_stores ?? []} />
-      {tlsCheckRows.length > 0 && (
+      </Card>}
+      {run.control_type !== "ipsec" && <PkiTrust endpoints={run.endpoints} stores={run.trust_stores ?? []} />}
+      {run.control_type !== "ipsec" && tlsCheckRows.length > 0 && (
         <Card className="mb-6"><CardHeader><CardTitle>{t("run.tlsChecks")}</CardTitle></CardHeader>
           <p className="px-5 pb-2 text-xs text-muted">{t("run.tlsChecksHint")}</p>
           <DataTable rows={tlsCheckRows} rowKey={(r) => `${r.endpoint}/${r.check.check_id}`} columns={tlsCheckColumns(t as never)} />
         </Card>
       )}
-      <Card><CardHeader><CardTitle>{t("run.findings")}</CardTitle></CardHeader>
+      {!!run.mail_security_results?.length && <Card className="mb-6">
+        <CardHeader><CardTitle>{t("mail.results" as never)}</CardTitle></CardHeader>
+        <CardContent><p className="mb-3 text-xs text-muted">{t("mail.limits" as never)}</p>
+          {run.mail_security_results.map((domain) => <section key={domain.domain} className="mb-5 last:mb-0">
+            <h3 className="mb-2 text-sm font-semibold">{domain.domain}</h3>
+            {!!domain.smtp_starttls?.length && <p className="mb-2 text-xs text-muted">{t("mail.smtpStarttls" as never)}: {domain.smtp_starttls.map((item) => `${item.host}${item.port ? `:${item.port}` : ""} — ${t(`mail.smtpStatus.${item.status}` as never)}${item.tls_versions.length ? ` (${item.tls_versions.join(", ")})` : ""}`).join(" · ")}</p>}
+            <DataTable rows={domain.checks} rowKey={(row) => `${row.check}-${row.details.selector ?? ""}`} columns={[
+              { key: "check", header: t("mail.check" as never), values: (row) => [row.check], render: (row) => row.check.toUpperCase() },
+              { key: "status", header: t("mail.verdict" as never), values: (row) => [row.status], render: (row) => <Badge tone={row.status === "compliant" ? "success" : row.status === "non_compliant" || row.status === "error" ? "danger" : row.status === "warning" ? "warning" : "neutral"}>{t(`mail.status.${row.status}` as never)}</Badge> },
+              { key: "message", header: t("mail.observation" as never), values: (row) => [row.message], render: (row) => <span className="text-xs">{row.message}</span> },
+              { key: "evidence", header: t("mail.evidence" as never), values: (row) => row.records, render: (row) => <code className="break-all text-xs">{row.records.join("; ") || "—"}</code> },
+            ]} />
+          </section>)}
+        </CardContent>
+      </Card>}
+      {(run.control_type === "ipsec" || run.control_type === "multi") && <Card className="mb-6"><CardHeader><CardTitle>{t("ipsec.results" as never)}</CardTitle></CardHeader>
+        <p className="px-5 pb-3 text-xs text-muted">{t("ipsec.notice" as never)}</p>
+        {run.ipsec_observations?.length ? <DataTable rows={run.ipsec_observations} rowKey={(r) => `${r.target}:${r.port}:${r.ike_version}`} columns={[
+          { key: "target", header: "Target", values: (r) => [r.target], render: (r) => r.target },
+          { key: "port", header: "UDP", values: (r) => [String(r.port)], render: (r) => r.port },
+          { key: "version", header: "IKE", values: (r) => [r.ike_version], render: (r) => r.ike_version || "—" },
+          { key: "status", header: "Probe", values: (r) => [r.status], render: (r) => r.status },
+          { key: "verdict", header: "Policy", values: (r) => [r.verdict], render: (r) => <Badge tone={r.verdict === "compliant" ? "success" : r.verdict === "non_compliant" ? "danger" : "warning"}>{r.verdict}</Badge> },
+          { key: "proposal", header: "Observed proposal", values: (r) => [JSON.stringify(r.proposal)], render: (r) => <span className="text-xs">{Object.entries(r.proposal).map(([k, v]) => `${k}: ${v}`).join(" · ") || "Non déterminable"}</span> },
+        ]} /> : <Empty>—</Empty>}
+      </Card>}
+      {!!run.ssh_observations?.length && <Card className="mb-6"><CardHeader><CardTitle>SSH audit</CardTitle></CardHeader>
+        <p className="px-5 pb-3 text-xs text-muted">Unauthenticated protocol observations from ssh-audit; authentication and rate tests are not performed.</p>
+        <DataTable rows={run.ssh_observations} rowKey={(r) => `${r.target}:${r.port}`} columns={[
+          { key: "target", header: "Target", values: (r) => [r.target], render: (r) => r.target },
+          { key: "port", header: "TCP", values: (r) => [String(r.port)], render: (r) => r.port },
+          { key: "status", header: "Probe", values: (r) => [r.status], render: (r) => r.status },
+          { key: "verdict", header: "Policy", values: (r) => [r.verdict], render: (r) => <Badge tone={r.verdict === "compliant" ? "success" : r.verdict === "non_compliant" ? "danger" : "warning"}>{r.verdict}</Badge> },
+          { key: "banner", header: "Banner", values: (r) => [r.banner], render: (r) => <code className="text-xs">{r.banner || "—"}</code> },
+          { key: "fingerprints", header: "Host key fingerprints", values: (r) => Object.values(r.fingerprints).map(String), render: (r) => <code className="break-all text-xs">{Object.entries(r.fingerprints).map(([key, value]) => `${key}: ${String(value)}`).join(" · ") || "—"}</code> },
+          { key: "algorithms", header: "Observed algorithms", values: (r) => Object.values(r.algorithms).flat(), render: (r) => <span className="text-xs">{Object.entries(r.algorithms).flatMap(([k, v]) => v.map((x) => `${k}: ${x}`)).join(" · ") || "Indeterminate"}</span> },
+        ]} />
+      </Card>}
+      {!!run.service_observations?.length && <Card className="mb-6"><CardHeader><CardTitle>{t("service.results" as never)}</CardTitle></CardHeader>
+        <p className="px-5 pb-3 text-xs text-muted">{t("service.resultsHint" as never)}</p>
+        <DataTable rows={run.service_observations} rowKey={(r: ServiceObservation) => `${r.target}:${r.port ?? "none"}`} columns={[
+          { key: "target", header: "Target", values: (r) => [r.target, ...(r.scope_targets ?? [])], render: (r) => <span>{r.target || "—"}{!!r.scope_targets?.length && r.scope_targets.some((name) => name !== r.target) && <small className="ml-1 block text-muted">{r.scope_targets.filter((name) => name !== r.target).join(", ")}</small>}</span> },
+          { key: "port", header: "TCP", values: (r) => [String(r.port ?? "")], render: (r) => r.port ?? "—" },
+          { key: "service", header: t("service.name" as never), values: (r) => [r.service, r.product, r.version], render: (r) => <span>{r.service || "—"}{r.product && ` · ${r.product}`}{r.version && ` ${r.version}`}</span> },
+          { key: "confidence", header: t("service.confidence" as never), values: (r) => [String(r.confidence)], render: (r) => `${Math.round(r.confidence * 100)}%` },
+          { key: "status", header: t("col.status"), values: (r) => [r.status], render: (r) => <Badge tone={r.status === "observed" ? "success" : r.status === "probable" ? "warning" : "neutral"}>{r.status}</Badge> },
+        ]} />
+      </Card>}
+      {!!run.quic_observations?.length && <Card className="mb-6"><CardHeader><CardTitle>{t("quic.title" as never)}</CardTitle></CardHeader>
+        <p className="px-5 pb-3 text-xs text-muted">{t("quic.resultsHint" as never)}</p>
+        <DataTable rows={run.quic_observations} rowKey={(r: QuicObservation) => `${r.target}:${r.port ?? "none"}`} columns={[
+          { key: "target", header: "Target", values: (r) => [r.target], render: (r) => r.target || "—" },
+          { key: "port", header: "UDP", values: (r) => [String(r.port ?? "")], render: (r) => r.port ?? "—" },
+          { key: "status", header: t("col.status"), values: (r) => [r.status], render: (r) => <Badge tone={r.status === "observed" ? "success" : "warning"}>{r.status}</Badge> },
+          { key: "version", header: t("quic.version" as never), values: (r) => [r.quic_version ?? "", r.tls_version ?? ""], render: (r) => <span>{r.quic_version ?? "—"}{r.tls_version ? ` · ${r.tls_version}` : ""}</span> },
+          { key: "alpn", header: "ALPN / HTTP/3", values: (r) => [r.alpn ?? "", r.http3_status ?? ""], render: (r) => <span>{r.alpn ?? "—"}{r.http3_status ? ` · ${r.http3_status}` : ""}</span> },
+          { key: "cipher", header: t("quic.cipher" as never), values: (r) => [r.cipher_suite ?? ""], render: (r) => <code className="text-xs">{r.cipher_suite ?? "—"}</code> },
+          { key: "policy", header: t("quic.policy" as never), values: (r) => (r.policy_evaluations ?? []).map((p) => p.policy), render: (r) => <span className="text-xs">{(r.policy_evaluations ?? []).map((p) => `${p.policy}: ${p.checks.map((c) => `${c.control}=${c.status}`).join(", ")}`).join(" · ") || "—"}</span> },
+          { key: "observation", header: t("run.tlsCheck"), values: (r) => [r.reason ?? "", r.certificate?.sha256_fingerprint ?? ""], render: (r) => <span className="break-all text-xs">{r.reason ?? r.certificate?.sha256_fingerprint ?? "—"}</span> },
+        ]} />
+      </Card>}
+      {run.control_type !== "ipsec" && <Card><CardHeader><CardTitle>{t("run.findings")}</CardTitle></CardHeader>
         {run.findings.length ? <DataTable rows={run.findings} rowKey={(f) => f.finding_id} columns={findingColumns(t as never, run.endpoints)} /> : <Empty>—</Empty>}
-      </Card>
+      </Card>}
     </>
   );
 }

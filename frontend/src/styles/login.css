@@ -32,8 +32,6 @@ html:has(.login-page), body:has(.login-page) { background:#081a30; }
 .login-card .hint { color:#68768b; font-size:13px; font-weight:400; }
 .login-card .login-submit { min-height:49px; margin-top:9px; border:0; border-radius:9px; background:#65459b; color:#fff; font-size:15.5px; font-weight:600; cursor:pointer; box-shadow:0 6px 16px rgba(79,48,134,.18); }
 .login-card .login-submit:hover { background:#553888; }
-.login-card .login-sso { min-height:49px; display:flex; align-items:center; justify-content:center; border:1px solid #c5cfdd; border-radius:9px; background:#fff; color:#14233a; font-size:15.5px; font-weight:600; cursor:pointer; }
-.login-card .login-sso:hover { border-color:#65459b; }
 .login-card .login-notice { margin:0; padding:11px 13px; border:1px solid #f1d9a4; border-radius:8px; background:#fff8e6; color:#8a5a00; font-size:14px; }
 .login-card .form-error, .login-card [role="alert"] { margin:0; padding:11px 13px; border:1px solid #f0c8c4; border-radius:8px; background:#fff2f0; color:#a22720; font-size:14.5px; }
 .login-lang { display:flex; justify-content:center; gap:14px; padding-top:6px; font-size:12.5px; }
@@ -51,6 +49,15 @@ html:has(.login-page), body:has(.login-page) { background:#081a30; }
   .auth-company img { width:78px; height:60px; }
 }
 
-.login-card .login-sso--primary { background:#65459b; color:#fff; border-color:#65459b; min-height:52px; }
-.login-card .login-sso--primary:hover { background:#563886; }
-.login-card .login-local-toggle { background:none; border:0; padding:4px 0; color:#65449c; font-size:13px; cursor:pointer; text-decoration:underline; }
+.login-card .login-sso--primary { justify-content:center; min-height:52px; text-decoration:none; }
+.login-credentials { display:grid; gap:16px; }
+.login-methods { padding-top:2px; color:#536178; font-size:14px; }
+.login-methods summary { width:max-content; max-width:100%; color:#65459b; font-weight:600; text-decoration:underline; text-decoration-color:#c9bedf; text-underline-offset:3px; cursor:pointer; }
+.login-methods summary:hover { color:#553888; }
+.login-methods summary:focus-visible { outline:3px solid #e1d8f3; outline-offset:4px; border-radius:3px; }
+.login-method-choice { display:grid; gap:10px; margin:16px 0 0; padding:12px 14px; border:1px solid #dce2ec; border-radius:9px; }
+.login-method-choice legend { padding:0 4px; color:#536178; font-size:13px; font-weight:600; }
+.login-card .login-method-choice label { display:flex; align-items:center; gap:9px; color:#344054; font-weight:500; cursor:pointer; }
+.login-method-choice input[type="radio"] { width:16px; min-height:16px; height:16px; margin:0; accent-color:#65459b; }
+.login-methods--fallback { padding-top:12px; }
+.login-empty-methods { margin:0; color:#68768b; font-size:14px; }

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -12,9 +13,33 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session as DbSession
 
-from tls_scan_app.models import RunEndpoint, RunFinding, ScanDefinition, ScanRun, ScanRunRequester, User
-from tls_scan_app.models.scan import ACTIVE_STATUSES, CANCELLED, COMPLETED, EXPIRED, FAILED, PARTIAL, QUEUED, RUNNING
-from tls_scan_app.services import audit, report_addendum, report_branding
+from tls_scan_app.models import (
+    RunEndpoint,
+    RunFinding,
+    RunIpsecObservation,
+    RunSshObservation,
+    ScanDefinition,
+    ScanRun,
+    ScanRunRequester,
+    User,
+)
+from tls_scan_app.models.scan import (
+    ACTIVE_STATUSES,
+    CANCELLED,
+    COMPLETED,
+    EXPIRED,
+    FAILED,
+    PARTIAL,
+    QUEUED,
+    RUNNING,
+)
+from tls_scan_app.services import (
+    audit,
+    contextual_risk,
+    report_addendum,
+    report_branding,
+)
+from tls_scan_app.services.mail_security import attach_smtp_observations
 
 STALE_HEARTBEAT_SECONDS = 120
 CLAIM_LOCK_KEY = 727301  # pg advisory lock serialising queue claims (global concurrency cap)
@@ -50,7 +75,8 @@ def create_run(
             status=QUEUED,
             fingerprint=fingerprint,
             config_snapshot=snapshot,
-            policy_versions=[{"name": p["name"], "version": p["version"], "version_id": p["version_id"]} for p in snapshot["policies"]],
+            policy_versions=[{"name": p["name"], "version": p["version"], "version_id": p["version_id"]}
+                             for p in [*snapshot.get("policies", []), *((snapshot.get("ipsec") or {}).get("policies", [])), *((snapshot.get("ssh") or {}).get("policies", []))]],
         )
         try:
             with db.begin_nested():
@@ -140,8 +166,32 @@ def final_status(outcome: dict[str, Any], cancelled: bool, timed_out: bool) -> s
 
 def persist_results(db: DbSession, run: ScanRun, outcome: dict[str, Any], status: str, storage_root: Path) -> None:
     model = outcome.get("report_model") or {}
+    risk_rows = contextual_risk.report_rows(model, run.config_snapshot or {})
+    risk_by_finding: dict[str, dict[str, Any]] = {}
+    for row in risk_rows:
+        risk_by_finding.setdefault(row["finding_id"], {})[row["endpoint_id"]] = {
+            key: value for key, value in contextual_risk.assess(row["intrinsic_severity"],
+                    contextual_risk.exposure_for_endpoint(next((item for item in model.get("endpoints", []) if item.get("endpoint_id") == row["endpoint_id"]), {}), run.config_snapshot or {})).items()}
+    for observation in outcome.get("ipsec_observations", []):
+        db.add(RunIpsecObservation(
+            run_id=run.id, target=observation["target"], port=int(observation["port"]), status=observation["status"],
+            ike_version=observation.get("ike_version", ""), exchange=observation.get("exchange", ""),
+            proposal=observation.get("proposal") or {}, verdict=observation.get("verdict", "indeterminate"),
+            evidence=observation.get("evidence") or {},
+        ))
+    for observation in outcome.get("ssh_observations", []):
+        db.add(RunSshObservation(
+            run_id=run.id, target=observation["target"], port=int(observation["port"]), status=observation["status"],
+            verdict=observation.get("verdict", "indeterminate"), banner=observation.get("banner", ""),
+            algorithms=observation.get("algorithms") or {}, host_keys=observation.get("host_keys") or [],
+            fingerprints=observation.get("fingerprints") or {}, evidence=observation.get("evidence") or {},
+        ))
     for endpoint in model.get("endpoints", []):
         cert = endpoint.get("certificate") or {}
+        exposure = contextual_risk.exposure_for_endpoint(endpoint, run.config_snapshot or {}) or {
+            "protocol": "tls", "state": "unknown", "validated": False, "reason": "no endpoint-specific evidence was recorded"}
+        risk_summary = {"matrix_version": contextual_risk.MATRIX_VERSION, "exposure": exposure,
+                        "crypto_grade": endpoint.get("overall_grade", "")}
         db.add(RunEndpoint(
             run_id=run.id, endpoint_id=endpoint["endpoint_id"], hostname=endpoint.get("hostname", ""),
             ip_address=endpoint.get("ip_address", ""), port=str(endpoint.get("port", "")), grade=endpoint.get("overall_grade", ""),
@@ -155,34 +205,73 @@ def persist_results(db: DbSession, run: ScanRun, outcome: dict[str, Any], status
                                                    "san_validation_status", "ocsp_status", "crl_status")},
             errors=list(endpoint.get("errors", [])), untested_checks=list(endpoint.get("untested_checks", [])),
             tls_checks=list(endpoint.get("complementary_checks", [])),
+            exposure_snapshot=exposure, contextual_risk=risk_summary,
         ))
     for finding in model.get("findings", []):
         db.add(RunFinding(
             run_id=run.id, finding_id=finding["finding_id"], title=finding.get("title", ""), category=finding.get("category", ""),
             severity=finding.get("severity", ""), status=finding.get("status", ""), evidence=finding.get("evidence", ""),
             remediation=finding.get("remediation", ""), affected_endpoint_ids=list(finding.get("affected_endpoint_ids", [])),
+            contextual_risk_by_endpoint=risk_by_finding.get(finding.get("finding_id", ""), {}),
         ))
     files = []
     branding = run.config_snapshot.get("branding")
     # what the previous scans bring to this report (evolution, renewals, trend, scope): needs this run's rows and end state
     run.scanned_hosts, run.skipped_hosts = outcome.get("scanned_hosts", []), outcome.get("skipped_hosts", [])
+    run.mail_security_results = outcome.get("mail_security_results") or None
+    run.service_observations = outcome.get("service_observations") or None
+    run.quic_observations = outcome.get("quic_observations") or None
+    if run.mail_security_results:
+        attach_smtp_observations(run.mail_security_results, model.get("endpoints", []))
     run.summary, run.status, run.finished_at = model.get("statistics"), status, datetime.now(UTC)
     db.flush()
-    try:
-        addendum = report_addendum.build(db, run)
-    except Exception:  # a report extra must never make a finished scan fail
-        addendum = None
+    if (run.config_snapshot or {}).get("control_type") in {"ipsec", "ssh"}:
+        addendum = None  # TLS-only evolution/finding addenda must not be mixed into IKE reports.
+    else:
+        try:
+            addendum = report_addendum.build(db, run)
+        except Exception:  # a report extra must never make a finished scan fail
+            addendum = None
     for path_str in outcome.get("written_files", []):
         path = Path(path_str)
         if path.suffix == ".html":
             report_branding.apply_to_html(path, branding)  # before hashing: the stored SHA-256 is of the delivered file
-            if addendum:
+            if addendum and not path.name.startswith("ipsec-results."):
                 report_addendum.apply_to_html(path, addendum)
+            if not path.name.startswith(("ipsec-results.", "ssh-results.")):
+                contextual_risk.append_html(path, risk_rows)
         elif path.suffix == ".md" and addendum:
             report_addendum.apply_to_markdown(path, addendum)
+        if path.suffix == ".md" and not path.name.startswith(("ipsec-results.", "ssh-results.")):
+            contextual_risk.append_markdown(path, risk_rows)
         if path.is_file():
-            files.append({"format": _format_of(path), "path": str(path.relative_to(storage_root)),
+            files.append({"format": _format_of(path, run), "path": str(path.relative_to(storage_root)),
                           "sha256": hashlib.sha256(path.read_bytes()).hexdigest(), "size": path.stat().st_size})
+    if risk_rows and "csv" in (run.config_snapshot.get("export_formats") or []):
+        contextual_path = storage_root / "reports" / str(run.id) / "contextual-risk.csv"
+        contextual_risk.write_csv(contextual_path, risk_rows)
+        files.append({"format": "contextual_risk_csv", "path": str(contextual_path.relative_to(storage_root)),
+                      "sha256": hashlib.sha256(contextual_path.read_bytes()).hexdigest(), "size": contextual_path.stat().st_size})
+    if run.mail_security_results and "csv" in (run.config_snapshot.get("export_formats") or []):
+        import csv
+        import io
+        stream = io.StringIO(newline="")
+        writer = csv.DictWriter(stream, fieldnames=("domain", "check", "status", "message", "records", "details", "provenance"))
+        writer.writeheader()
+        for domain in run.mail_security_results:
+            for check in domain.get("checks", []):
+                writer.writerow({"domain": domain.get("domain", ""), **check,
+                                 "records": " | ".join(check.get("records") or []),
+                                 "details": json.dumps(check.get("details") or {}, sort_keys=True)})
+            for observation in domain.get("smtp_starttls", []):
+                writer.writerow({"domain": domain.get("domain", ""), "check": "smtp_starttls", "status": observation.get("status"),
+                                 "message": observation.get("message", ""), "records": "", "details": json.dumps(observation, sort_keys=True),
+                                 "provenance": "existing scan endpoint observation"})
+        csv_path = storage_root / "reports" / str(run.id) / "mail-security.csv"
+        csv_path.parent.mkdir(parents=True, exist_ok=True)
+        csv_path.write_text(stream.getvalue(), encoding="utf-8")
+        files.append({"format": "mail_security_csv", "path": str(csv_path.relative_to(storage_root)),
+                      "sha256": hashlib.sha256(csv_path.read_bytes()).hexdigest(), "size": csv_path.stat().st_size})
     run.report_files = files
     run.summary = model.get("statistics")
     run.scanned_hosts = outcome.get("scanned_hosts", [])
@@ -194,12 +283,23 @@ def persist_results(db: DbSession, run: ScanRun, outcome: dict[str, Any], status
     audit.record(db, f"scan.{status}", actor_label="worker", resource_type="scan_run", resource_id=run.id)
 
 
-def _format_of(path: Path) -> str:
+def _format_of(path: Path, run: ScanRun | None = None) -> str:
+    controls = (run.config_snapshot or {}).get("enabled_controls", []) if run else []
+    if path.name.startswith("ipsec-results.") and "tls" in controls and "ipsec" in controls:
+        return f"ipsec_{path.suffix.lstrip('.')}"
+    if path.name.startswith("ssh-results."):
+        return f"ssh_{path.suffix.lstrip('.')}"
     name = path.name
     if name.endswith(".cbom.json"):
         return "cbom"
     if name.endswith("_findings.csv"):
         return "findings_csv"
+    if name == "mail-security.csv":
+        return "mail_security_csv"
+    if name == "service-identification.csv":
+        return "service_csv"
+    if name == "quic-results.csv":
+        return "quic_csv"
     if name.endswith(".metadata.json"):
         return "metadata"
     return {".html": "html", ".md": "md", ".csv": "csv"}.get(path.suffix, path.suffix.lstrip("."))

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { ADMIN, DEMO, login } from "./helpers";
+import { ADMIN, DEMO, login, navigateSidebar } from "./helpers";
 
 // Needs the lab DNS server of the CrashTest stack (tests/lab/dns): its address is given by E2E_LAB_DNS.
 const LAB_DNS = process.env.E2E_LAB_DNS ?? "";
@@ -9,7 +9,7 @@ test.describe.configure({ mode: "serial" });
 test("admin declares the lab DNS server, then an operator discovers, selects and imports in one operation", async ({ browser }) => {
   const adminPage = await (await browser.newContext({ ignoreHTTPSErrors: true, locale: "en-US" })).newPage();
   await login(adminPage, "admin", ADMIN);
-  await adminPage.getByRole("link", { name: "Administration", exact: true }).first().click();
+  await navigateSidebar(adminPage, "Administration", "Administration");
   await adminPage.getByRole("tab", { name: "Settings" }).click();
   await adminPage.getByLabel(/DNS servers a discovery may be pointed at/).fill(LAB_DNS);
   await adminPage.locator(".card", { has: adminPage.getByLabel(/DNS servers a discovery may be pointed at/) }).getByRole("button", { name: "Save" }).click();
@@ -17,7 +17,7 @@ test("admin declares the lab DNS server, then an operator discovers, selects and
 
   const page = await (await browser.newContext({ ignoreHTTPSErrors: true, locale: "en-US" })).newPage();
   await login(page, "operator@crashtest.example.com", DEMO);
-  await page.getByRole("link", { name: /Targets/ }).click();
+  await navigateSidebar(page, "Scanning", "Targets");
   await page.getByRole("button", { name: "DNS discovery" }).click();
   const dialog = page.getByRole("dialog");
 
@@ -101,7 +101,7 @@ test("the wizard works on a phone and in dark mode without horizontal scrolling"
 test("the DNS discoveries tab keeps the history: reopen the results, nothing is relaunched", async ({ browser }) => {
   const page = await (await browser.newContext({ ignoreHTTPSErrors: true, locale: "en-US" })).newPage();
   await login(page, "operator@crashtest.example.com", DEMO);
-  await page.getByRole("link", { name: /Targets/ }).click();
+  await navigateSidebar(page, "Scanning", "Targets");
   await page.getByRole("tab", { name: "DNS discoveries" }).click();
   const row = page.getByRole("row", { name: /client\.test/ }).first();
   await expect(row.getByText("Done")).toBeVisible();
@@ -117,7 +117,7 @@ test("the DNS discoveries tab keeps the history: reopen the results, nothing is 
 test("from the discovery to a scan: the names go into a group and a new scan, and read as covered afterwards", async ({ browser }) => {
   const page = await (await browser.newContext({ ignoreHTTPSErrors: true, locale: "en-US" })).newPage();
   await login(page, "operator@crashtest.example.com", DEMO);
-  await page.getByRole("link", { name: /Targets/ }).click();
+  await navigateSidebar(page, "Scanning", "Targets");
   await page.getByRole("tab", { name: "DNS discoveries" }).click();
   await page.getByRole("row", { name: /client\.test/ }).first().getByRole("button", { name: "Open" }).click();
   const dialog = page.getByRole("dialog");

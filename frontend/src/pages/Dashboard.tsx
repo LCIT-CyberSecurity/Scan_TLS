@@ -31,22 +31,24 @@ export default function Dashboard() {
   const posture = data?.posture;
   return (
     <>
-      <PageHeader title={t("nav.dashboard")} actions={
-        <>
+      <PageHeader title={t("nav.dashboard")} subtitle={t("dash.subtitle")} actions={
+        <div className="dash-filters" role="group" aria-label={t("dash.filters")}>
           {atLeast("OPERATOR") && <Select aria-label={t("dash.scope")} value={scope} onChange={(e) => setScope(e.target.value as "mine" | "all")} className="w-44"><option value="mine">{t("dash.scopeMine")}</option><option value="all">{t("dash.scopeAll")}</option></Select>}
           <Select aria-label="SI" value={si} onChange={(e) => setSi(e.target.value)} className="w-60"><option value="">{t("filter.allSi")}</option>{systems?.map((s) => <option key={s.id} value={s.id}>{s.parent_id ? "↳ " : ""}{s.name}</option>)}</Select>
           <Select aria-label="Tag" value={tag} onChange={(e) => setTag(e.target.value)} className="w-40"><option value="">{t("filter.allTags")}</option>{tags?.map((x) => <option key={x.id} value={x.name}>{x.name}</option>)}</Select>
-        </>
+        </div>
       } />
       <ErrorNote error={error} />
-      <section className="dash-section" aria-label={t("dash.section.posture")}>
+      <main className="dashboard-layout">
+      <section className="dash-section dash-section--overview" aria-label={t("dash.section.posture")}>
         <SecurityKpis posture={posture} />
-        <div className="dash-grid">
+        <div className="dash-grid dash-grid--overview">
           <ComplianceBreakdown posture={posture} />
           <ComplianceTrend trend={data?.trend} onDefinition={setTrendDef} />
         </div>
+      </section>
+      <section className="dash-section dash-section--evolution" aria-label={t("evo.title")}>
         <Evolution data={data?.evolution} from={range.from} to={range.to} onRange={(from, to) => setRange({ from, to })} />
-        <Vigilance posture={posture} />
       </section>
       <section className="dash-section" aria-label={t("dash.section.activity")}>
         <h2 className="dash-heading">{t("dash.section.activity")}</h2>
@@ -60,14 +62,18 @@ export default function Dashboard() {
             <CardHeader><CardTitle>{t("dash.recent")}</CardTitle></CardHeader>
             {data?.recent.length ? <RecentRuns runs={data.recent} /> : <Empty>{t("dash.noScans")}</Empty>}
           </Card>
-          <Card className="self-start">
-            <CardHeader><CardTitle>{t("dash.upcoming")}</CardTitle></CardHeader>
-            <CardContent className="dash-list">
-              {data?.upcoming.length ? data.upcoming.map((s) => <div key={s.id} className="dash-row"><span>{s.kind}</span><span className="text-muted">{formatDate(s.next_run_at, locale)}</span></div>) : <p className="text-sm text-muted">{t("dash.noUpcoming")}</p>}
-            </CardContent>
-          </Card>
+          <div className="dash-side-stack">
+            <Vigilance posture={posture} />
+            <Card className="self-start">
+              <CardHeader><CardTitle>{t("dash.upcoming")}</CardTitle></CardHeader>
+              <CardContent className="dash-list">
+                {data?.upcoming.length ? data.upcoming.map((s) => <div key={s.id} className="dash-row"><span>{s.task_type === "dns_discovery" ? `${t("sched.task.dns")} · ${s.task_config?.domain ?? "—"}` : t("sched.task.tls")} · {t(`sched.${s.kind}` as never)}</span><span className="text-muted">{formatDate(s.next_run_at, locale)}</span></div>) : <p className="text-sm text-muted">{t("dash.noUpcoming")}</p>}
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </section>
+      </main>
     </>
   );
 }

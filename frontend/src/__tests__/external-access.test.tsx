@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "../test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ExternalAccessSwitches, KeyDialog, ServiceAccess } from "../components/ExternalAccess";
 import { I18nProvider } from "../i18n";

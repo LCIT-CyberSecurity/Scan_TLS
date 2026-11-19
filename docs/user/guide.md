@@ -1,5 +1,7 @@
 # User guide (WebUI)
 
+For optional QUIC / HTTP/3 scans and interpretation limits, see [QUIC / HTTP/3](quic-http3.md).
+
 ## Roles (global, not per SI)
 | Role | Can |
 |---|---|
@@ -14,14 +16,16 @@ Everyone signed in can read shared results; only an object's owner (or an operat
 1. **Targets** → *New target*: FQDN, IP or CIDR, optional ports (`443,8443,9000-9010`), description,
    tags, SI/sub-SI. Importing: one `value;ports;description` per line. A target exists once and can be used by any
    number of definitions and groups. SI, sub-SI and tags only help you organise and filter.
-2. **Scans → Definitions → New scan**: pick targets/groups, a *technical profile* (how to scan), one or more
-   *policies* (what is acceptable; the latest published version is used), a report template, tags and SI.
+2. **Scans → Scans → New scan**: pick targets/groups, a *technical profile* (how to scan), one or more
+   *policies* (what is acceptable; the latest published version is used), a report template, tags and SI. Optional
+   mail-security checks are disabled by default; details and limits are described in [Mail security checks](mail-security.md).
 3. **Run**. The run page shows the current phase (*port discovery*, *TLS analysis*, *evaluating compliance*,
    *generating reports*), elapsed time and — only when reliable — hosts processed. No fake percentage.
 4. **Cancel** your own scan any time: unstarted hosts are skipped and listed, results gathered so far are kept
    (*cancelled*, never counted as compliant).
-5. **Results**: endpoints with grade/compliance/TLS versions/certificate, findings with evidence and
-   remediation, errors, and *checks not performed* (never shown as compliant). Download HTML / Markdown / CSV / CBOM.
+5. **Scans → History**: open an execution to review endpoints with grade/compliance/TLS versions/certificate,
+   findings with evidence and remediation, errors, and *checks not performed* (never shown as compliant).
+   **Scans → Reports** lists generated reports; open HTML or download the available formats (HTML / Markdown / CSV / CBOM).
 6. **Compare with previous**: new / fixed / persistent findings, TLS version, cipher suite and certificate changes.
    A target that was not re-tested is listed as *not re-tested*, **never as fixed**. Warnings tell you when the
    scope, profile or policy versions differ.
@@ -67,9 +71,13 @@ Details: [external API](../integrations/external-api.md) · [MCP server](../inte
 
 *Targets → DNS discovery*: enter a domain you are authorised to query and confirm it. TLS Scan looks up the domain's name servers and asks each one, once, for a **zone transfer (AXFR)** of that domain. If a server accepts, the host names (A, AAAA, CNAME) are listed so you can tick the ones to add as targets (grouped under the domain name); an accepted transfer is also reported as a DNS weakness. Refusal is the normal, safe answer: then add names yourself or import a list. Nothing is guessed or brute-forced; loopback, link-local and multicast servers are never queried; each request is audited.
 
+## Network exposure map
+
+The **Scanning → Exposure map** explores information systems, explicitly associated network zones, topology records and real TLS scan results. Operators can organize zones and declare devices/links; scanner results are never fabricated and opening the map does not send traffic. See the [Network Exposure Map guide](network-map.md) for provenance, permissions and API details.
+
 ## Several targets at once
 
-In *New target*, the *Targets* field accepts several values (FQDN, IP address or network in CIDR notation, one per line or separated by commas). Each becomes a target; with several values they are gathered in a group named after the label you typed.
+In **Targets → New target**, enter one IPv4 or IPv6 address, hostname or CIDR network per row. Use **Add a row** for up to 50 entries. Each entry becomes a separate target with the same label, ports, description, tags and SI selections. The form shows the result for each row. Correct failed rows and save again; successfully created rows are retained and skipped on retry. A CIDR stays a single network target. Saving creates no group or scan.
 
 
 See also: [Exclusions](exclusions.md) (what a scan must never touch), [Trust authorities](trust-authorities.md), [DNS discovery](dns-discovery.md).

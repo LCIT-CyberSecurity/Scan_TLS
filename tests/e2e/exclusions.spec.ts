@@ -1,10 +1,10 @@
 import { expect, test } from "@playwright/test";
-import { ADMIN, DEMO, login } from "./helpers";
+import { ADMIN, DEMO, login, navigateSidebar } from "./helpers";
 
 test("an administrator sets global exclusions, a scan definition carries its own", async ({ browser }) => {
   const admin = await (await browser.newContext({ ignoreHTTPSErrors: true, locale: "en-US" })).newPage();
   await login(admin, "admin", ADMIN);
-  await admin.getByRole("link", { name: "Administration", exact: true }).first().click();
+  await navigateSidebar(admin, "Administration", "Administration");
   await admin.getByRole("tab", { name: "Settings" }).click();
   const box = admin.getByLabel("Exclusions (never scanned)");
   const save = admin.locator(".card", { has: box }).getByRole("button", { name: "Save" });
@@ -23,7 +23,7 @@ test("an administrator sets global exclusions, a scan definition carries its own
 
   const op = await (await browser.newContext({ ignoreHTTPSErrors: true, locale: "en-US" })).newPage();
   await login(op, "operator@crashtest.example.com", DEMO);
-  await op.getByRole("link", { name: "Scans", exact: true }).click();
+  await navigateSidebar(op, "Scanning", "Scans");
   await op.getByRole("button", { name: "New scan", exact: true }).click();
   const dialog = op.getByRole("dialog");
   await expect(dialog.getByLabel("Exclusions (never scanned)")).toBeVisible();
