@@ -560,7 +560,9 @@ def _discovery_summary(row: DnsDiscovery, names: dict) -> dict:
 @router.get("/targets/discover")
 def list_discoveries(db: DbSession = Depends(get_db), user: User = Depends(operator)) -> list[dict]:
     """Your discoveries (all of them for an administrator), newest first, to read their results again or import later."""
-    stmt = select(DnsDiscovery).order_by(DnsDiscovery.created_at.desc()).limit(100)
+    stmt = (select(DnsDiscovery)
+            .where(DnsDiscovery.options["lookalike_monitor_id"].as_string().is_(None))
+            .order_by(DnsDiscovery.created_at.desc()).limit(100))
     if user.role != Role.ADMIN:
         stmt = stmt.where(DnsDiscovery.requested_by == user.id)
     rows = db.execute(stmt).scalars().all()
@@ -608,6 +610,8 @@ def discovery_results(discovery_id: uuid.UUID, inventory: str | None = None, sou
                       limit: int = Query(100, ge=1, le=500), db: DbSession = Depends(get_db), user: User = Depends(operator)) -> dict:
     """Consolidated names of a finished discovery, compared with the Targets inventory (NEW / EXISTING / ENRICHABLE / CHANGED)."""
     row = _own_discovery(db, discovery_id, user)
+    if (row.options or {}).get("lookalike_monitor_id"):
+        raise HTTPException(409, "Consultez les observations dans l’historique de la surveillance des domaines ressemblants")
     if row.status not in ("done", "failed") or not row.result:
         raise HTTPException(409, "The discovery has no result yet")
     items = reconcile.reconcile(db, row.result.get("observations", []))
