@@ -15,7 +15,7 @@ vi.mock("../api/client", async (original) => ({
     calls.push({ path, method: options.method ?? "GET", body: options.body });
     if (path === "/admin/auth" && !options.method) return DATA;
     if (path === "/admin/auth" && options.method === "PUT") { DATA.stored = options.body.value; return DATA; }   // the server keeps what was saved
-    if (path === "/admin/auth/diagnostics") return [{ at: "2026-10-13T10:00:00Z", action: "auth.sso_login", who: "entra", outcome: "failure", ip: "10.0.0.1", reason: "oidc_exchange_failed", code: "aadsts50011", explanation: "The redirect URI sent by TLS Scan is not registered." }];
+    if (path === "/admin/auth/diagnostics") return [{ at: "2026-10-13T10:00:00Z", action: "auth.sso_login", who: "entra", outcome: "failure", ip: "10.0.0.1", reason: "oidc_exchange_failed", code: "aadsts50011", explanation: "The redirect URI sent by Orion is not registered." }];
     if (path.startsWith("/admin/auth/test/")) return [{ step: "configuration", status: "ok", detail: "" }, { step: "issuer reachable", status: "fail", detail: "cannot reach" }, { step: "interactive sign-in", status: "info", detail: "A real sign-in is required." }];
     throw new Error(`unexpected ${path}`);
   }),
@@ -32,7 +32,7 @@ describe("Administration → Authentication", () => {
     fireEvent.change(screen.getByLabelText("Sign-in provider"), { target: { value: "entra" } });
     expect(await screen.findByText("https://scan.example.org/api/auth/sso/callback")).toBeInTheDocument();
     expect(screen.getByText("secret set")).toBeInTheDocument();
-    expect(screen.getByText(/TLS_SCAN_OIDC_CLIENT_SECRET/)).toBeInTheDocument();
+    expect(screen.getByText(/ORION_OIDC_CLIENT_SECRET/)).toBeInTheDocument();
     expect(screen.queryByLabelText(/client secret/i)).toBeNull();                            // no field to type a secret in
   });
 
@@ -75,6 +75,6 @@ describe("Administration → Authentication", () => {
   it("lists the latest failures with their explanation", async () => {
     render(<I18nProvider><AuthSettings /></I18nProvider>);
     expect(await screen.findByText("aadsts50011")).toBeInTheDocument();
-    expect(screen.getByText(/redirect URI sent by TLS Scan is not registered/)).toBeInTheDocument();
+    expect(screen.getByText(/redirect URI sent by Orion is not registered/)).toBeInTheDocument();
   });
 });

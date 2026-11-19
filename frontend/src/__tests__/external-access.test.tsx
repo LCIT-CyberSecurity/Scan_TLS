@@ -45,8 +45,8 @@ describe("key management", () => {
     fireEvent.click(screen.getByRole("button", { name: /generate a key/i }));
     expect(onGenerate).toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: /revoke/i })).toBeNull();
-    rerender(<I18nProvider><ServiceAccess service="api" state={{ global_enabled: true, allowed: true, key: { ...key, active: true, prefix: "tls_scan_pat_ab12cd", expires_at: "2027-01-01T00:00:00Z" } }} onGenerate={onGenerate} onRevoke={onRevoke} /></I18nProvider>);
-    expect(screen.getByText(/tls_scan_pat_ab12cd/)).toBeInTheDocument();
+    rerender(<I18nProvider><ServiceAccess service="api" state={{ global_enabled: true, allowed: true, key: { ...key, active: true, prefix: "orion_pat_ab12cd", expires_at: "2027-01-01T00:00:00Z" } }} onGenerate={onGenerate} onRevoke={onRevoke} /></I18nProvider>);
+    expect(screen.getByText(/orion_pat_ab12cd/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /regenerate/i })).toBeEnabled();
     fireEvent.click(screen.getByRole("button", { name: /^revoke$/i }));
     expect(onRevoke).toHaveBeenCalled();
@@ -55,10 +55,10 @@ describe("key management", () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, { clipboard: { writeText } });
     const onClose = vi.fn();
-    wrap(<KeyDialog secret="tls_scan_pat_example-not-a-real-secret" onClose={onClose} />);
-    expect(screen.getByTestId("secret")).toHaveTextContent("tls_scan_pat_example-not-a-real-secret");
+    wrap(<KeyDialog secret="orion_pat_example-not-a-real-secret" onClose={onClose} />);
+    expect(screen.getByTestId("secret")).toHaveTextContent("orion_pat_example-not-a-real-secret");
     expect(screen.getByText(/shown only once/i)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /copy/i }));
-    expect(writeText).toHaveBeenCalledWith("tls_scan_pat_example-not-a-real-secret");
+    expect(writeText).toHaveBeenCalledWith("orion_pat_example-not-a-real-secret");
   });
 });

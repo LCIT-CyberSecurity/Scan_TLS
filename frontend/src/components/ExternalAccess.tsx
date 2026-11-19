@@ -37,7 +37,7 @@ export function keyBadge(key: AccessKey, t: ReturnType<typeof useI18n>["t"]) {
 export function ServiceAccess({ service, state, onGenerate, onRevoke }: { service: AccessService; state: MyAccess[AccessService]; onGenerate: () => void; onRevoke: () => void }) {
   const { t, locale } = useI18n();
   const usable = state.global_enabled && state.allowed;
-  const origin = typeof window === "undefined" ? "https://tls-scan.example" : window.location.origin;
+  const origin = typeof window === "undefined" ? "https://orion.example" : window.location.origin;
   return (
     <Card><CardHeader><CardTitle>{t(`access.${service}.title` as never)}</CardTitle></CardHeader><CardContent className="space-y-4">
       <p className="text-sm text-muted">{t(`access.${service}.about` as never)}</p>
@@ -56,8 +56,8 @@ export function ServiceAccess({ service, state, onGenerate, onRevoke }: { servic
       </div>
       <details className="text-sm"><summary className="cursor-pointer">{t("access.howTo")}</summary>
         <pre className="mt-2 overflow-x-auto rounded-sm bg-surface-2 p-3 text-xs">{service === "api"
-          ? `curl -H "Authorization: Bearer tls_scan_pat_…" ${origin}/api/v1/scans\n${t("access.docsAt")} ${origin}/api/v1/docs`
-          : `${t("access.mcpUrl")} ${origin}/mcp\nAuthorization: Bearer tls_scan_mcp_…`}</pre></details>
+          ? `curl -H "Authorization: Bearer orion_pat_…" ${origin}/api/v1/scans\n${t("access.docsAt")} ${origin}/api/v1/docs`
+          : `${t("access.mcpUrl")} ${origin}/mcp\nAuthorization: Bearer orion_mcp_…`}</pre></details>
     </CardContent></Card>
   );
 }

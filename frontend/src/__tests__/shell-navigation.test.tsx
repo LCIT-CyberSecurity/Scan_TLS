@@ -46,14 +46,23 @@ describe("application shell navigation", () => {
     const first = openShell();
     fireEvent.click(screen.getByRole("button", { name: "Collapse sidebar" }));
     expect(document.querySelector(".sidebar")).toHaveClass("sidebar--compact");
-    expect(window.localStorage.getItem("tls-scan.sidebar-compact")).toBe("true");
+    expect(window.localStorage.getItem("orion.sidebar-compact")).toBe("true");
     expect(screen.getByRole("link", { name: "Exposure map" })).toHaveAttribute("title", "Exposure map");
     first.unmount();
     openShell();
     expect(document.querySelector(".sidebar")).toHaveClass("sidebar--compact");
     fireEvent.click(screen.getByRole("button", { name: "Expand sidebar" }));
     expect(document.querySelector(".sidebar")).not.toHaveClass("sidebar--compact");
-    expect(window.localStorage.getItem("tls-scan.sidebar-compact")).toBe("false");
+    expect(window.localStorage.getItem("orion.sidebar-compact")).toBe("false");
+  });
+
+  it("shows the Orion name and adopts the compact choice saved before the rebranding", () => {
+    window.localStorage.setItem("tls-scan.sidebar-compact", "true");
+    openShell();
+    expect(document.querySelector(".brand-title")).toHaveTextContent("Orion");
+    expect(document.querySelector(".sidebar")).toHaveClass("sidebar--compact");
+    expect(window.localStorage.getItem("orion.sidebar-compact")).toBe("true");
+    expect(window.localStorage.getItem("tls-scan.sidebar-compact")).toBeNull();
   });
 
   it("keeps the existing mobile menu and closes it with Escape", () => {

@@ -26,7 +26,7 @@ afterEach(cleanup);
 beforeEach(() => { calls.length = 0; responses = {}; vi.spyOn(window, "confirm").mockReturnValue(true); });
 const wrap = (ui: React.ReactNode) => render(<I18nProvider>{ui}</I18nProvider>);
 
-const builtin: TrustStoreSummary = { id: "public-web-pki", name: "TLS Scan Public Web PKI", description: "Mozilla", builtin: true, type: "public", active: true, version: null, certificate_count: 146, anchor_count: null, has_expired: false, updated_at: null };
+const builtin: TrustStoreSummary = { id: "public-web-pki", name: "Orion Public Web PKI", description: "Mozilla", builtin: true, type: "public", active: true, version: null, certificate_count: 146, anchor_count: null, has_expired: false, updated_at: null };
 const acme: TrustStoreSummary = { id: "11111111-1111-4111-8111-111111111111", name: "Client A - PKI interne", description: "PKI A", builtin: false, type: "private", active: true, version: 2, certificate_count: 2, anchor_count: 1, has_expired: false, updated_at: "2026-10-12T10:00:00Z" };
 const cert = (role: "anchor" | "intermediate", cn: string, extra = {}) => ({ fingerprint_sha256: `${cn}`.padEnd(64, "a"), role, subject: `CN=${cn}`, issuer: "CN=ACME-Root-CA", serial: "01", not_before: "2026-01-01T00:00:00Z", not_after: "2036-01-01T00:00:00Z", key_type: "RSA", key_size: 2048, signature_algorithm: "sha256", basic_constraints: { ca: true, path_length: null }, key_usage: ["key_cert_sign"], expired: false, expires_in_days: 3000, ...extra });
 const detail: TrustStoreDetail = { ...acme, content_sha256: "ab".repeat(32), certificates: [cert("anchor", "ACME-Root-CA"), cert("intermediate", "ACME-Issuing-CA")], versions: [{ id: "v2", version: 2, content_sha256: "ab".repeat(32), comment: "add issuing", created_at: "2026-10-12T10:00:00Z", anchor_count: 1, intermediate_count: 1 }, { id: "v1", version: 1, content_sha256: "cd".repeat(32), comment: "", created_at: "2026-10-11T10:00:00Z", anchor_count: 1, intermediate_count: 0 }], profiles: [{ id: "p1", name: "Infrastructure interne", versions: [1] }], run_count: 3 };
@@ -35,7 +35,7 @@ describe("administration: trust authorities", () => {
   it("lists the built-in store as read-only and the private stores with their state", async () => {
     responses["GET /admin/trust-stores"] = [builtin, { ...acme, active: false, has_expired: true }];
     wrap(<TrustStoresTab />);
-    const row = await screen.findByText("TLS Scan Public Web PKI");
+    const row = await screen.findByText("Orion Public Web PKI");
     const builtinRow = row.closest("tr")!;
     expect(within(builtinRow).getByText("Built-in public")).toBeInTheDocument();
     expect(within(builtinRow).queryByRole("button")).toBeNull(); // nothing to edit or delete

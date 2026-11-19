@@ -28,7 +28,7 @@ export async function api<T = unknown>(path: string, options: { method?: string;
   let data: unknown = undefined;
   try { data = text ? JSON.parse(text) : undefined; } catch { data = text; }
   if (!response.ok) {
-    if (response.status === 401) window.dispatchEvent(new Event("tls-scan:unauthorized"));
+    if (response.status === 401) window.dispatchEvent(new Event("orion:unauthorized"));
     throw new ApiError(response.status, detailToMessage((data as { detail?: unknown })?.detail ?? data));
   }
   return data as T;

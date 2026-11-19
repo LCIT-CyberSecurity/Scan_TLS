@@ -2,6 +2,7 @@ import { Activity, BarChart3, CalendarClock, ChevronDown, ChevronRight, ListChec
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, Outlet, useLocation } from "react-router-dom";
 import type { Role } from "../api/types";
+import { PRODUCT_NAME, readPreference, writePreference } from "../brand";
 import { useAuth } from "../auth/AuthContext";
 import { useI18n } from "../i18n";
 import type { Messages } from "../i18n/en";
@@ -43,7 +44,7 @@ function activeSection(pathname: string): keyof Messages | null {
 }
 
 function readCompactPreference(): boolean {
-  try { return window.localStorage.getItem("tls-scan.sidebar-compact") === "true"; } catch { return false; }
+  return readPreference("sidebar-compact") === "true";
 }
 
 export default function Shell() {
@@ -55,7 +56,7 @@ export default function Shell() {
   const [expandedSection, setExpandedSection] = useState(() => activeSection(pathname));
   const mobileMenuButton = useRef<HTMLButtonElement>(null);
   useEffect(() => {
-    try { window.localStorage.setItem("tls-scan.sidebar-compact", String(compact)); } catch { /* storage can be disabled */ }
+    writePreference("sidebar-compact", String(compact));
   }, [compact]);
   useEffect(() => { setExpandedSection(activeSection(pathname)); }, [pathname]);
   useEffect(() => {
@@ -75,7 +76,7 @@ export default function Shell() {
       <aside id="main-sidebar" className={`sidebar${compact ? " sidebar--compact" : ""}${open ? " sidebar--open" : ""}`}>
         <div className="brand">
           <img className="brand-logo" src="/lcit-mark.png" alt="LCIT" />
-          <div className="brand-title"><span>TLS Scan</span><small>{t("brand.tagline")}</small></div>
+          <div className="brand-title"><span>{PRODUCT_NAME}</span><small>{t("brand.tagline")}</small></div>
           <button type="button" className="sidebar-collapse" aria-label={t(compact ? "nav.expandSidebar" : "nav.collapseSidebar")} title={t(compact ? "nav.expandSidebar" : "nav.collapseSidebar")} aria-expanded={!compact} aria-controls="main-sidebar" onClick={() => setCompact((value) => !value)}>
             {compact ? <PanelLeftOpen size={18} aria-hidden="true" /> : <PanelLeftClose size={18} aria-hidden="true" />}
           </button>
@@ -109,7 +110,7 @@ export default function Shell() {
         <header className="topbar">
           <div className="crumb">
             <button ref={mobileMenuButton} className="button button--ghost button--sm mobile-menu" onClick={() => setOpen(true)} aria-label={t("nav.openMenu")} aria-expanded={open} aria-controls="main-sidebar"><Menu size={18} /></button>
-            <span>TLS Scan</span><ChevronRight size={14} aria-hidden="true" /><strong>{t(sectionLabel(pathname))}</strong>
+            <span>{PRODUCT_NAME}</span><ChevronRight size={14} aria-hidden="true" /><strong>{t(sectionLabel(pathname))}</strong>
           </div>
           <div className="top-actions">{user && <UserMenu user={user} onSignOut={() => void logout()} />}</div>
         </header>

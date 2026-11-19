@@ -3,6 +3,7 @@ import { ArrowUpRight, CircleHelp, Crosshair, Layers3, Minus, Pencil, Plus, Sear
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
+import { PRODUCT_NAME } from "../brand";
 import type { MapDevice, MapGraph, MapHostDetail, MapNode, MapSummary, MapZone, SI, Target } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { ErrorNote, PageHeader } from "../components/common";
@@ -329,7 +330,7 @@ export default function NetworkMap() {
     try {
       const body = { name: data.get("name"), device_type: data.get("device_type"), zone_id: zoneId || data.get("zone_id") || null,
         ip_address: data.get("ip_address") || null, target_id: data.get("target_id") || null, provenance: data.get("provenance"),
-        source: data.get("source") || "TLS Scan administrator", observed_at: data.get("observed_at") || null,
+        source: data.get("source") || `${PRODUCT_NAME} administrator`, observed_at: data.get("observed_at") || null,
         confidence: data.get("confidence") ? Number(data.get("confidence")) : null, metadata: deviceEditing?.metadata ?? {} };
       if (deviceEditing) await api(`/map/devices/${deviceEditing.id}`, { method: "PUT", body });
       else await api("/map/devices", { method: "POST", body });
@@ -495,7 +496,7 @@ export default function NetworkMap() {
         <Field label={t("map.device.zone")}><Select name="zone_id" defaultValue={deviceEditing?.zone_id ?? zoneId}>{zones.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select></Field>
         <Field label={t("map.device.target")}><Select name="target_id" defaultValue={deviceEditing?.target_id ?? ""}><option value="">—</option>{targets.map((item) => <option key={item.id} value={item.id}>{targetLabel(item)}</option>)}</Select>{targetsLoading && <small className="network-map-form-note">{t("map.loadingTargets")}</small>}</Field>
         <Field label={t("map.device.provenance")}><Select name="provenance" defaultValue={deviceEditing?.provenance ?? "DECLARED"}><option value="DECLARED">{t("map.provenance.DECLARED")}</option><option value="OBSERVED">{t("map.provenance.OBSERVED")}</option><option value="INFERRED">{t("map.provenance.INFERRED")}</option></Select></Field>
-        <Field label={t("map.device.source")}><Input name="source" maxLength={255} defaultValue={deviceEditing?.source ?? "TLS Scan administrator"} /></Field>
+        <Field label={t("map.device.source")}><Input name="source" maxLength={255} defaultValue={deviceEditing?.source ?? `${PRODUCT_NAME} administrator`} /></Field>
         <Field label={t("map.link.observedAt")}><Input name="observed_at" type="datetime-local" defaultValue={deviceEditing?.observed_at?.slice(0, 16) ?? ""} /></Field>
         <Field label={t("map.confidence")}><Input name="confidence" type="number" min="0" max="1" step="0.01" defaultValue={deviceEditing?.confidence ?? ""} /></Field>
         <div className="flex justify-end gap-2"><Button type="button" variant="outline" onClick={() => { setDeviceOpen(false); setDeviceEditing(undefined); }}>{t("action.cancel")}</Button><Button type="submit">{t("map.device.save")}</Button></div>
