@@ -35,4 +35,4 @@ defaults:
     exclude: [10.0.0.5, 10.20.0.0/24, legacy.example.org, "*.test.example.org"]
 ```
 
-or `tls_scan --exclude "10.0.0.5,10.20.0.0/24,legacy.example.org"`. Without it the engine behaves, and exports, exactly as before.
+or `orion.py --exclude "10.0.0.5,10.20.0.0/24,legacy.example.org"`. Without it the engine behaves, and exports, exactly as before.

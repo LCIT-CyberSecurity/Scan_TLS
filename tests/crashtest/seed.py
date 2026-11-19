@@ -9,13 +9,13 @@ import sys
 import httpx
 
 DEMO_PASSWORD = "CrashTest-Demo-2026!"  # demo only, never used outside the CrashTest stack
-ADMIN_INITIAL = os.environ.get("TLS_SCAN_LOCAL_ADMIN_PASSWORD", "")
+ADMIN_INITIAL = os.environ.get("ORION_LOCAL_ADMIN_PASSWORD", "")
 ADMIN_FINAL = "CrashTest-Admin-2026!"
 LAB = "lab-tls"
 
 base = httpx.Client(base_url="http://localhost:8000", timeout=60)
 if not base.get("/api/auth/providers").json().get("crashtest"):
-    sys.exit("Refusing to seed: this is not a CrashTest installation (TLS_SCAN_CRASHTEST is not true).")
+    sys.exit("Refusing to seed: this is not a CrashTest installation (ORION_CRASHTEST is not true).")
 
 
 class Session:
@@ -196,5 +196,5 @@ for source, target, provenance, evidence in link_specs:
 
 if not user.call("GET", "/api/schedules"):
     user.call("POST", "/api/schedules", json={"definition_id": d_https["id"], "kind": "daily", "params": {"time": "03:00"}, "timezone": "Europe/Paris"})
-admin.call("PUT", "/api/admin/settings/notifications", json={"value": {"connector": "smtp", "smtp": {"host": "smtp-sink", "port": 1025, "starttls": False, "from": "tls-scan@crashtest.example.com"}}})
+admin.call("PUT", "/api/admin/settings/notifications", json={"value": {"connector": "smtp", "smtp": {"host": "smtp-sink", "port": 1025, "starttls": False, "from": "orion@crashtest.example.com"}}})
 print("CrashTest users, TLS lab targets and Network Exposure Map fixtures are ready.")

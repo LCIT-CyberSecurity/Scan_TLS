@@ -5,7 +5,7 @@ import subprocess
 
 import pytest
 
-from tls_scan_app.services import planner, service_identification as services
+from orion_app.services import planner, service_identification as services
 from conftest import LAB, PROFILE, wait_final
 
 

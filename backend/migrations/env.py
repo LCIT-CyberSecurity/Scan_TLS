@@ -1,9 +1,17 @@
-import tls_scan_app.models  # noqa: F401 - registers the tables
+import os
+
+import orion_app.models  # noqa: F401 - registers the tables
 from alembic import context
-from tls_scan_app.config import get_settings
-from tls_scan_app.database import Base, make_engine
+from orion_app.config import ENV_PREFIX, LEGACY_ENV_PREFIX, get_settings
+from orion_app.database import Base, make_engine
 
 config = context.config
+
+# Migrations already applied in the field are never edited, and some read TLS_SCAN_* directly (0011): expose each ORION_*
+# variable under its legacy name too, for this process only, unless the legacy name is set itself.
+for _name, _value in list(os.environ.items()):
+    if _name.startswith(ENV_PREFIX):
+        os.environ.setdefault(LEGACY_ENV_PREFIX + _name[len(ENV_PREFIX):], _value)
 
 
 def run() -> None:

@@ -13,7 +13,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec, rsa
 from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
 
-from tls_scan_app.services import trust_stores as svc
+from orion_app.services import trust_stores as svc
 from tls_scanner.config import parse_inline_stores
 from tls_scanner.models import ConfigError
 from tls_scanner.pki import (
@@ -176,7 +176,7 @@ def test_file_name_never_reaches_a_path_or_a_message_unsanitised(pki):
     assert "/" not in str(error.value) and ";" not in str(error.value)
 
 
-@pytest.mark.parametrize("value", ["", "  ", "a,b", "x" * 121, "TLS Scan Public Web PKI", "bad\nname"])
+@pytest.mark.parametrize("value", ["", "  ", "a,b", "x" * 121, "Orion Public Web PKI", "TLS Scan Public Web PKI", "bad\nname"])
 def test_store_names(value):
     with pytest.raises(svc.TrustStoreError):
         svc.validate_name(value)

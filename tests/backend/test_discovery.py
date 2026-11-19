@@ -5,7 +5,7 @@ import dns.zone
 import pytest
 
 from conftest import wait_for
-from tls_scan_app.services.dns_discovery import DiscoveryError, hosts_from_zone, normalize_domain, server_allowed
+from orion_app.services.dns_discovery import DiscoveryError, hosts_from_zone, normalize_domain, server_allowed
 
 ZONE = """
 $ORIGIN example.org.

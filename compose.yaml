@@ -1,82 +1,85 @@
-# TLS Scan WebUI deployment. Use ./bootstrap_tls-scan-deployment.sh rather than calling compose by hand.
-name: ${TLS_SCAN_PROJECT:-tls-scan}
+# Orion WebUI deployment. Use ./bootstrap_orion-deployment.sh rather than calling compose by hand: it pins the project,
+# database and role of an installation made before the rebranding (TLS Scan) so that its volumes are always reused.
+# Every ORION_* setting falls back to its former TLS_SCAN_* name, so an existing .env keeps working unchanged.
+name: ${ORION_PROJECT:-${TLS_SCAN_PROJECT:-orion}}
 
 x-backend: &backend
   build: {context: ., dockerfile: ops/docker/backend.Dockerfile}
-  image: tls-scan-backend:${TLS_SCAN_VERSION:-local}
+  image: orion-backend:${ORION_VERSION:-${TLS_SCAN_VERSION:-local}}
   restart: unless-stopped
-  group_add: ["${TLS_SCAN_SECRET_GID:-1000}"]
+  group_add: ["${ORION_SECRET_GID:-${TLS_SCAN_SECRET_GID:-1000}}"]
   environment: &backend-environment
-    TLS_SCAN_ENVIRONMENT: production
-    TLS_SCAN_DATABASE_URL: postgresql+psycopg://tls_scan@postgres:5432/tls_scan
-    TLS_SCAN_DATABASE_PASSWORD_FILE: /run/secrets/database_password
-    TLS_SCAN_STORAGE_ROOT: /var/lib/tls-scan
-    TLS_SCAN_LOG_LEVEL: ${TLS_SCAN_LOG_LEVEL:-INFO}
-    TLS_SCAN_PUBLIC_BASE_URL: ${TLS_SCAN_PUBLIC_BASE_URL:-https://localhost:8443}
-    TLS_SCAN_COOKIE_SECURE: ${TLS_SCAN_COOKIE_SECURE:-true}
-    TLS_SCAN_SESSION_IDLE_TIMEOUT_MINUTES: ${TLS_SCAN_SESSION_IDLE_TIMEOUT_MINUTES:-60}
-    TLS_SCAN_SESSION_ABSOLUTE_TIMEOUT_HOURS: ${TLS_SCAN_SESSION_ABSOLUTE_TIMEOUT_HOURS:-12}
-    TLS_SCAN_MAX_CONCURRENT_SCANS: ${TLS_SCAN_MAX_CONCURRENT_SCANS:-2}
-    TLS_SCAN_MAX_SCAN_DURATION_SECONDS: ${TLS_SCAN_MAX_SCAN_DURATION_SECONDS:-3600}
-    TLS_SCAN_MAX_TARGETS_PER_SCAN: ${TLS_SCAN_MAX_TARGETS_PER_SCAN:-4096}
-    TLS_SCAN_MAX_SCAN_WORKERS: ${TLS_SCAN_MAX_SCAN_WORKERS:-8}
-    TLS_SCAN_WORKER_POLL_SECONDS: ${TLS_SCAN_WORKER_POLL_SECONDS:-2}
-    TLS_SCAN_SCHEDULER_POLL_SECONDS: ${TLS_SCAN_SCHEDULER_POLL_SECONDS:-15}
-    TLS_SCAN_RATE_LIMIT_ENABLED: ${TLS_SCAN_RATE_LIMIT_ENABLED:-true}
-    TLS_SCAN_TIMEZONE: ${TLS_SCAN_TIMEZONE:-Europe/Paris}
-    TLS_SCAN_GRAPH_LOGIN_URL: ${TLS_SCAN_GRAPH_LOGIN_URL:-https://login.microsoftonline.com}
-    TLS_SCAN_GRAPH_BASE_URL: ${TLS_SCAN_GRAPH_BASE_URL:-https://graph.microsoft.com/v1.0}
+    ORION_ENVIRONMENT: production
+    ORION_DATABASE_URL: postgresql+psycopg://${ORION_DB_USER:-orion}@postgres:5432/${ORION_DB_NAME:-orion}
+    ORION_DATABASE_PASSWORD_FILE: /run/secrets/database_password
+    ORION_STORAGE_ROOT: /var/lib/orion
+    ORION_LOG_LEVEL: ${ORION_LOG_LEVEL:-${TLS_SCAN_LOG_LEVEL:-INFO}}
+    ORION_PUBLIC_BASE_URL: ${ORION_PUBLIC_BASE_URL:-${TLS_SCAN_PUBLIC_BASE_URL:-https://localhost:8443}}
+    ORION_COOKIE_SECURE: ${ORION_COOKIE_SECURE:-${TLS_SCAN_COOKIE_SECURE:-true}}
+    ORION_SESSION_IDLE_TIMEOUT_MINUTES: ${ORION_SESSION_IDLE_TIMEOUT_MINUTES:-${TLS_SCAN_SESSION_IDLE_TIMEOUT_MINUTES:-60}}
+    ORION_SESSION_ABSOLUTE_TIMEOUT_HOURS: ${ORION_SESSION_ABSOLUTE_TIMEOUT_HOURS:-${TLS_SCAN_SESSION_ABSOLUTE_TIMEOUT_HOURS:-12}}
+    ORION_MAX_CONCURRENT_SCANS: ${ORION_MAX_CONCURRENT_SCANS:-${TLS_SCAN_MAX_CONCURRENT_SCANS:-2}}
+    ORION_MAX_SCAN_DURATION_SECONDS: ${ORION_MAX_SCAN_DURATION_SECONDS:-${TLS_SCAN_MAX_SCAN_DURATION_SECONDS:-3600}}
+    ORION_MAX_TARGETS_PER_SCAN: ${ORION_MAX_TARGETS_PER_SCAN:-${TLS_SCAN_MAX_TARGETS_PER_SCAN:-4096}}
+    ORION_MAX_SCAN_WORKERS: ${ORION_MAX_SCAN_WORKERS:-${TLS_SCAN_MAX_SCAN_WORKERS:-8}}
+    ORION_WORKER_POLL_SECONDS: ${ORION_WORKER_POLL_SECONDS:-${TLS_SCAN_WORKER_POLL_SECONDS:-2}}
+    ORION_SCHEDULER_POLL_SECONDS: ${ORION_SCHEDULER_POLL_SECONDS:-${TLS_SCAN_SCHEDULER_POLL_SECONDS:-15}}
+    ORION_RATE_LIMIT_ENABLED: ${ORION_RATE_LIMIT_ENABLED:-${TLS_SCAN_RATE_LIMIT_ENABLED:-true}}
+    ORION_TIMEZONE: ${ORION_TIMEZONE:-${TLS_SCAN_TIMEZONE:-Europe/Paris}}
+    ORION_GRAPH_LOGIN_URL: ${ORION_GRAPH_LOGIN_URL:-${TLS_SCAN_GRAPH_LOGIN_URL:-https://login.microsoftonline.com}}
+    ORION_GRAPH_BASE_URL: ${ORION_GRAPH_BASE_URL:-${TLS_SCAN_GRAPH_BASE_URL:-https://graph.microsoft.com/v1.0}}
   security_opt: ["no-new-privileges:true"]
   cap_drop: [ALL]
   networks: [backend]
 
 x-greenbone-env: &greenbone-env
-  TLS_SCAN_GREENBONE_PASSWORD_FILE: /run/secrets/greenbone_password
-  TLS_SCAN_GREENBONE_ALLOWED_HOSTS: ${TLS_SCAN_GREENBONE_ALLOWED_HOSTS:-}
-  TLS_SCAN_GREENBONE_USERNAME: ${TLS_SCAN_GREENBONE_USERNAME:-}
-  TLS_SCAN_GREENBONE_CA_FILE: ${TLS_SCAN_GREENBONE_CA_FILE:-}
-  TLS_SCAN_GREENBONE_CLIENT_CERT_FILE: ${TLS_SCAN_GREENBONE_CLIENT_CERT_FILE:-}
-  TLS_SCAN_GREENBONE_CLIENT_KEY_FILE: ${TLS_SCAN_GREENBONE_CLIENT_KEY_FILE:-}
-  TLS_SCAN_GREENBONE_CREDENTIAL_KEY_FILE: /run/secrets/greenbone_credential_key
+  ORION_GREENBONE_PASSWORD_FILE: /run/secrets/greenbone_password
+  ORION_GREENBONE_ALLOWED_HOSTS: ${ORION_GREENBONE_ALLOWED_HOSTS:-${TLS_SCAN_GREENBONE_ALLOWED_HOSTS:-}}
+  ORION_GREENBONE_USERNAME: ${ORION_GREENBONE_USERNAME:-${TLS_SCAN_GREENBONE_USERNAME:-}}
+  ORION_GREENBONE_CA_FILE: ${ORION_GREENBONE_CA_FILE:-${TLS_SCAN_GREENBONE_CA_FILE:-}}
+  ORION_GREENBONE_CLIENT_CERT_FILE: ${ORION_GREENBONE_CLIENT_CERT_FILE:-${TLS_SCAN_GREENBONE_CLIENT_CERT_FILE:-}}
+  ORION_GREENBONE_CLIENT_KEY_FILE: ${ORION_GREENBONE_CLIENT_KEY_FILE:-${TLS_SCAN_GREENBONE_CLIENT_KEY_FILE:-}}
+  ORION_GREENBONE_CREDENTIAL_KEY_FILE: /run/secrets/greenbone_credential_key
 
 services:
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
-    group_add: ["${TLS_SCAN_SECRET_GID:-1000}"]
+    group_add: ["${ORION_SECRET_GID:-${TLS_SCAN_SECRET_GID:-1000}}"]
     environment:
-      POSTGRES_USER: tls_scan
-      POSTGRES_DB: tls_scan
+      # Only used to initialise an empty volume; an installation made before Orion keeps tls_scan (pinned in .env).
+      POSTGRES_USER: ${ORION_DB_USER:-orion}
+      POSTGRES_DB: ${ORION_DB_NAME:-orion}
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
     secrets: [postgres_password]
     volumes: [pgdata:/var/lib/postgresql/data]
     networks: [backend]
-    healthcheck: {test: ["CMD-SHELL", "pg_isready -U tls_scan"], interval: 5s, retries: 20}
+    healthcheck: {test: ["CMD-SHELL", "pg_isready -U ${ORION_DB_USER:-orion} -d ${ORION_DB_NAME:-orion}"], interval: 5s, retries: 20}
 
   api:
     <<: *backend
-    command: sh -c "cd backend && alembic upgrade head && cd .. && uvicorn --factory tls_scan_app.app:create_app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips='*'"
+    command: sh -c "cd backend && alembic upgrade head && cd .. && uvicorn --factory orion_app.app:create_app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips='*'"
     environment:
       <<: [*backend-environment, *greenbone-env]
-      TLS_SCAN_SESSION_SECRET_FILE: /run/secrets/session_secret
-      TLS_SCAN_LOCAL_ADMIN_PASSWORD_FILE: /run/secrets/local_admin_password
-      TLS_SCAN_OIDC_CLIENT_SECRET_FILE: /run/secrets/oidc_client_secret
-      TLS_SCAN_GOOGLE_CLIENT_SECRET_FILE: /run/secrets/google_client_secret
-      TLS_SCAN_DIRECTORY_CLIENT_SECRET_FILE: /run/secrets/directory_client_secret
-      TLS_SCAN_LDAP_BIND_PASSWORD_FILE: /run/secrets/ldap_bind_password
-      TLS_SCAN_SMTP_PASSWORD_FILE: /run/secrets/smtp_password
-      TLS_SCAN_GRAPH_CLIENT_SECRET_FILE: /run/secrets/graph_client_secret
-      TLS_SCAN_SNMP_V3_AUTH_KEY_FILE: /run/secrets/snmp_v3_auth_key
-      TLS_SCAN_SNMP_V3_PRIV_KEY_FILE: /run/secrets/snmp_v3_priv_key
-      TLS_SCAN_SNMP_SECRETS_DIR: /run/secrets
-      TLS_SCAN_OIDC_PROVIDER: ${TLS_SCAN_OIDC_PROVIDER:-}
-      TLS_SCAN_OIDC_ISSUER: ${TLS_SCAN_OIDC_ISSUER:-}
-      TLS_SCAN_OIDC_CLIENT_ID: ${TLS_SCAN_OIDC_CLIENT_ID:-}
-      TLS_SCAN_OIDC_DEFAULT_ROLE: ${TLS_SCAN_OIDC_DEFAULT_ROLE:-USER}
-      TLS_SCAN_GOOGLE_ISSUER: ${TLS_SCAN_GOOGLE_ISSUER:-}
-      TLS_SCAN_SSO_AUTO_PROVISION: ${TLS_SCAN_SSO_AUTO_PROVISION:-}
-      TLS_SCAN_SNMP_V3_USERNAME: ${TLS_SCAN_SNMP_V3_USERNAME:-}
-      TLS_SCAN_GOOGLE_DIRECTORY_KEY_FILE: ${TLS_SCAN_GOOGLE_DIRECTORY_KEY_FILE:-}
+      ORION_SESSION_SECRET_FILE: /run/secrets/session_secret
+      ORION_LOCAL_ADMIN_PASSWORD_FILE: /run/secrets/local_admin_password
+      ORION_OIDC_CLIENT_SECRET_FILE: /run/secrets/oidc_client_secret
+      ORION_GOOGLE_CLIENT_SECRET_FILE: /run/secrets/google_client_secret
+      ORION_DIRECTORY_CLIENT_SECRET_FILE: /run/secrets/directory_client_secret
+      ORION_LDAP_BIND_PASSWORD_FILE: /run/secrets/ldap_bind_password
+      ORION_SMTP_PASSWORD_FILE: /run/secrets/smtp_password
+      ORION_GRAPH_CLIENT_SECRET_FILE: /run/secrets/graph_client_secret
+      ORION_SNMP_V3_AUTH_KEY_FILE: /run/secrets/snmp_v3_auth_key
+      ORION_SNMP_V3_PRIV_KEY_FILE: /run/secrets/snmp_v3_priv_key
+      ORION_SNMP_SECRETS_DIR: /run/secrets
+      ORION_OIDC_PROVIDER: ${ORION_OIDC_PROVIDER:-${TLS_SCAN_OIDC_PROVIDER:-}}
+      ORION_OIDC_ISSUER: ${ORION_OIDC_ISSUER:-${TLS_SCAN_OIDC_ISSUER:-}}
+      ORION_OIDC_CLIENT_ID: ${ORION_OIDC_CLIENT_ID:-${TLS_SCAN_OIDC_CLIENT_ID:-}}
+      ORION_OIDC_DEFAULT_ROLE: ${ORION_OIDC_DEFAULT_ROLE:-${TLS_SCAN_OIDC_DEFAULT_ROLE:-USER}}
+      ORION_GOOGLE_ISSUER: ${ORION_GOOGLE_ISSUER:-${TLS_SCAN_GOOGLE_ISSUER:-}}
+      ORION_SSO_AUTO_PROVISION: ${ORION_SSO_AUTO_PROVISION:-${TLS_SCAN_SSO_AUTO_PROVISION:-}}
+      ORION_SNMP_V3_USERNAME: ${ORION_SNMP_V3_USERNAME:-${TLS_SCAN_SNMP_V3_USERNAME:-}}
+      ORION_GOOGLE_DIRECTORY_KEY_FILE: ${ORION_GOOGLE_DIRECTORY_KEY_FILE:-${TLS_SCAN_GOOGLE_DIRECTORY_KEY_FILE:-}}
     secrets:
       - database_password
       - session_secret
@@ -99,7 +102,7 @@ services:
         target: greenbone_client.key
       - source: google_directory_key
         target: google_directory_key.json
-    volumes: [data:/var/lib/tls-scan]
+    volumes: [data:/var/lib/orion]
     depends_on: {postgres: {condition: service_healthy}}
     read_only: true
     tmpfs: [/tmp]
@@ -109,17 +112,17 @@ services:
   # Runs scans and notifications. It sees only its database, mail and SNMP credentials.
   worker:
     <<: *backend
-    command: python -m tls_scan_app.workers.worker
+    command: python -m orion_app.workers.worker
     environment:
       <<: [*backend-environment, *greenbone-env]
       # Background workers do not serve sessions and must not receive the API session secret.
-      TLS_SCAN_SESSION_SECRET_REQUIRED: "false"
-      TLS_SCAN_SMTP_PASSWORD_FILE: /run/secrets/smtp_password
-      TLS_SCAN_GRAPH_CLIENT_SECRET_FILE: /run/secrets/graph_client_secret
-      TLS_SCAN_SNMP_V3_USERNAME: ${TLS_SCAN_SNMP_V3_USERNAME:-}
-      TLS_SCAN_SNMP_V3_AUTH_KEY_FILE: /run/secrets/snmp_v3_auth_key
-      TLS_SCAN_SNMP_V3_PRIV_KEY_FILE: /run/secrets/snmp_v3_priv_key
-      TLS_SCAN_SNMP_SECRETS_DIR: /run/secrets
+      ORION_SESSION_SECRET_REQUIRED: "false"
+      ORION_SMTP_PASSWORD_FILE: /run/secrets/smtp_password
+      ORION_GRAPH_CLIENT_SECRET_FILE: /run/secrets/graph_client_secret
+      ORION_SNMP_V3_USERNAME: ${ORION_SNMP_V3_USERNAME:-${TLS_SCAN_SNMP_V3_USERNAME:-}}
+      ORION_SNMP_V3_AUTH_KEY_FILE: /run/secrets/snmp_v3_auth_key
+      ORION_SNMP_V3_PRIV_KEY_FILE: /run/secrets/snmp_v3_priv_key
+      ORION_SNMP_SECRETS_DIR: /run/secrets
     secrets:
       - database_password
       - smtp_password
@@ -134,24 +137,24 @@ services:
         target: greenbone_client.crt
       - source: greenbone_client_key
         target: greenbone_client.key
-    volumes: [data:/var/lib/tls-scan]
+    volumes: [data:/var/lib/orion]
     depends_on: {api: {condition: service_healthy}}
     networks: [backend, scan]
     read_only: true
     tmpfs: [/tmp]
-    mem_limit: ${TLS_SCAN_WORKER_MEMORY:-2g}
-    cpus: ${TLS_SCAN_WORKER_CPUS:-2}
+    mem_limit: ${ORION_WORKER_MEMORY:-${TLS_SCAN_WORKER_MEMORY:-2g}}
+    cpus: ${ORION_WORKER_CPUS:-${TLS_SCAN_WORKER_CPUS:-2}}
     pids_limit: 512
 
   scheduler:
     <<: *backend
-    command: python -m tls_scan_app.scheduler.scheduler
+    command: python -m orion_app.scheduler.scheduler
     environment:
       <<: *backend-environment
       # The scheduler does not serve sessions and must not receive the API session secret.
-      TLS_SCAN_SESSION_SECRET_REQUIRED: "false"
-      TLS_SCAN_SMTP_PASSWORD_FILE: /run/secrets/smtp_password
-      TLS_SCAN_GRAPH_CLIENT_SECRET_FILE: /run/secrets/graph_client_secret
+      ORION_SESSION_SECRET_REQUIRED: "false"
+      ORION_SMTP_PASSWORD_FILE: /run/secrets/smtp_password
+      ORION_GRAPH_CLIENT_SECRET_FILE: /run/secrets/graph_client_secret
     secrets: [database_password, smtp_password, graph_client_secret]
     depends_on: {api: {condition: service_healthy}}
     read_only: true
@@ -159,11 +162,11 @@ services:
 
   webui:
     build: {context: ., dockerfile: ops/docker/frontend.Dockerfile}
-    image: tls-scan-webui:${TLS_SCAN_VERSION:-local}
+    image: orion-webui:${ORION_VERSION:-${TLS_SCAN_VERSION:-local}}
     restart: unless-stopped
-    environment: {TLS_SCAN_HTTPS_PORT: "${TLS_SCAN_HTTPS_PORT:-8443}"}
-    volumes: ["${TLS_SCAN_CERT_DIR:-./data/certs}:/certs:ro"]
-    ports: ["${TLS_SCAN_HTTPS_PORT:-8443}:443", "${TLS_SCAN_HTTP_PORT:-8080}:80"]
+    environment: {ORION_HTTPS_PORT: "${ORION_HTTPS_PORT:-${TLS_SCAN_HTTPS_PORT:-8443}}"}
+    volumes: ["${ORION_CERT_DIR:-${TLS_SCAN_CERT_DIR:-./data/certs}}:/certs:ro"]
+    ports: ["${ORION_HTTPS_PORT:-${TLS_SCAN_HTTPS_PORT:-8443}}:443", "${ORION_HTTP_PORT:-${TLS_SCAN_HTTP_PORT:-8080}}:80"]
     depends_on: {api: {condition: service_healthy}}
     networks: [backend, frontend]
     healthcheck: {test: ["CMD", "curl", "-fsS", "--insecure", "https://127.0.0.1/"], interval: 15s, retries: 5}
@@ -174,24 +177,24 @@ networks:
   scan: {}
 
 secrets:
-  postgres_password: {file: "${TLS_SCAN_SECRET_DIR:-./data/secrets}/postgres_password"}
-  database_password: {file: "${TLS_SCAN_SECRET_DIR:-./data/secrets}/database_password"}
-  session_secret: {file: "${TLS_SCAN_SECRET_DIR:-./data/secrets}/session_secret"}
-  local_admin_password: {file: "${TLS_SCAN_SECRET_DIR:-./data/secrets}/local_admin_password"}
-  oidc_client_secret: {file: "${TLS_SCAN_SECRET_DIR:-./data/secrets}/oidc_client_secret"}
-  google_client_secret: {file: "${TLS_SCAN_SECRET_DIR:-./data/secrets}/google_client_secret"}
-  directory_client_secret: {file: "${TLS_SCAN_SECRET_DIR:-./data/secrets}/directory_client_secret"}
-  ldap_bind_password: {file: "${TLS_SCAN_SECRET_DIR:-./data/secrets}/ldap_bind_password"}
-  greenbone_credential_key: {file: "${TLS_SCAN_SECRET_DIR:-./data/secrets}/greenbone_credential_key"}
-  greenbone_password: {file: "${TLS_SCAN_SECRET_DIR:-./data/secrets}/greenbone_password"}
-  smtp_password: {file: "${TLS_SCAN_SECRET_DIR:-./data/secrets}/smtp_password"}
-  graph_client_secret: {file: "${TLS_SCAN_SECRET_DIR:-./data/secrets}/graph_client_secret"}
-  snmp_v3_auth_key: {file: "${TLS_SCAN_SECRET_DIR:-./data/secrets}/snmp_v3_auth_key"}
-  snmp_v3_priv_key: {file: "${TLS_SCAN_SECRET_DIR:-./data/secrets}/snmp_v3_priv_key"}
-  greenbone_ca: {file: "${TLS_SCAN_SECRET_DIR:-./data/secrets}/greenbone_ca.pem"}
-  greenbone_client_cert: {file: "${TLS_SCAN_SECRET_DIR:-./data/secrets}/greenbone_client.crt"}
-  greenbone_client_key: {file: "${TLS_SCAN_SECRET_DIR:-./data/secrets}/greenbone_client.key"}
-  google_directory_key: {file: "${TLS_SCAN_SECRET_DIR:-./data/secrets}/google_directory_key.json"}
+  postgres_password: {file: "${ORION_SECRET_DIR:-${TLS_SCAN_SECRET_DIR:-./data/secrets}}/postgres_password"}
+  database_password: {file: "${ORION_SECRET_DIR:-${TLS_SCAN_SECRET_DIR:-./data/secrets}}/database_password"}
+  session_secret: {file: "${ORION_SECRET_DIR:-${TLS_SCAN_SECRET_DIR:-./data/secrets}}/session_secret"}
+  local_admin_password: {file: "${ORION_SECRET_DIR:-${TLS_SCAN_SECRET_DIR:-./data/secrets}}/local_admin_password"}
+  oidc_client_secret: {file: "${ORION_SECRET_DIR:-${TLS_SCAN_SECRET_DIR:-./data/secrets}}/oidc_client_secret"}
+  google_client_secret: {file: "${ORION_SECRET_DIR:-${TLS_SCAN_SECRET_DIR:-./data/secrets}}/google_client_secret"}
+  directory_client_secret: {file: "${ORION_SECRET_DIR:-${TLS_SCAN_SECRET_DIR:-./data/secrets}}/directory_client_secret"}
+  ldap_bind_password: {file: "${ORION_SECRET_DIR:-${TLS_SCAN_SECRET_DIR:-./data/secrets}}/ldap_bind_password"}
+  greenbone_credential_key: {file: "${ORION_SECRET_DIR:-${TLS_SCAN_SECRET_DIR:-./data/secrets}}/greenbone_credential_key"}
+  greenbone_password: {file: "${ORION_SECRET_DIR:-${TLS_SCAN_SECRET_DIR:-./data/secrets}}/greenbone_password"}
+  smtp_password: {file: "${ORION_SECRET_DIR:-${TLS_SCAN_SECRET_DIR:-./data/secrets}}/smtp_password"}
+  graph_client_secret: {file: "${ORION_SECRET_DIR:-${TLS_SCAN_SECRET_DIR:-./data/secrets}}/graph_client_secret"}
+  snmp_v3_auth_key: {file: "${ORION_SECRET_DIR:-${TLS_SCAN_SECRET_DIR:-./data/secrets}}/snmp_v3_auth_key"}
+  snmp_v3_priv_key: {file: "${ORION_SECRET_DIR:-${TLS_SCAN_SECRET_DIR:-./data/secrets}}/snmp_v3_priv_key"}
+  greenbone_ca: {file: "${ORION_SECRET_DIR:-${TLS_SCAN_SECRET_DIR:-./data/secrets}}/greenbone_ca.pem"}
+  greenbone_client_cert: {file: "${ORION_SECRET_DIR:-${TLS_SCAN_SECRET_DIR:-./data/secrets}}/greenbone_client.crt"}
+  greenbone_client_key: {file: "${ORION_SECRET_DIR:-${TLS_SCAN_SECRET_DIR:-./data/secrets}}/greenbone_client.key"}
+  google_directory_key: {file: "${ORION_SECRET_DIR:-${TLS_SCAN_SECRET_DIR:-./data/secrets}}/google_directory_key.json"}
 
 volumes:
   pgdata:

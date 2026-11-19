@@ -1,11 +1,11 @@
 # CrashTest
 
 A disposable full stack with fictional data for demos and E2E tests. **Demo passwords exist only here** and the seed
-refuses to run unless `TLS_SCAN_CRASHTEST=true`; the login page shows a warning banner.
+refuses to run unless `ORION_CRASHTEST=true`; the login page shows a warning banner.
 
 ```bash
 tests/crashtest/start.sh <vm-host>      # builds, starts (ports 5100 UI, 5110 SSO mock, 5125 mailbox, 5130 TLS lab), seeds
-tests/crashtest/reset.sh                # destroys only the tlsscan-crashtest project and its volumes
+tests/crashtest/reset.sh                # destroys only the orion-crashtest project and its volumes
 ```
 
 Accounts: `admin` / `CrashTest-Admin-2026!`; `operator@`, `user@`, `user2@`, `auditor@crashtest.example.com` /

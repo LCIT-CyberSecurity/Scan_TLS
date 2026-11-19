@@ -1,0 +1,48 @@
+"""Admin command line: python -m orion_app.cli <command>"""
+from __future__ import annotations
+
+import argparse
+import secrets
+import sys
+
+from sqlalchemy import select
+
+from orion_app.auth.passwords import hash_password
+from orion_app.config import get_settings
+from orion_app.database import make_engine, make_session_factory
+from orion_app.models import User
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="orion_app.cli")
+    sub = parser.add_subparsers(dest="command", required=True)
+    sub.add_parser("bootstrap", help="create the organisation row and the initial local administrator")
+    reset = sub.add_parser("reset-admin-password", help="reset the local administrator password (random one-time value, or the deployment default with --default)")
+    reset.add_argument("--username", default=None)
+    reset.add_argument("--default", action="store_true", help="reset to the deployment default password")
+    args = parser.parse_args(argv)
+    settings = get_settings()
+    factory = make_session_factory(make_engine(settings.database_url, settings.database_password_file))
+    with factory() as db:
+        if args.command == "bootstrap":
+            from orion_app.services.bootstrap import ensure_bootstrap
+
+            ensure_bootstrap(db, settings)
+            print("bootstrap done")
+            return 0
+        username = args.username or settings.local_admin_username
+        user = db.execute(select(User).where(User.issuer == "builtin:local", User.subject == username)).scalar_one_or_none()
+        if user is None:
+            print("no such local administrator", file=sys.stderr)
+            return 1
+        from orion_app.services.bootstrap import DEFAULT_ADMIN_PASSWORD
+
+        password = DEFAULT_ADMIN_PASSWORD if args.default else secrets.token_urlsafe(18)
+        user.password_hash, user.must_change_password, user.active = hash_password(password), True, True
+        db.commit()
+        print(password)  # shown once, on the operator's terminal only
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

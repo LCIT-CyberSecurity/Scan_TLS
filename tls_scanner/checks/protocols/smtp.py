@@ -16,7 +16,7 @@ def upgrade(wire: Wire, server_name: str) -> Upgrade:
         raise
     if code != "220":
         return Upgrade(NOT_PROTOCOL if not code.startswith(("4", "5")) else REFUSED, PROTOCOL, f"banner {code}", confirmed=code.startswith(("4", "5")))
-    wire.send(b"EHLO tls-scan.invalid\r\n")
+    wire.send(b"EHLO orion.invalid\r\n")
     code, lines = numbered_reply(wire)
     advertised = any(line[4:].strip().upper() == "STARTTLS" for line in lines)
     # As historically, STARTTLS is requested even when EHLO did not list it: the server's answer decides.

@@ -19,7 +19,7 @@ describe("api client", () => {
   it("signals an expired session", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(JSON.stringify({ detail: "Not authenticated" }), { status: 401 }));
     const seen = vi.fn();
-    window.addEventListener("tls-scan:unauthorized", seen);
+    window.addEventListener("orion:unauthorized", seen);
     await expect(api("/x")).rejects.toBeInstanceOf(ApiError);
     expect(seen).toHaveBeenCalled();
   });

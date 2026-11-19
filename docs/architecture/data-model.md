@@ -2,6 +2,11 @@
 
 Migrations: `backend/migrations/versions` (Alembic, applied automatically when the API container starts).
 
+Database and role: `orion` for a new installation; an installation made before the Orion rebranding keeps `tls_scan`
+(pinned by `ORION_DB_NAME` / `ORION_DB_USER`) until `migrate-orion` copies it ([Orion migration](../admin/orion-migration.md)).
+Migration `0024_orion_product_identity` only records the rebranding and renames a custom trust store that would collide with
+the new built-in name *Orion Public Web PKI*; historical results, notifications and audit events keep the former name as written.
+
 | Domain | Tables |
 |---|---|
 | Identity | `users` (one global `role`), `sessions` (token hash, CSRF token, revocation), `organization` (single row) |
@@ -14,7 +19,7 @@ Migrations: `backend/migrations/versions` (Alembic, applied automatically when t
 | Network map | `network_zones` (independent nested classification), `network_zone_systems`, `network_zone_targets`, `network_devices`, `network_links` (typed provenance and source; no auto-discovery) |
 | External access | `users.api_access_enabled`, `users.mcp_access_enabled` (default false, migration `0005`), `access_tokens` (hashed keys, expiry, last use, revocation; one non-revoked key per user and service), `system_settings['external_access']` (global switches, default off) |
 | Discovery | `dns_discoveries` (DNS discovery requests and their result; migration `0004`) |
-| Operations | `audit_events` (no FK to users: audit outlives accounts), `system_settings` (retention, SMTP), `notifications` (queue + delivery status) |
+| Operations | `audit_events` (no FK to users: audit outlives accounts), `system_settings` (retention, SMTP; `product_identity`: Orion rebranding record, migration `0024`), `notifications` (queue + delivery status) |
 
 `run_endpoints.tls_checks` (JSON, nullable, migration `0006`) keeps the results of the complementary TLS checks of an endpoint
 (`check_id`, `status`, `message`, `observations`, `evidence`, `duration_ms`). Rows stored before the migration have no value and are

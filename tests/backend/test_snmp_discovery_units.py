@@ -4,7 +4,7 @@ import asyncio
 
 import pytest
 
-from tls_scan_app.services import snmp_discovery as snmp
+from orion_app.services import snmp_discovery as snmp
 
 
 def test_lldp_numeric_oid_rows_are_joined_with_local_port_and_partial_fields() -> None:

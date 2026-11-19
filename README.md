@@ -1,8 +1,14 @@
-# LCIT Scan TLS
+# Orion
 
-LCIT Scan TLS inventories network endpoints (hosts, IP addresses, subnets), checks their TLS, IPsec/IKE and SSH
-configuration against your policies, and produces graded, client-ready reports. Everything is driven from a
-**web interface** (WebUI); a historical [standalone CLI](docs/user/standalone-cli.md) runs the same TLS engine.
+Orion is a network discovery, mapping, asset inventory and multi-protocol security analysis platform. It discovers
+and inventories network endpoints (hosts, IP addresses, subnets, DNS names, Greenbone/OpenVAS imports), maps them, checks
+their TLS/PKI, IPsec/IKE and SSH configuration against your policies, and produces graded, client-ready reports.
+Everything is driven from a **web interface** (WebUI); a historical [standalone CLI](docs/user/standalone-cli.md)
+(`orion.py`) runs the same TLS engine.
+
+Orion was previously named *LCIT Scan TLS*. Existing installations, `.env` files (`TLS_SCAN_*`), API/MCP keys
+(`tls_scan_pat_…`, `tls_scan_mcp_…`), MCP tool names and commands (`bootstrap_tls-scan-deployment.sh`, `tls_scan.py`)
+keep working; see [Orion migration](docs/admin/orion-migration.md).
 
 ## WebUI
 
@@ -29,7 +35,7 @@ configuration against your policies, and produces graded, client-ready reports. 
 Linux host with Docker, the Compose plugin and `openssl`. Nothing else is installed on the host.
 
 ```bash
-./bootstrap_tls-scan-deployment.sh --mode webui install
+./bootstrap_orion-deployment.sh --mode webui install
 ```
 
 The script prints the URL and the initial administrator account, whose password must be changed at first sign-in.
@@ -48,8 +54,8 @@ and [secret handling](docs/admin/secrets.md). Never commit credentials or paste 
 ## Standalone CLI
 
 ```bash
-./bootstrap_tls-scan-deployment.sh --mode standalone install
-.venv/bin/python tls_scan.py -p 443 example.com
+./bootstrap_orion-deployment.sh --mode standalone install
+.venv/bin/python orion.py -p 443 example.com
 ```
 
 YAML configuration, cron, exports, compliance policies, grades and examples: [standalone CLI guide](docs/user/standalone-cli.md).

@@ -7,9 +7,9 @@ import dns.xfr
 import dns.zone
 import pytest
 
-from tls_scan_app.services.dns_discovery import methods, policy
-from tls_scan_app.services.dns_discovery.model import Answer, LookupFailure
-from tls_scan_app.services.dns_discovery.runner import DEFAULT_OPTIONS, discover_async, failure_message
+from orion_app.services.dns_discovery import methods, policy
+from orion_app.services.dns_discovery.model import Answer, LookupFailure
+from orion_app.services.dns_discovery.runner import DEFAULT_OPTIONS, discover_async, failure_message
 
 
 class FakeLookup:

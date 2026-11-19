@@ -1,6 +1,6 @@
 # Endpoint exposure and contextual risk
 
-TLS Scan keeps the cryptographic grade separate from exposure context. A weak cipher, untrusted chain or other finding keeps the same technical grade and intrinsic severity even when the endpoint is internal. A contextual severity is shown only when an administrator has validated endpoint-specific exposure evidence.
+Orion keeps the cryptographic grade separate from exposure context. A weak cipher, untrusted chain or other finding keeps the same technical grade and intrinsic severity even when the endpoint is internal. A contextual severity is shown only when an administrator has validated endpoint-specific exposure evidence.
 
 ## Record evidence
 

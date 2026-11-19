@@ -18,7 +18,7 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509.oid import NameOID
 
 from conftest import PROFILE, wait_final
-from tls_scan_app.services import quic_scan
+from orion_app.services import quic_scan
 
 
 def _certificate(directory: Path) -> tuple[Path, Path]:

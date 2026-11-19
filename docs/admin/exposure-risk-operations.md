@@ -1,6 +1,6 @@
 # Exposure evidence operations
 
-Exposure entries are explicit operator records; TLS Scan does not determine Internet accessibility. Use a real, authorized external network vantage point or a reviewed and dated network control as the evidence source. Do not use a public address, DNS record, reverse DNS result, DMZ label, NAT mapping, reverse proxy address or scan from inside the network as proof by itself.
+Exposure entries are explicit operator records; Orion does not determine Internet accessibility. Use a real, authorized external network vantage point or a reviewed and dated network control as the evidence source. Do not use a public address, DNS record, reverse DNS result, DMZ label, NAT mapping, reverse proxy address or scan from inside the network as proof by itself.
 
 Operators may submit evidence with its method, source, justification and confidence. An administrator reviews the cited evidence and marks it validated. A pending proposal never affects contextual risk. To withdraw a finding, set the current record to `unknown` or replace it with newly reviewed evidence; historical scan snapshots stay unchanged.
 

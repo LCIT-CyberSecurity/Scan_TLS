@@ -79,7 +79,7 @@ export function AuthSettings() {
               <Field label={t("auth.clientId")}><Input value={v.entra.client_id} onChange={(e) => set({ entra: { ...v.entra, client_id: e.target.value } })} /></Field>
               <Field label={t("auth.issuer")} hint={t("auth.issuerHint")}><Input value={v.entra.issuer} onChange={(e) => set({ entra: { ...v.entra, issuer: e.target.value } })} /></Field>
             </div>
-            <SecretState ok={data.secrets.oidc_client_secret} variable="TLS_SCAN_OIDC_CLIENT_SECRET" />
+            <SecretState ok={data.secrets.oidc_client_secret} variable="ORION_OIDC_CLIENT_SECRET" />
           </div>)}
 
         {v.provider === "google" && (
@@ -89,7 +89,7 @@ export function AuthSettings() {
               <Field label={t("auth.clientId")}><Input value={v.google.client_id} onChange={(e) => set({ google: { ...v.google, client_id: e.target.value } })} /></Field>
               <Field label={t("auth.domains")} hint={t("auth.domainsHint")}><Textarea rows={3} value={v.google.allowed_domains.join("\n")} onChange={(e) => set({ google: { ...v.google, allowed_domains: e.target.value.split(/[\s,;]+/).filter(Boolean) } })} /></Field>
             </div>
-            <SecretState ok={data.secrets.google_client_secret} variable="TLS_SCAN_GOOGLE_CLIENT_SECRET" />
+            <SecretState ok={data.secrets.google_client_secret} variable="ORION_GOOGLE_CLIENT_SECRET" />
           </div>)}
 
         {v.provider === "ldap" && (
@@ -100,7 +100,7 @@ export function AuthSettings() {
             </div>
             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={!!v.ldap.starttls} onChange={(e) => setL("starttls", e.target.checked)} />{t("auth.ldap.starttls")}</label>
             <Field label={t("auth.ldap.ca")} hint={t("auth.ldap.caHint")}><Textarea rows={4} value={String(v.ldap.ca_pem ?? "")} onChange={(e) => setL("ca_pem", e.target.value)} placeholder="-----BEGIN CERTIFICATE-----" /></Field>
-            <SecretState ok={data.secrets.ldap_bind_password} variable="TLS_SCAN_LDAP_BIND_PASSWORD" />
+            <SecretState ok={data.secrets.ldap_bind_password} variable="ORION_LDAP_BIND_PASSWORD" />
           </div>)}
 
         {(v.provider === "entra" || v.provider === "google" || v.provider === "ldap") && (

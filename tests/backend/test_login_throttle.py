@@ -4,9 +4,9 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from tls_scan_app.api import auth
-from tls_scan_app.config import Settings
-from tls_scan_app.services.rate_limit import SlidingWindowLimiter
+from orion_app.api import auth
+from orion_app.config import Settings
+from orion_app.services.rate_limit import SlidingWindowLimiter
 
 
 class FakeDb:  # no account exists: every attempt is a failure

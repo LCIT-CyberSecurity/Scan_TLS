@@ -1,6 +1,6 @@
 # Network Exposure Map
 
-The map is available in **Scanning → Exposure map** for `USER` roles and above. It is an exploration view over existing TLS Scan data, not a network discovery tool.
+The map is available in **Scanning → Exposure map** for `USER` roles and above. It is an exploration view over existing Orion data, not a network discovery tool.
 
 ## Explore
 
@@ -18,7 +18,7 @@ The map is available in **Scanning → Exposure map** for `USER` roles and above
 Operators and administrators can open **Manage topology** while inside an SI:
 
 1. Create a zone and optionally set its type, parent, CIDR, SI associations and target associations. Zone nesting is independent from the SI hierarchy; cycles are rejected.
-2. Add a device such as a firewall, router, gateway, switch, load balancer, reverse proxy, server, subnet or generic device. A device may optionally reference an existing TLS Scan target.
+2. Add a device such as a firewall, router, gateway, switch, load balancer, reverse proxy, server, subnet or generic device. A device may optionally reference an existing Orion target.
 3. Declare a device-to-device link. The API enforces foreign keys, non-self links, uniqueness and valid confidence values.
 
 Topology records carry provenance: `DECLARED`, `OBSERVED` or `INFERRED`. Observed records require a source and observation date. Inferred records require a source and confidence. Declared topology is authored by an operator; it is never labelled as scanner-observed. Missing links do not imply isolation. The map never initiates TLS scans or traceroutes. Operators may explicitly launch the optional read-only SNMPv3/LLDP workflow on selected inventory IP targets; it is disabled until an administrator provisions SNMPv3 authPriv secrets server-side. Results are previewed and require confirmation before they create observed topology. See [SNMP/LLDP discovery](snmp-lldp-discovery.md).

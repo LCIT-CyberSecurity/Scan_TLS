@@ -7,8 +7,8 @@ e-mail address and keeps the chosen role (no duplicate, no default-role surprise
 
 | Connector | Settings | Secret | Tested against |
 |---|---|---|---|
-| LDAP / Active Directory | server URL (`ldap://`, `ldaps://`), bind DN (read-only), base DN, user filter, attributes, `tls_verify`, optional `ca_pem` | `TLS_SCAN_LDAP_BIND_PASSWORD[_FILE]` | a real OpenLDAP container (plain, LDAPS with untrusted and ignored certificates) |
-| Microsoft Entra ID (Graph) | tenant id, client id | `TLS_SCAN_DIRECTORY_CLIENT_SECRET[_FILE]`; application permission `User.Read.All` (admin consent) | a Graph **mock** only |
+| LDAP / Active Directory | server URL (`ldap://`, `ldaps://`), bind DN (read-only), base DN, user filter, attributes, `tls_verify`, optional `ca_pem` | `ORION_LDAP_BIND_PASSWORD[_FILE]` | a real OpenLDAP container (plain, LDAPS with untrusted and ignored certificates) |
+| Microsoft Entra ID (Graph) | tenant id, client id | `ORION_DIRECTORY_CLIENT_SECRET[_FILE]`; application permission `User.Read.All` (admin consent) | a Graph **mock** only |
 
 *Test connection* reports per step with an explanation: DNS, connection/bind (wrong DN or password, untrusted TLS
 certificate → install the CA / set `ca_pem`, timeout/firewall), search (wrong base DN, missing read permission), and for

@@ -23,7 +23,7 @@ afterEach(cleanup);
 beforeEach(() => { calls.length = 0; imported = false; });
 
 describe("directory account import in Administration → Users", () => {
-  it("lets an administrator select an account and assign its TLS Scan role before import", async () => {
+  it("lets an administrator select an account and assign its Orion role before import", async () => {
     render(<I18nProvider><DirectoryUserImport /></I18nProvider>);
     const search = await screen.findByLabelText("Search a person (name or e-mail)");
     fireEvent.change(search, { target: { value: "alice" } });

@@ -110,7 +110,7 @@ def test_reports_show_the_checks_separately_and_stay_compatible(user, runs):
 
 
 def test_comparison_reports_status_changes_of_the_checks_only_when_both_runs_have_them():
-    from tls_scan_app.services.comparison import _tls_check_changes
+    from orion_app.services.comparison import _tls_check_changes
 
     old = [{"check_id": "a", "status": "PASS"}, {"check_id": "b", "status": "PASS"}]
     new = [{"check_id": "a", "status": "FAIL"}, {"check_id": "b", "status": "PASS"}, {"check_id": "c", "status": "FAIL"}]
@@ -125,7 +125,7 @@ def test_scan_comparison_between_a_run_with_and_without_checks_is_still_valid(us
 
 
 def test_report_name_from_definition_is_ascii_safe():
-    from tls_scan_app.services.planner import _safe_name
+    from orion_app.services.planner import _safe_name
     from tls_scanner.config import validate_config_name
 
     for name in ("test home avancé", "Scan été / prod", "日本語", "ok-name_1"):

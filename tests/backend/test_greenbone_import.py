@@ -1,4 +1,4 @@
-"""Greenbone is a read-only, target-address import into the TLS Scan inventory."""
+"""Greenbone is a read-only, target-address import into the Orion inventory."""
 from __future__ import annotations
 
 import sys
@@ -41,7 +41,7 @@ def test_admin_xml_preview_dry_run_and_idempotent_import(admin, operator):
     assert result["result"]["applied"] == {"created": 2, "reused": 0, "ambiguous": 0}
     for value in ("198.51.100.45", "tls-import.example.test"):
         target = next(item for item in admin.get("/api/targets", params={"q": value}).json() if item["value"] == value)
-        assert target["ports"] == ""  # use the TLS Scan profile default, never a Greenbone port list
+        assert target["ports"] == ""  # use the Orion profile default, never a Greenbone port list
         assert target["name"] == "Production"
         assert "Import OpenVAS" in target["tags"]
 
@@ -119,7 +119,7 @@ def test_xml_parser_accepts_targets_without_port_list_and_rejects_other_document
 
 
 def test_xml_source_identifier_is_repeatable_and_targets_are_normalized():
-    from tls_scan_app.services.greenbone import normalize_xml, normalized_targets
+    from orion_app.services.greenbone import normalize_xml, normalized_targets
 
     first = normalize_xml([("targets.xml", TARGETS)])
     changed_export = normalize_xml([("targets.xml", b'<get_targets_response><target><hosts>192.0.2.99</hosts></target></get_targets_response>')])
@@ -136,8 +136,8 @@ def test_xml_source_identifier_is_repeatable_and_targets_are_normalized():
 
 
 def test_source_absence_is_reported_without_inventory_mutation():
-    from tls_scan_app.models import GreenboneImport
-    from tls_scan_app.services.greenbone import _snapshot_changes
+    from orion_app.models import GreenboneImport
+    from orion_app.services.greenbone import _snapshot_changes
 
     current = GreenboneImport(id="current", mode="gmp", status="done", snapshot={"source_id": "gmp:greenbone:9390"})
     baseline = GreenboneImport(id="previous", mode="gmp", status="done", snapshot={
@@ -162,7 +162,7 @@ def test_source_absence_is_reported_without_inventory_mutation():
 
 
 def test_gmp_retrieval_and_connection_test_only_call_get_targets(monkeypatch):
-    from tls_scan_app.services import greenbone
+    from orion_app.services import greenbone
 
     class FakeGMP:
         calls = []
@@ -206,8 +206,8 @@ def test_gmp_retrieval_and_connection_test_only_call_get_targets(monkeypatch):
 
 
 def test_gmp_password_write_only_and_replaced(tmp_path, monkeypatch):
-    from tls_scan_app.api import greenbone as route
-    from tls_scan_app.services import greenbone
+    from orion_app.api import greenbone as route
+    from orion_app.services import greenbone
 
     key = tmp_path / "key"
     key.write_text("ab" * 32)

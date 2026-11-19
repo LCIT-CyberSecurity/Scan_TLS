@@ -14,7 +14,7 @@ from conftest import make_definition, wait_final, wait_for
 def test_stale_running_run_is_failed_explicitly_after_worker_loss(user, catalog):
     definition = make_definition(user, catalog, ["192.0.2.77"], name="orphan")
     run_id = uuid.uuid4()
-    engine = create_engine(os.environ["TLS_SCAN_DATABASE_URL"])
+    engine = create_engine(os.environ["ORION_DATABASE_URL"])
     with engine.begin() as db:
         db.execute(text(
             "INSERT INTO scan_runs (id, definition_id, name, status, phase, fingerprint, config_snapshot, policy_versions, queued_at, started_at, heartbeat_at, "
@@ -24,7 +24,7 @@ def test_stale_running_run_is_failed_explicitly_after_worker_loss(user, catalog)
     assert final["status"] == "failed" and "worker lost" in final["error"]
 
 
-@pytest.mark.skipif(int(os.environ.get("TLS_SCAN_MAX_SCAN_DURATION_SECONDS", "300")) > 30, reason="needs a stack started with TEST_MAX_DURATION<=30")
+@pytest.mark.skipif(int(os.environ.get("ORION_MAX_SCAN_DURATION_SECONDS", "300")) > 30, reason="needs a stack started with TEST_MAX_DURATION<=30")
 def test_run_exceeding_max_duration_expires(user, catalog):
     definition = make_definition(user, catalog, ["10.254.0.0/20"], name="too-long")
     run = user.post(f"/api/scan-definitions/{definition['id']}/run").json()

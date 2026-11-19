@@ -1,11 +1,11 @@
 # Isolated automated-test stack (no published ports; everything on its own network).
-name: tlsscan-test
+name: orion-test
 services:
   postgres:
     image: postgres:16-alpine
-    environment: {POSTGRES_USER: tls_scan, POSTGRES_PASSWORD: "${TEST_DB_PASSWORD:?}", POSTGRES_DB: tls_scan}
+    environment: {POSTGRES_USER: orion, POSTGRES_PASSWORD: "${TEST_DB_PASSWORD:?}", POSTGRES_DB: orion}
     tmpfs: [/var/lib/postgresql/data]
-    healthcheck: {test: ["CMD-SHELL", "pg_isready -U tls_scan"], interval: 2s, retries: 30}
+    healthcheck: {test: ["CMD-SHELL", "pg_isready -U orion"], interval: 2s, retries: 30}
   lab-tls:
     build: {context: ../.., dockerfile: tests/lab/lab-tls.Dockerfile}
     networks: {default: {aliases: [intranet.acme.local]}}  # the private-PKI scenarios are scanned under their real name
@@ -33,47 +33,47 @@ services:
   api:
     build: &build {context: ../.., dockerfile: ops/docker/backend.Dockerfile, args: {WITH_DEV: "true"}}
     environment: &env
-      TLS_SCAN_DATABASE_URL: postgresql+psycopg://tls_scan:${TEST_DB_PASSWORD}@postgres:5432/tls_scan
-      TLS_SCAN_ENVIRONMENT: test
-      TLS_SCAN_COOKIE_SECURE: "false"
-      TLS_SCAN_SESSION_SECRET: crashtest-only-session-secret
-      TLS_SCAN_LOCAL_ADMIN_PASSWORD: ${TEST_ADMIN_PASSWORD:?}
-      TLS_SCAN_OIDC_ISSUER: http://mock-oidc:8080
-      TLS_SCAN_OIDC_CLIENT_ID: tls-scan-test
-      TLS_SCAN_OIDC_CLIENT_SECRET: crashtest-only
-      TLS_SCAN_OIDC_DEFAULT_ROLE: USER
-      TLS_SCAN_SSO_AUTO_PROVISION: "true"
-      TLS_SCAN_GOOGLE_ISSUER: http://mock-oidc:8080
-      TLS_SCAN_GOOGLE_CLIENT_SECRET: crashtest-only
-      TLS_SCAN_PUBLIC_BASE_URL: http://api:8000
-      TLS_SCAN_GRAPH_LOGIN_URL: http://mock-graph:8080
-      TLS_SCAN_GRAPH_BASE_URL: http://mock-graph:8080/v1.0
-      TLS_SCAN_GRAPH_CLIENT_SECRET: graph-test-secret
-      TLS_SCAN_DIRECTORY_CLIENT_SECRET: graph-test-secret
-      TLS_SCAN_SNMP_V3_USERNAME: snmp-ro-test
-      TLS_SCAN_SNMP_V3_AUTH_KEY: TestAuthPass123!
-      TLS_SCAN_SNMP_V3_PRIV_KEY: TestPrivacyPass123!
-      TLS_SCAN_LDAP_BIND_PASSWORD: ldap-test-admin-pw
-      TLS_SCAN_RATE_LIMIT_ENABLED: "false"
-      TLS_SCAN_SCHEDULER_POLL_SECONDS: "2"
-      TLS_SCAN_WORKER_POLL_SECONDS: "1"
-      TLS_SCAN_MAX_SCAN_DURATION_SECONDS: "${TEST_MAX_DURATION:-300}"
-      TLS_SCAN_STORAGE_ROOT: /var/lib/tls-scan
-    volumes: [data:/var/lib/tls-scan]
+      ORION_DATABASE_URL: postgresql+psycopg://orion:${TEST_DB_PASSWORD}@postgres:5432/orion
+      ORION_ENVIRONMENT: test
+      ORION_COOKIE_SECURE: "false"
+      ORION_SESSION_SECRET: crashtest-only-session-secret
+      ORION_LOCAL_ADMIN_PASSWORD: ${TEST_ADMIN_PASSWORD:?}
+      ORION_OIDC_ISSUER: http://mock-oidc:8080
+      ORION_OIDC_CLIENT_ID: orion-test
+      ORION_OIDC_CLIENT_SECRET: crashtest-only
+      ORION_OIDC_DEFAULT_ROLE: USER
+      ORION_SSO_AUTO_PROVISION: "true"
+      ORION_GOOGLE_ISSUER: http://mock-oidc:8080
+      ORION_GOOGLE_CLIENT_SECRET: crashtest-only
+      ORION_PUBLIC_BASE_URL: http://api:8000
+      ORION_GRAPH_LOGIN_URL: http://mock-graph:8080
+      ORION_GRAPH_BASE_URL: http://mock-graph:8080/v1.0
+      ORION_GRAPH_CLIENT_SECRET: graph-test-secret
+      ORION_DIRECTORY_CLIENT_SECRET: graph-test-secret
+      ORION_SNMP_V3_USERNAME: snmp-ro-test
+      ORION_SNMP_V3_AUTH_KEY: TestAuthPass123!
+      ORION_SNMP_V3_PRIV_KEY: TestPrivacyPass123!
+      ORION_LDAP_BIND_PASSWORD: ldap-test-admin-pw
+      ORION_RATE_LIMIT_ENABLED: "false"
+      ORION_SCHEDULER_POLL_SECONDS: "2"
+      ORION_WORKER_POLL_SECONDS: "1"
+      ORION_MAX_SCAN_DURATION_SECONDS: "${TEST_MAX_DURATION:-300}"
+      ORION_STORAGE_ROOT: /var/lib/orion
+    volumes: [data:/var/lib/orion]
     depends_on: {postgres: {condition: service_healthy}, mock-oidc: {condition: service_started}, mock-graph: {condition: service_started}, openldap: {condition: service_started}}
-    command: sh -c "cd backend && alembic upgrade head && cd .. && uvicorn --factory tls_scan_app.app:create_app --host 0.0.0.0 --port 8000"
+    command: sh -c "cd backend && alembic upgrade head && cd .. && uvicorn --factory orion_app.app:create_app --host 0.0.0.0 --port 8000"
     healthcheck: {test: ["CMD", "curl", "-fs", "http://localhost:8000/api/health/ready"], interval: 2s, retries: 40}
   worker:
     build: *build
     environment: *env
-    volumes: [data:/var/lib/tls-scan]
+    volumes: [data:/var/lib/orion]
     depends_on: {api: {condition: service_healthy}}
-    command: python -m tls_scan_app.workers.worker
+    command: python -m orion_app.workers.worker
   scheduler:
     build: *build
     environment: *env
     depends_on: {api: {condition: service_healthy}}
-    command: python -m tls_scan_app.scheduler.scheduler
+    command: python -m orion_app.scheduler.scheduler
   tests:
     build: *build
     environment:
@@ -82,7 +82,7 @@ services:
       TEST_LAB_HOST: lab-tls
       TEST_SNMP_HOST: lab-snmp
       TEST_LDAP_CA_FILE: /ldap-certs/ca.crt
-    volumes: [data:/var/lib/tls-scan, "../../tests:/app/tests:ro", "./.ldap-certs:/ldap-certs:ro"]
+    volumes: [data:/var/lib/orion, "../../tests:/app/tests:ro", "./.ldap-certs:/ldap-certs:ro"]
     depends_on: {api: {condition: service_healthy}, worker: {condition: service_started}, lab-tls: {condition: service_started}, lab-dns: {condition: service_started}, lab-snmp: {condition: service_healthy}}
     profiles: [tests]
     command: pytest -x -q tests/backend

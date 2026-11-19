@@ -986,9 +986,9 @@ class ConfigurationTests(unittest.TestCase):
     def test_profile_validation_uses_the_same_parser(self):
         import importlib.util
 
-        if importlib.util.find_spec("tls_scan_app") is None:
+        if importlib.util.find_spec("orion_app") is None:
             self.skipTest("backend package not importable here")
-        from tls_scan_app.services.planner import PlanError, validate_profile_content
+        from orion_app.services.planner import PlanError, validate_profile_content
 
         validate_profile_content({"scan": {"ports": "443"}, "checks": {"tls": {"hostname_san": {"enabled": True}}}})
         with self.assertRaises(PlanError):

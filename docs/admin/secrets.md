@@ -1,6 +1,6 @@
 # Docker secret handling
 
-WebUI deployment credentials are stored as host files under `TLS_SCAN_SECRET_DIR` (default `./data/secrets`) and mounted only into services that consume them. The bootstrap script creates the directory with mode `0710`, sets protected files to `0440` and assigns the configured `TLS_SCAN_SECRET_GID` (default: the deploying user's primary group). Only API, worker, scheduler, or PostgreSQL receive the exact files they need; the frontend receives none. Containers drop Linux capabilities and enable `no-new-privileges`.
+WebUI deployment credentials are stored as host files under `ORION_SECRET_DIR` (default `./data/secrets`) and mounted only into services that consume them. The bootstrap script creates the directory with mode `0710`, sets protected files to `0440` and assigns the configured `ORION_SECRET_GID` (default: the deploying user's primary group). Only API, worker, scheduler, or PostgreSQL receive the exact files they need; the frontend receives none. Containers drop Linux capabilities and enable `no-new-privileges`.
 
 | Secret file | Consumer | Purpose |
 |---|---|---|
@@ -18,11 +18,11 @@ Non-secret settings remain explicit Compose environment values. `.env` is not lo
 
 ## Migration from direct `.env` values
 
-`bootstrap_tls-scan-deployment.sh` detects legacy direct credential values and configured secret-file paths. It explains the migration and requires confirmation before copying them. It preserves the credential values, refuses conflicting existing copies, writes host files atomically, removes direct credentials from `.env`, and updates supported file-path settings. `--yes` explicitly accepts that migration. Review the resulting `data/secrets/` files and backup them securely with the deployment's recovery material.
+`bootstrap_orion-deployment.sh` detects legacy direct credential values and configured secret-file paths. It explains the migration and requires confirmation before copying them. It preserves the credential values, refuses conflicting existing copies, writes host files atomically, removes direct credentials from `.env`, and updates supported file-path settings. `--yes` explicitly accepts that migration. Review the resulting `data/secrets/` files and backup them securely with the deployment's recovery material.
 
 The bootstrap refuses to invent a PostgreSQL password if a database volume already exists but its password file is missing. Restore the existing password file from a protected backup before continuing; do not rotate the database secret without coordinating PostgreSQL and the application.
 
-For an intentional rollback to an older release that still reads direct `.env` secrets, run `./bootstrap_tls-scan-deployment.sh --mode webui rollback-secrets`. This asks for confirmation, writes the existing values back to `.env`, and sets `.env` mode `0600`. Roll back code and Compose together, then remove the direct values again when returning to the file-secret release.
+For an intentional rollback to an older release that still reads direct `.env` secrets, run `./bootstrap_orion-deployment.sh --mode webui rollback-secrets`. This asks for confirmation, writes the existing values back to `.env`, and sets `.env` mode `0600`. Roll back code and Compose together, then remove the direct values again when returning to the file-secret release.
 
 ## Backup, restore, and rotation
 

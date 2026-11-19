@@ -16,10 +16,10 @@ Monter les deux secrets SNMPv3 dans l'API à l'aide de variables d'environnement
 de fichiers Docker Secrets protégés :
 
 ```text
-TLS_SCAN_SNMP_SECRETS_DIR=/chemin/protege/vers/les-secrets-snmp
-TLS_SCAN_SNMP_V3_USERNAME=<utilisateur en lecture seule>
-TLS_SCAN_SNMP_V3_AUTH_KEY_FILE=/run/secrets/snmp_auth_key
-TLS_SCAN_SNMP_V3_PRIV_KEY_FILE=/run/secrets/snmp_priv_key
+ORION_SNMP_SECRETS_DIR=/chemin/protege/vers/les-secrets-snmp
+ORION_SNMP_V3_USERNAME=<utilisateur en lecture seule>
+ORION_SNMP_V3_AUTH_KEY_FILE=/run/secrets/snmp_auth_key
+ORION_SNMP_V3_PRIV_KEY_FILE=/run/secrets/snmp_priv_key
 ```
 
 L'utilisateur SNMP doit avoir uniquement `authPriv` et les droits MIB en lecture.

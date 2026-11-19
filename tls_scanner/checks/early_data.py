@@ -53,7 +53,7 @@ def check_early_data(context: CheckContext) -> CheckResult:
         return result(CHECK_ID, NOT_APPLICABLE, "The endpoint does not support TLS 1.3, where Early Data exists.", {"observed_versions": list(context.observed_versions)})
     wait = float(context.option("ticket_wait_seconds", DEFAULT_TICKET_WAIT_SECONDS))
     deep = bool(context.option("probe", False)) and not context.starttls
-    with tempfile.TemporaryDirectory(prefix="tlsscan-0rtt-") as directory:  # private (0700) and removed at once
+    with tempfile.TemporaryDirectory(prefix="orion-0rtt-") as directory:  # private (0700) and removed at once
         session_file = os.path.join(directory, "session")
         connected, got_ticket, limit, detail = _ticket_and_limit(context, session_file, wait)
         observations = {"tls_version": "TLSv1.3", "ticket_received": got_ticket, "max_early_data_size": limit, "acceptance": "not_tested", "deep_probe": deep}

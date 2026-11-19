@@ -34,7 +34,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [apply]);
 
   useEffect(() => { void refresh(); }, [refresh]);
-  useEffect(() => { const h = () => setUser(null); window.addEventListener("tls-scan:unauthorized", h); return () => window.removeEventListener("tls-scan:unauthorized", h); }, []);
+  useEffect(() => { const h = () => setUser(null); window.addEventListener("orion:unauthorized", h); return () => window.removeEventListener("orion:unauthorized", h); }, []);
 
   const login = useCallback(async (username: string, password: string) => {
     apply(await api("/auth/login", { method: "POST", body: { username, password } }));

@@ -1,5 +1,5 @@
 /* ==========================================================================
-   TLS Scan — premium report stylesheet (print / Save as PDF)
+   Orion — premium report stylesheet (print / Save as PDF)
 
    Loaded with media="print" only. It inherits the design tokens declared in
    report.css and re-maps them to ink-on-paper values, then restates the

@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { LockKeyhole, ShieldCheck } from "lucide-react";
 import { api, ApiError } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import { PRODUCT_NAME } from "../brand";
 import { ErrorNote } from "../components/common";
 import { useI18n, LOCALES } from "../i18n";
 import "../styles/login.css";
@@ -76,7 +77,7 @@ export default function Login() {
         <aside className="auth-intro">
           <div className="auth-product">
             <span className="auth-product-icon"><ShieldCheck size={22} strokeWidth={1.8} aria-hidden="true" /></span>
-            <span><strong>TLS SCAN</strong><small>{t("login.product")}</small></span>
+            <span><strong>{PRODUCT_NAME.toUpperCase()}</strong><small>{t("login.product")}</small></span>
           </div>
           <div className="auth-message"><h2>{t("login.tagline")}</h2></div>
           <div className="auth-foot">{t("login.vendor")} <strong>LCIT Cybersecurity</strong></div>

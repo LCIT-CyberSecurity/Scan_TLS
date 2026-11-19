@@ -5,9 +5,9 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 
-from tls_scan_app.api.catalog import ExposureBody, _validate_exposure
-from tls_scan_app.models import Role
-from tls_scan_app.services.contextual_risk import (
+from orion_app.api.catalog import ExposureBody, _validate_exposure
+from orion_app.models import Role
+from orion_app.services.contextual_risk import (
     MATRIX_VERSION,
     append_html,
     append_markdown,
