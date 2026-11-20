@@ -64,7 +64,8 @@ def audit_codes(admin, action="auth.sso_login") -> list[str]:
 def test_the_environment_provider_keeps_working_and_no_secret_is_ever_returned(admin):
     data = admin.get("/api/admin/auth").json()
     assert data["effective"]["provider"] == "generic" and data["effective"]["source"] == "environment"
-    assert data["secrets"] == {"oidc_client_secret": True, "google_client_secret": True, "ldap_bind_password": True}
+    assert data["secrets"] == {"oidc_client_secret": True, "google_client_secret": True, "ldap_bind_password": True,
+                               "entra_client_secret": {"configured": True, "source": "server", "unreadable": False, "stored": False}}
     text = json.dumps(data)
     assert "crashtest-only" not in text and "ldap-test-admin-pw" not in text
     assert httpx.get(f"{API}/api/auth/providers").json()["sso"] == {"enabled": True, "provider": "generic"}
