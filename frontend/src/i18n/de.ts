@@ -756,6 +756,7 @@ export const de: Messages = {
   "table.count": "{shown} von {total}",
   "confirm.deleteScan": "Diesen Scan und seine Berichte löschen? Das kann nicht rückgängig gemacht werden.",
   "action.delete": "Löschen",
+  "action.back": "Zurück",
   "target.name": "Name",
   "target.nameHint": "Eine leicht erkennbare Bezeichnung, z. B. „Öffentliche Website“.",
   "target.type": "Typ",
