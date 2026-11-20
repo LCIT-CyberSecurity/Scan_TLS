@@ -16,7 +16,7 @@ def example(value: Any) -> ConfigDict:
 
 RunStatus = Literal["scheduled", "queued", "running", "completed", "partial", "failed", "cancelled", "expired"]
 Severity = Literal["critical", "high", "medium", "low", "informational"]
-ReportFormat = Literal["html", "md", "csv", "findings_csv", "mail_security_csv", "service_csv", "quic_csv", "ipsec_html", "ipsec_md", "ipsec_csv", "ssh_html", "ssh_md", "ssh_csv", "cbom", "metadata"]
+ReportFormat = Literal["html", "md", "csv", "findings_csv", "contextual_risk_csv", "mail_security_csv", "service_csv", "quic_csv", "ipsec_html", "ipsec_md", "ipsec_csv", "ssh_html", "ssh_md", "ssh_csv", "cbom", "metadata"]
 
 
 class Pagination(BaseModel):

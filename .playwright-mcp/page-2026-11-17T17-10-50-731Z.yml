@@ -1,0 +1,16 @@
+- generic [ref=f10e2]:
+  - generic [ref=f10e3]: TLS Scan Test
+  - generic [ref=f10e5]:
+    - banner [ref=f10e6]:
+      - heading "Sign in to your account" [level=1] [ref=f10e7]
+    - generic [ref=f10e12]:
+      - generic [ref=f10e13]:
+        - generic [ref=f10e14]: Username or email
+        - textbox "Username or email" [active] [ref=f10e15]
+      - generic [ref=f10e16]:
+        - generic [ref=f10e17]: Password
+        - generic [ref=f10e18]:
+          - textbox "Password" [ref=f10e19]
+          - button "Show password" [ref=f10e20] [cursor=pointer]:
+            - generic [aria-hidden] [ref=f10e21]: 
+      - button "Sign In" [ref=f10e23] [cursor=pointer]

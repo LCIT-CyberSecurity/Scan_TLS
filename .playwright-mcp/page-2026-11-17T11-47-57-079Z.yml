@@ -1,0 +1,23 @@
+- generic [ref=f15e3]:
+  - complementary [ref=f15e4]:
+    - generic [ref=f15e5]:
+      - img "LCIT" [ref=f15e6]
+      - generic [ref=f15e7]:
+        - generic [ref=f15e8]: TLS Scan
+        - generic [ref=f15e9]: Conformité TLS
+    - navigation "Main" [ref=f15e10]:
+      - button "Mon espace" [ref=f15e12] [cursor=pointer]
+      - button "Analyse" [ref=f15e17] [cursor=pointer]
+      - button "Résultats" [ref=f15e22] [cursor=pointer]
+      - button "Administration" [ref=f15e27] [cursor=pointer]
+    - generic [ref=f15e31]:
+      - strong [ref=f15e32]: LCIT Cybersecurity
+      - text: Connecté en tant que admin
+  - generic [ref=f15e36]:
+    - banner [ref=f15e37]:
+      - generic [ref=f15e38]:
+        - button "Ouvrir le menu" [ref=f15e39] [cursor=pointer]
+        - strong [ref=f15e41]: Tableau de bord
+      - group [ref=f15e43]:
+        - generic "Compte et réglages" [ref=f15e44] [cursor=pointer]: DA
+    - main [ref=f15e48]

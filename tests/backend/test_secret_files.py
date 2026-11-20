@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import pytest
@@ -80,8 +81,10 @@ def test_compose_grants_file_secrets_only_to_consumers() -> None:
     assert all("env_file" not in service for service in services.values())
     assert "POSTGRES_PASSWORD_FILE" in services["postgres"]["environment"]
     assert "POSTGRES_PASSWORD" not in services["postgres"]["environment"]
-    assert "${ORION_DB_USER:-orion}@postgres" in services["api"]["environment"]["ORION_DATABASE_URL"]
-    assert ":" not in services["api"]["environment"]["ORION_DATABASE_URL"].split("@", 1)[0].split("://", 1)[1]
+    # Compose resolves ${VAR:-default}; the resolved URL must carry a user name and no password.
+    database_url = re.sub(r"\$\{[A-Z0-9_]+:-([^}]*)\}", r"\1", services["api"]["environment"]["ORION_DATABASE_URL"])
+    assert database_url == "postgresql+psycopg://orion@postgres:5432/orion"
+    assert ":" not in database_url.split("@", 1)[0].split("://", 1)[1]
     assert secret_names("postgres") == {"postgres_password"}
     assert {"database_password", "session_secret", "oidc_client_secret", "greenbone_password", "snmp_v3_auth_key"} <= secret_names("api")
     assert {"database_password", "smtp_password", "graph_client_secret", "snmp_v3_auth_key"} <= secret_names("worker")
@@ -89,7 +92,8 @@ def test_compose_grants_file_secrets_only_to_consumers() -> None:
     assert services["worker"]["environment"]["ORION_SESSION_SECRET_REQUIRED"] == "false"
     assert services["scheduler"]["environment"]["ORION_SESSION_SECRET_REQUIRED"] == "false"
     assert "oidc_client_secret" not in secret_names("worker") | secret_names("scheduler")
-    assert "greenbone_password" not in secret_names("worker") | secret_names("scheduler")
+    # The worker runs the read-only Greenbone imports (LST-24) and needs the GMP password; the scheduler never does.
+    assert "greenbone_password" in secret_names("worker") and "greenbone_password" not in secret_names("scheduler")
     assert secret_names("webui") == set()
     assert "no-new-privileges:true" in services["api"]["security_opt"]
     assert services["api"]["cap_drop"] == ["ALL"]

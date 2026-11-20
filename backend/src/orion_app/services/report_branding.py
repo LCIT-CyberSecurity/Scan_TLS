@@ -61,7 +61,7 @@ def apply_to_html(path: Path, branding: dict | None) -> bool:
     if branding.get("logo"):
         css += ".brand-logo{height:36px;width:auto;max-width:160px;object-fit:contain;display:block}"
         logo = f'<img class="brand-logo" alt="" src="{html.escape(branding["logo"], quote=True)}">'
-        text = re.sub(r'<div class="brand-mark(?: large)?" aria-hidden="true">TS</div>', logo, text)
+        text = re.sub(r'<div class="brand-mark(?: large)?" aria-hidden="true">(?:O|TS)</div>', logo, text)
     if css:
         text = text.replace("</head>", f"<style>{css}</style></head>", 1)
     if branding.get("organization_name"):

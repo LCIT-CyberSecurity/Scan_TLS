@@ -1,0 +1,384 @@
+- generic [active] [ref=f19e1]:
+  - generic [ref=f19e3]:
+    - complementary [ref=f19e4]:
+      - generic [ref=f19e5]:
+        - img "LCIT" [ref=f19e6]
+        - generic [ref=f19e7]:
+          - generic [ref=f19e8]: TLS Scan
+          - generic [ref=f19e9]: Conformité TLS
+        - button "Réduire la barre latérale" [expanded] [ref=f19e10] [cursor=pointer]
+      - navigation "Main" [ref=f19e14]:
+        - generic [ref=f19e15]:
+          - button "Mon espace" [expanded] [ref=f19e16] [cursor=pointer]
+          - generic [ref=f19e20]:
+            - link "Tableau de bord" [ref=f19e21] [cursor=pointer]:
+              - /url: /
+            - link "Mes tâches" [ref=f19e25] [cursor=pointer]:
+              - /url: /tasks
+        - button "Analyse" [ref=f19e31] [cursor=pointer]
+        - button "Résultats" [ref=f19e36] [cursor=pointer]
+        - button "Administration" [ref=f19e41] [cursor=pointer]
+      - generic [ref=f19e45]:
+        - strong [ref=f19e46]: LCIT Cybersecurity
+        - text: Connecté en tant que admin
+    - generic [ref=f19e50]:
+      - banner [ref=f19e51]:
+        - generic [ref=f19e52]:
+          - generic [ref=f19e53]: TLS Scan
+          - strong [ref=f19e56]: Tableau de bord
+        - group [ref=f19e58]:
+          - generic "Compte et réglages" [ref=f19e59] [cursor=pointer]:
+            - generic [ref=f19e60]: DA
+            - generic [ref=f19e61]:
+              - text: Demo Admin
+              - generic [ref=f19e62]: ADMIN
+      - main [ref=f19e65]:
+        - generic [ref=f19e66]:
+          - generic [ref=f19e67]:
+            - heading "Tableau de bord" [level=1] [ref=f19e68]
+            - paragraph [ref=f19e69]: Posture de sécurité, activité des scans et derniers changements de votre périmètre.
+          - group "Filtres du tableau de bord" [ref=f19e71]:
+            - combobox "Périmètre" [ref=f19e72]:
+              - option "Mes scans" [selected]
+              - option "Tous les scans"
+            - combobox "SI" [ref=f19e73]:
+              - option "Tous les SI" [selected]
+              - option "Production"
+              - option "Staging"
+            - combobox "Tag" [ref=f19e74]:
+              - option "Tous les tags" [selected]
+              - option "production"
+              - option "internet-facing"
+        - main [ref=f19e75]:
+          - region "Sécurité et conformité" [ref=f19e76]:
+            - generic [ref=f19e77]:
+              - generic [ref=f19e78]:
+                - generic [ref=f19e79]: Conformité TLS
+                - strong [ref=f19e85]: 84 %
+                - generic [ref=f19e86]:
+                  - text: 101 endpoints conformes sur 120 évalués
+                  - generic [ref=f19e87]: 8 non évalués
+                - button "Endpoints conformes ÷ (conformes + non conformes), sur le dernier résultat de chaque endpoint distinct. Les endpoints en erreur ou non testés sont présentés à part et jamais comptés comme conformes." [ref=f19e88]
+              - link "Endpoints non conformes 19 Endpoints distincts, dernier résultat de chacun" [ref=f19e92] [cursor=pointer]:
+                - /url: /scans
+                - generic [ref=f19e93]: Endpoints non conformes
+                - strong [ref=f19e100]: "19"
+                - generic [ref=f19e101]: Endpoints distincts, dernier résultat de chacun
+              - generic [ref=f19e102]:
+                - generic [ref=f19e103]: Constats critiques et élevés
+                - strong [ref=f19e108]: "9"
+                - generic [ref=f19e109]: 2 critiques · 7 élevés
+                - 'button "Constats distincts (un par type de problème), tels que rapportés par le moteur sur les derniers résultats. Une occurrence est un constat sur un endpoint : 31 occurrences ici. Les constats informatifs et les erreurs de scan ne sont pas comptés." [ref=f19e110]'
+              - generic [ref=f19e113]:
+                - generic [ref=f19e114]: Certificats à surveiller
+                - strong [ref=f19e121]: "7"
+                - generic [ref=f19e122]: 2 expirés · 5 expirent sous 30 jours
+                - list "Échéances les plus proches" [ref=f19e123]:
+                  - listitem [ref=f19e124]:
+                    - link "api.example.com" [ref=f19e125] [cursor=pointer]:
+                      - /url: /scans/run-1
+                    - generic [ref=f19e126]: dans 5 j
+                  - listitem [ref=f19e127]:
+                    - link "portal.example.com" [ref=f19e128] [cursor=pointer]:
+                      - /url: /scans/run-2
+                    - generic [ref=f19e129]: dans 8 j
+                - button "Un certificat est compté une seule fois, quel que soit le nombre d'endpoints qui le présentent. Les jours restants sont ceux mesurés par le scan, diminués du temps écoulé depuis." [ref=f19e130]
+            - generic [ref=f19e133]:
+              - generic [ref=f19e134]:
+                - heading "Répartition de la conformité" [level=2] [ref=f19e136]
+                - generic [ref=f19e137]:
+                  - 'img "Conformes: 101, Non conformes: 19, Non évalués ou partiels: 8" [ref=f19e138]'
+                  - list [ref=f19e142]:
+                    - listitem [ref=f19e143]:
+                      - generic [ref=f19e147]: Conformes
+                      - strong [ref=f19e148]: "101"
+                      - emphasis [ref=f19e149]: 78,9 %
+                    - listitem [ref=f19e150]:
+                      - generic [ref=f19e155]: Non conformes
+                      - strong [ref=f19e156]: "19"
+                      - emphasis [ref=f19e157]: 14,8 %
+                    - listitem [ref=f19e158]:
+                      - generic [ref=f19e162]: Non évalués ou partiels
+                      - strong [ref=f19e163]: "8"
+                      - emphasis [ref=f19e164]: 6,3 %
+                  - paragraph [ref=f19e165]: 128 endpoints distincts · Dernier résultat de 16 scans
+              - generic [ref=f19e166]:
+                - generic [ref=f19e167]:
+                  - generic [ref=f19e168]:
+                    - paragraph [ref=f19e169]: Sécurité et conformité
+                    - heading "Évolution de la conformité" [level=2] [ref=f19e170]
+                  - combobox "Scan" [ref=f19e171]:
+                    - option "Production (16)" [selected]
+                    - option "Staging (8)"
+                - generic [ref=f19e172]:
+                  - group "Évolution de la conformité" [ref=f19e173]:
+                    - application [ref=f19e176]:
+                      - generic [ref=f19e185]:
+                        - link "Production scan 1 · 1 oct. 2026, 12:00 · 68 % · 20 conformes sur 32 évalués" [ref=f19e186] [cursor=pointer]
+                        - link "Production scan 2 · 3 oct. 2026, 12:00 · 69,8 % · 23 conformes sur 35 évalués" [ref=f19e188] [cursor=pointer]
+                        - link "Production scan 3 · 5 oct. 2026, 12:00 · 71,6 % · 26 conformes sur 38 évalués" [ref=f19e190] [cursor=pointer]
+                        - link "Production scan 4 · 7 oct. 2026, 12:00 · 73,4 % · 29 conformes sur 41 évalués" [ref=f19e192] [cursor=pointer]
+                        - link "Production scan 5 · 9 oct. 2026, 12:00 · 75,2 % · 32 conformes sur 44 évalués" [ref=f19e194] [cursor=pointer]
+                        - link "Production scan 7 · 13 oct. 2026, 12:00 · 78,8 % · 38 conformes sur 50 évalués" [ref=f19e196] [cursor=pointer]
+                        - link "Production scan 8 · 15 oct. 2026, 12:00 · 80,6 % · 41 conformes sur 53 évalués" [ref=f19e198] [cursor=pointer]
+                        - link "Production scan 9 · 17 oct. 2026, 12:00 · 82,4 % · 44 conformes sur 56 évalués" [ref=f19e200] [cursor=pointer]
+                        - link "Production scan 10 · 19 oct. 2026, 12:00 · 84,2 % · 47 conformes sur 59 évalués" [ref=f19e202] [cursor=pointer]
+                        - link "Production scan 11 · 21 oct. 2026, 12:00 · 86 % · 50 conformes sur 62 évalués" [ref=f19e204] [cursor=pointer]
+                        - link "Production scan 12 · 23 oct. 2026, 12:00 · 87,8 % · 53 conformes sur 65 évalués" [ref=f19e206] [cursor=pointer]
+                        - link "Production scan 13 · 25 oct. 2026, 11:00 · 89,6 % · 56 conformes sur 68 évalués" [ref=f19e208] [cursor=pointer]
+                        - link "Production scan 14 · 27 oct. 2026, 11:00 · 91,4 % · 59 conformes sur 71 évalués" [ref=f19e210] [cursor=pointer]
+                        - link "Production scan 15 · 29 oct. 2026, 11:00 · 93,2 % · 62 conformes sur 74 évalués" [ref=f19e212] [cursor=pointer]
+                        - link "Production scan 16 · 31 oct. 2026, 11:00 · 95 % · 65 conformes sur 77 évalués" [ref=f19e214] [cursor=pointer]
+                      - generic [ref=f19e216]:
+                        - generic [ref=f19e217]:
+                          - generic [ref=f19e218]: 03 oct.
+                          - generic [ref=f19e220]: 07 oct.
+                          - generic [ref=f19e222]: 11 oct.
+                          - generic [ref=f19e224]: 15 oct.
+                          - generic [ref=f19e226]: 19 oct.
+                          - generic [ref=f19e228]: 23 oct.
+                          - generic [ref=f19e230]: 27 oct.
+                          - generic [ref=f19e232]: 31 oct.
+                        - generic [ref=f19e234]:
+                          - generic [ref=f19e235]: 0%
+                          - generic [ref=f19e237]: 25%
+                          - generic [ref=f19e239]: 50%
+                          - generic [ref=f19e241]: 75%
+                          - generic [ref=f19e243]: 100%
+                  - generic [ref=f19e245]:
+                    - generic [ref=f19e246]:
+                      - strong [ref=f19e247]: Production scan 16
+                      - generic [ref=f19e248]: 31 oct. 2026, 11:00
+                    - paragraph [ref=f19e249]: 95 % · 65 conformes sur 77 évalués · 81 endpoints dans le scan
+                  - paragraph [ref=f19e250]: "Point creux : conditions modifiées depuis l'exécution précédente"
+                  - group [ref=f19e252]:
+                    - generic "Afficher les scans" [ref=f19e253] [cursor=pointer]
+          - region "Évolution entre deux dates" [ref=f19e254]:
+            - generic [ref=f19e255]:
+              - generic [ref=f19e256]:
+                - heading "Évolution entre deux dates" [level=2] [ref=f19e257]
+                - generic [ref=f19e258]:
+                  - generic [ref=f19e259]:
+                    - text: Du
+                    - textbox "Du" [ref=f19e260]: 2026-10-18
+                  - generic [ref=f19e261]:
+                    - text: Au
+                    - textbox "Au" [ref=f19e262]: 2026-11-17
+              - generic [ref=f19e263]:
+                - paragraph [ref=f19e264]:
+                  - link "1 oct. 2026" [ref=f19e265] [cursor=pointer]:
+                    - /url: /scans/run-0
+                  - text: →
+                  - link "23 oct. 2026" [ref=f19e266] [cursor=pointer]:
+                    - /url: /scans/run-11
+                  - text: ·
+                  - link "Ouvrir la comparaison détaillée" [ref=f19e267] [cursor=pointer]:
+                    - /url: /scans/run-11?compare=run-0
+                - paragraph [ref=f19e268]: Les cibles diffèrent entre les deux scans.
+                - generic [ref=f19e269]:
+                  - generic [ref=f19e270]:
+                    - strong [ref=f19e271]: "4"
+                    - generic [ref=f19e272]: Nouveaux
+                  - generic [ref=f19e273]:
+                    - strong [ref=f19e274]: "7"
+                    - generic [ref=f19e275]: Corrigés
+                  - generic [ref=f19e276]:
+                    - strong [ref=f19e277]: "12"
+                    - generic [ref=f19e278]: Persistants
+                  - generic [ref=f19e279]:
+                    - strong [ref=f19e280]: "2"
+                    - generic [ref=f19e281]: Non retestés
+                - table "Constats par sévérité" [ref=f19e282]:
+                  - rowgroup [ref=f19e283]:
+                    - row [ref=f19e284]:
+                      - columnheader "Sévérité" [ref=f19e285]
+                      - columnheader "1 oct. 2026" [ref=f19e286]
+                      - columnheader "23 oct. 2026" [ref=f19e287]
+                      - columnheader "Δ" [ref=f19e288]
+                  - rowgroup [ref=f19e289]:
+                    - row [ref=f19e290]:
+                      - cell "Critique" [ref=f19e291]
+                      - cell "0" [ref=f19e293]
+                      - cell "2" [ref=f19e294]
+                      - cell "+2" [ref=f19e295]
+                    - row [ref=f19e296]:
+                      - cell "Élevée" [ref=f19e297]
+                      - cell "6" [ref=f19e299]
+                      - cell "5" [ref=f19e300]
+                      - cell "-1" [ref=f19e301]
+                    - row [ref=f19e302]:
+                      - cell "Moyenne" [ref=f19e303]
+                      - cell "8" [ref=f19e305]
+                      - cell "10" [ref=f19e306]
+                      - cell "+2" [ref=f19e307]
+                    - row [ref=f19e308]:
+                      - cell "Faible" [ref=f19e309]
+                      - cell "3" [ref=f19e311]
+                      - cell "4" [ref=f19e312]
+                      - cell "+1" [ref=f19e313]
+                - paragraph [ref=f19e314]: "Points d'accès : +12 / -4 · Conformité : 8 amélioré(s), 3 dégradé(s)"
+                - generic [ref=f19e315]:
+                  - heading "Nouveaux constats" [level=3] [ref=f19e316]
+                  - list [ref=f19e317]:
+                    - listitem [ref=f19e318]:
+                      - generic [ref=f19e319]:
+                        - generic [ref=f19e320]: high
+                        - text: Weak cipher suite
+                      - generic [ref=f19e321]: 3 point(s) d'accès
+                - generic [ref=f19e322]:
+                  - heading "Constats corrigés" [level=3] [ref=f19e323]
+                  - list [ref=f19e324]:
+                    - listitem [ref=f19e325]:
+                      - generic [ref=f19e326]:
+                        - generic [ref=f19e327]: high
+                        - text: TLS 1.0 enabled
+                      - generic [ref=f19e328]: 2 point(s) d'accès
+                - generic [ref=f19e329]:
+                  - heading "Constats par scan (occurrences par sévérité)" [level=3] [ref=f19e330]
+                  - group "Constats par scan (occurrences par sévérité)" [ref=f19e331]:
+                    - application [ref=f19e334]:
+                      - generic [ref=f19e338]:
+                        - generic [ref=f19e341]:
+                          - generic [ref=f19e344] [cursor=pointer]
+                          - generic [ref=f19e347] [cursor=pointer]
+                          - generic [ref=f19e350] [cursor=pointer]
+                          - generic [ref=f19e353] [cursor=pointer]
+                          - generic [ref=f19e356] [cursor=pointer]
+                          - generic [ref=f19e359] [cursor=pointer]
+                          - generic [ref=f19e362] [cursor=pointer]
+                          - generic [ref=f19e365] [cursor=pointer]
+                        - generic [ref=f19e368]:
+                          - generic [ref=f19e371] [cursor=pointer]
+                          - generic [ref=f19e374] [cursor=pointer]
+                          - generic [ref=f19e377] [cursor=pointer]
+                          - generic [ref=f19e380] [cursor=pointer]
+                          - generic [ref=f19e383] [cursor=pointer]
+                          - generic [ref=f19e386] [cursor=pointer]
+                          - generic [ref=f19e389] [cursor=pointer]
+                          - generic [ref=f19e392] [cursor=pointer]
+                          - generic [ref=f19e395] [cursor=pointer]
+                          - generic [ref=f19e398] [cursor=pointer]
+                          - generic [ref=f19e401] [cursor=pointer]
+                          - generic [ref=f19e404] [cursor=pointer]
+                        - generic [ref=f19e407]:
+                          - generic [ref=f19e410] [cursor=pointer]
+                          - generic [ref=f19e413] [cursor=pointer]
+                          - generic [ref=f19e416] [cursor=pointer]
+                          - generic [ref=f19e419] [cursor=pointer]
+                          - generic [ref=f19e422] [cursor=pointer]
+                          - generic [ref=f19e425] [cursor=pointer]
+                          - generic [ref=f19e428] [cursor=pointer]
+                          - generic [ref=f19e431] [cursor=pointer]
+                          - generic [ref=f19e434] [cursor=pointer]
+                          - generic [ref=f19e437] [cursor=pointer]
+                          - generic [ref=f19e440] [cursor=pointer]
+                          - generic [ref=f19e443] [cursor=pointer]
+                        - generic [ref=f19e446]:
+                          - generic [ref=f19e449] [cursor=pointer]
+                          - generic [ref=f19e452] [cursor=pointer]
+                          - generic [ref=f19e455] [cursor=pointer]
+                          - generic [ref=f19e458] [cursor=pointer]
+                          - generic [ref=f19e461] [cursor=pointer]
+                          - generic [ref=f19e464] [cursor=pointer]
+                          - generic [ref=f19e467] [cursor=pointer]
+                          - generic [ref=f19e470] [cursor=pointer]
+                          - generic [ref=f19e473] [cursor=pointer]
+                          - generic [ref=f19e476] [cursor=pointer]
+                          - generic [ref=f19e479] [cursor=pointer]
+                          - generic [ref=f19e482] [cursor=pointer]
+                      - generic [ref=f19e483]:
+                        - generic [ref=f19e484]:
+                          - generic [ref=f19e485]: 01 oct.
+                          - generic [ref=f19e487]: 03 oct.
+                          - generic [ref=f19e489]: 05 oct.
+                          - generic [ref=f19e491]: 07 oct.
+                          - generic [ref=f19e493]: 09 oct.
+                          - generic [ref=f19e495]: 11 oct.
+                          - generic [ref=f19e497]: 13 oct.
+                          - generic [ref=f19e499]: 15 oct.
+                          - generic [ref=f19e501]: 17 oct.
+                          - generic [ref=f19e503]: 19 oct.
+                          - generic [ref=f19e505]: 21 oct.
+                          - generic [ref=f19e507]: 23 oct.
+                        - generic [ref=f19e509]:
+                          - generic [ref=f19e510]: "0"
+                          - generic [ref=f19e512]: "6"
+                          - generic [ref=f19e514]: "12"
+                          - generic [ref=f19e516]: "18"
+                          - generic [ref=f19e518]: "24"
+                  - generic "Sévérité" [ref=f19e520]:
+                    - generic [ref=f19e521]: Critique
+                    - generic [ref=f19e523]: Élevée
+                    - generic [ref=f19e525]: Moyenne
+                    - generic [ref=f19e527]: Faible
+                  - group [ref=f19e529]:
+                    - generic "Afficher les scans" [ref=f19e530] [cursor=pointer]
+          - region "Activité des scans" [ref=f19e531]:
+            - heading "Activité des scans" [level=2] [ref=f19e532]
+            - generic [ref=f19e533]:
+              - link "En cours 3" [ref=f19e534] [cursor=pointer]:
+                - /url: /scans
+                - generic [ref=f19e535]: En cours
+                - strong [ref=f19e540]: "3"
+              - link "Terminés 68" [ref=f19e541] [cursor=pointer]:
+                - /url: /scans
+                - generic [ref=f19e542]: Terminés
+                - strong [ref=f19e548]: "68"
+              - link "En échec 2" [ref=f19e549] [cursor=pointer]:
+                - /url: /scans
+                - generic [ref=f19e550]: En échec
+                - strong [ref=f19e557]: "2"
+            - generic [ref=f19e558]:
+              - generic [ref=f19e559]:
+                - heading "Scans récents" [level=2] [ref=f19e561]
+                - table [ref=f19e563]:
+                  - rowgroup [ref=f19e564]:
+                    - row [ref=f19e565]:
+                      - columnheader [ref=f19e566]
+                      - columnheader "Nom" [ref=f19e567]
+                      - columnheader "Statut" [ref=f19e568]
+                      - columnheader "Date" [ref=f19e569]
+                      - columnheader "Durée" [ref=f19e570]
+                      - columnheader "Non conformes" [ref=f19e571]
+                  - rowgroup [ref=f19e572]:
+                    - row [ref=f19e573]:
+                      - cell [ref=f19e574]:
+                        - button "Historique" [ref=f19e575] [cursor=pointer]
+                      - cell "Production weekly 6 exécutions" [ref=f19e578]:
+                        - link "Production weekly" [ref=f19e579] [cursor=pointer]:
+                          - /url: /scans/run-0
+                        - generic [ref=f19e580]: 6 exécutions
+                      - cell "Terminé" [ref=f19e581]
+                      - cell "17 nov. 2026, 10:00" [ref=f19e583]
+                      - cell "1 min 24 s" [ref=f19e584]
+                      - cell "3" [ref=f19e585]
+              - generic [ref=f19e586]:
+                - generic [ref=f19e587]:
+                  - heading "Points de vigilance prioritaires" [level=2] [ref=f19e589]
+                  - list [ref=f19e591]:
+                    - listitem [ref=f19e592]:
+                      - generic [ref=f19e593]:
+                        - generic [ref=f19e594]: TLS 1.0 enabled
+                        - generic [ref=f19e595]:
+                          - generic [ref=f19e596]: high
+                          - generic [ref=f19e597]: 5 endpoints
+                      - 'link "Ouvrir les résultats: TLS 1.0 enabled" [ref=f19e598] [cursor=pointer]':
+                        - /url: /scans/run-1
+                    - listitem [ref=f19e601]:
+                      - generic [ref=f19e602]:
+                        - generic [ref=f19e603]: Weak cipher suite
+                        - generic [ref=f19e604]:
+                          - generic [ref=f19e605]: medium
+                          - generic [ref=f19e606]: 3 endpoints
+                      - 'link "Ouvrir les résultats: Weak cipher suite" [ref=f19e607] [cursor=pointer]':
+                        - /url: /scans/run-2
+                - generic [ref=f19e610]:
+                  - heading "Prochaines exécutions" [level=2] [ref=f19e612]
+                  - generic [ref=f19e613]:
+                    - generic [ref=f19e614]:
+                      - generic [ref=f19e615]: Scan TLS · Quotidienne
+                      - generic [ref=f19e616]: 18 nov. 2026, 09:00
+                    - generic [ref=f19e617]:
+                      - generic [ref=f19e618]: Découverte DNS · example.com · Hebdomadaire
+                      - generic [ref=f19e619]: 20 nov. 2026, 10:00
+  - generic [aria-hidden] [ref=f19e620]: 25 oct.
