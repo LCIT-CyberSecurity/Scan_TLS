@@ -1,0 +1,49 @@
+name: ssh_baseline_policy
+version: "1.0"
+description: >-
+  SSH hardened baseline. SSHv2 only, no SHA-1 or CBC, strong key exchange (ANSSI-BP-007 principles), with the current
+  OpenSSH algorithms (hybrid post-quantum ML-KEM / sntrup761, X25519, Ed25519, ChaCha20-Poly1305, AES-GCM).
+  Algorithms not explicitly allowed are considered forbidden.
+source: ANSSI-BP-007 (Recommandations pour un usage sécurisé d'OpenSSH), adapted to OpenSSH 10
+
+# Names as ssh-audit reports them (checked against OpenSSH 10.0, Debian 13).
+ssh:
+  allowed_protocols:
+    - SSH-2.0
+  allowed_kex:
+    - mlkem768x25519-sha256
+    - sntrup761x25519-sha512
+    - sntrup761x25519-sha512@openssh.com
+    - curve25519-sha256
+    - curve25519-sha256@libssh.org
+    - ecdh-sha2-nistp256
+    - ecdh-sha2-nistp384
+    - ecdh-sha2-nistp521
+    - diffie-hellman-group-exchange-sha256
+    - diffie-hellman-group16-sha512
+    - diffie-hellman-group18-sha512
+    # protocol markers advertised in the key-exchange list, not algorithms (extension negotiation, Terrapin protection)
+    - ext-info-s
+    - kex-strict-s-v00@openssh.com
+  allowed_encryption:
+    - chacha20-poly1305@openssh.com
+    - aes256-gcm@openssh.com
+    - aes128-gcm@openssh.com
+    - aes256-ctr
+    - aes192-ctr
+    - aes128-ctr
+  allowed_macs:
+    - hmac-sha2-512-etm@openssh.com
+    - hmac-sha2-256-etm@openssh.com
+    - umac-128-etm@openssh.com
+    - hmac-sha2-512
+    - umac-128@openssh.com
+    - hmac-sha2-256
+  allowed_host_keys:
+    - ssh-ed25519
+    - ecdsa-sha2-nistp256
+    - ecdsa-sha2-nistp384
+    - ecdsa-sha2-nistp521
+    - rsa-sha2-512
+    - rsa-sha2-256
+  minimum_rsa_bits: 2048
