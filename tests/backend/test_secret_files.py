@@ -92,7 +92,8 @@ def test_compose_grants_file_secrets_only_to_consumers() -> None:
     assert services["worker"]["environment"]["ORION_SESSION_SECRET_REQUIRED"] == "false"
     assert services["scheduler"]["environment"]["ORION_SESSION_SECRET_REQUIRED"] == "false"
     assert "oidc_client_secret" not in secret_names("worker") | secret_names("scheduler")
-    assert "greenbone_password" not in secret_names("worker") | secret_names("scheduler")
+    # The worker runs the read-only Greenbone imports (LST-24) and needs the GMP password; the scheduler never does.
+    assert "greenbone_password" in secret_names("worker") and "greenbone_password" not in secret_names("scheduler")
     assert secret_names("webui") == set()
     assert "no-new-privileges:true" in services["api"]["security_opt"]
     assert services["api"]["cap_drop"] == ["ALL"]
