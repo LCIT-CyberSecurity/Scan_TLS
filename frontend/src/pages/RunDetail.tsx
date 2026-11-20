@@ -1,6 +1,6 @@
-import { Download, GitCompare, Trash2, XCircle } from "lucide-react";
+import { ArrowLeft, Download, GitCompare, Trash2, XCircle } from "lucide-react";
 import { useState } from "react";
-import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { api, downloadUrl } from "../api/client";
 import type { Comparison, Endpoint, Finding, FindingBrief, RunDetail as Detail, ServiceObservation, QuicObservation } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
@@ -98,6 +98,10 @@ export default function RunDetail() {
   const { t, locale } = useI18n();
   const { user, atLeast } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  // Back to where the user came from (History, Reports with its filters, dashboard, map...); a page opened directly
+  // (link, new tab) has no previous entry in the application, so it goes to the scan history instead of leaving it.
+  const goBack = () => (location.key === "default" ? navigate("/scans?tab=history") : navigate(-1));
   const [byHost, setByHost] = useState(true);
   const [params] = useSearchParams();
   const withRun = params.get("compare") ?? undefined;   // set by the dashboard evolution card: compare with that scan instead of the previous one
@@ -113,6 +117,7 @@ export default function RunDetail() {
     <>
       <PageHeader title={run.name} subtitle={`${formatDate(run.queued_at, locale)} · ${formatDuration(run.duration_seconds)}`} actions={
         <>
+          <Button variant="outline" onClick={goBack}><ArrowLeft />{t("action.back")}</Button>
           <StatusBadge status={run.status} />
           {active && (run.initiated_by === user?.id || atLeast("OPERATOR")) && <ConfirmButton label={<><XCircle className="size-4" />{t("action.cancelScan")}</>} confirm={t("confirm.cancelScan")} onConfirm={async () => { try { await api(`/scan-runs/${id}/cancel`, { method: "POST" }); void reload(); } catch (e) { setError(e); } }} />}
           {atLeast("USER") && !active && run.control_type !== "ipsec" && <Button variant="outline" onClick={() => setCmp(!cmp)}><GitCompare />{t("cmp.title")}</Button>}

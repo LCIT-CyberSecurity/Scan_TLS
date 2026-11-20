@@ -756,6 +756,7 @@ export const fr: Messages = {
   "table.count": "{shown} sur {total}",
   "confirm.deleteScan": "Supprimer ce scan et ses rapports ? Cette action est irréversible.",
   "action.delete": "Supprimer",
+  "action.back": "Retour",
   "target.name": "Nom",
   "target.nameHint": "Un libellé facile à reconnaître, par exemple « Site web public ».",
   "target.type": "Type",

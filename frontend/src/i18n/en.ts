@@ -755,6 +755,7 @@ export const en = {
   "table.count": "{shown} of {total}",
   "confirm.deleteScan": "Delete this scan and its reports? This cannot be undone.",
   "action.delete": "Delete",
+  "action.back": "Back",
   "target.name": "Name",
   "target.nameHint": "A label that is easy to recognise, for example “Public website”.",
   "target.type": "Type",
