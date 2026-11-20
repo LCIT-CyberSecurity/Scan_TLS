@@ -499,6 +499,8 @@ check "TLS Scan volumes kept untouched" test "$(db tls-scan)" = "$LEGACY_DB" -a 
 calls_not "down -v" "no volume removal"
 check ".env switched to Orion" bash -c "grep -qx 'ORION_PROJECT=orion' '$R/.env' && grep -qx 'ORION_DB_NAME=orion' '$R/.env' && grep -qx 'ORION_DB_USER=orion' '$R/.env'"
 check "restore runs as the Orion role, without legacy ownership" grep -q "pg_restore -U orion -d orion --no-owner --no-privileges" "$S/calls"
+check "the application is stopped before the backup (nothing written after it)" bash -c "awk '/compose -p tls-scan .*stop webui api worker scheduler/ && !s {s=NR} /compose -p tls-scan .*pg_dump/ && !d {d=NR} END {exit !(s && d && s < d)}' '$S/calls'"
+check "images built before the service stops" bash -c "awk '/compose -p tls-scan .* build/ && !b {b=NR} /stop webui api worker scheduler/ && !s {s=NR} END {exit !(b && s && b < s)}' '$S/calls'"
 has_out "identiques" "row counts compared"
 no_out "legacy-db-password" "no secret printed"
 bs --mode webui --yes migrate-orion
