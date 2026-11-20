@@ -14,7 +14,7 @@ from tls_scanner import pki
 
 def make_pem() -> bytes:
     key = ec.generate_private_key(ec.SECP256R1())
-    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "freebox.home")])
+    name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "device.example")])
     now = datetime.datetime.now(datetime.UTC)
     cert = (x509.CertificateBuilder().subject_name(name).issuer_name(name).public_key(key.public_key()).serial_number(x509.random_serial_number())
             .not_valid_before(now).not_valid_after(now + datetime.timedelta(days=30)).sign(key, hashes.SHA256()))
@@ -28,7 +28,7 @@ def timeout(stdout: bytes | None, stderr: bytes | None = b"") -> subprocess.Time
 class ChainCollectionTimeoutTests(unittest.TestCase):
     def collect(self, error):
         with patch("tls_scanner.pki.shutil.which", return_value="/usr/bin/openssl"), patch("tls_scanner.pki.subprocess.run", side_effect=error):
-            return pki.collect_peer_certificate_chain("192.168.1.37", 9000, "freebox-mini.home")
+            return pki.collect_peer_certificate_chain("192.0.2.37", 9000, "device.example")
 
     def test_the_chain_printed_before_the_timeout_is_used(self):
         chain = self.collect(timeout(b"CONNECTED(00000003)\n" + make_pem() + b"\n"))
@@ -46,7 +46,7 @@ class ChainCollectionTimeoutTests(unittest.TestCase):
             stdout = b"CONNECTED(00000003)\n"
             stderr = b"4067:error:0A00010B:SSL routines:ssl3_get_record:wrong version number\n---\nno peer certificate available\n"
         with patch("tls_scanner.pki.shutil.which", return_value="/usr/bin/openssl"), patch("tls_scanner.pki.subprocess.run", return_value=Done()):
-            chain = pki.collect_peer_certificate_chain("192.168.1.5", 389)
+            chain = pki.collect_peer_certificate_chain("192.0.2.5", 389)
         self.assertEqual(chain.status, "not_tested")
         self.assertNotEqual(chain.error, "CONNECTED(00000003)")
         self.assertIn("did not complete a TLS handshake", chain.error)
