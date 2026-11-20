@@ -1,10 +1,10 @@
 import { FileText, Play, Plus, RotateCcw, Trash2, Pencil } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api, downloadUrl } from "../api/client";
 import type { Definition, Group, MailSecurityConfig, Run, SI, Target, Template, Versioned } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
-import { CheckList, ConfirmButton, Empty, ErrorNote, PageHeader, StatusBadge, TagList, TagsInput, useLoad } from "../components/common";
+import { CheckList, ConfirmButton, Empty, ErrorNote, Note, PageHeader, StatusBadge, TagList, TagsInput, useLoad } from "../components/common";
 import { Button } from "../components/ui/button";
 import { Badge } from "../components/ui/badge";
 import { Dialog } from "../components/ui/dialog";
@@ -22,10 +22,11 @@ import { DnsScanTargetImport } from "../components/DnsScanTargetImport";
 const DEFAULT_MAIL_SECURITY: MailSecurityConfig = { enabled: false, checks: { spf: true, dmarc: true, dkim: false, mta_sts: true, tls_rpt: true, dane: false }, dkim_selectors: [] };
 const MAIL_CHECKS = ["spf", "dmarc", "dkim", "mta_sts", "tls_rpt", "dane"] as const;
 type Technology = "tls" | "ipsec" | "ssh";
+const TECHNOLOGY_LABEL: Record<Technology, string> = { tls: "TLS", ipsec: "IPsec / IKE", ssh: "SSH" };
 interface DefinitionForm { name: string; description: string; control_type: Technology; enabled_controls?: Technology[]; service_identification_enabled: boolean; quic_enabled: boolean | null; target_ids: string[]; group_ids: string[]; policy_ids: string[]; profile_id: string; report_template_id: string; policy_mode: string; tags: string[]; si_ids: string[]; mail_security: MailSecurityConfig }
 const blank: DefinitionForm = { name: "", description: "", control_type: "tls", enabled_controls: ["tls", "ipsec"], service_identification_enabled: false, quic_enabled: null, target_ids: [], group_ids: [], policy_ids: [], profile_id: "", report_template_id: "", policy_mode: "strict_all", tags: [], si_ids: [], mail_security: DEFAULT_MAIL_SECURITY };
 
-function DefinitionDialog({ initial, onClose, onSaved }: { initial?: Definition; onClose: () => void; onSaved: () => void }) {
+export function DefinitionDialog({ initial, onClose, onSaved }: { initial?: Definition; onClose: () => void; onSaved: () => void }) {
   const { t } = useI18n();
   const { atLeast } = useAuth();
   const [form, setForm] = useState<DefinitionForm>(initial ? { ...blank, ...initial, control_type: initial.control_type === "ipsec" ? "ipsec" : "tls", enabled_controls: initial.enabled_controls?.filter((x): x is Technology => x === "tls" || x === "ipsec" || x === "ssh") ?? undefined, service_identification_enabled: initial.service_identification_enabled ?? false, quic_enabled: initial.quic_enabled ?? null, report_template_id: initial.report_template_id ?? "" } : blank);
@@ -45,6 +46,24 @@ function DefinitionDialog({ initial, onClose, onSaved }: { initial?: Definition;
   const publishedPolicies = policies?.filter((p) => !p.archived && p.versions.some((v) => v.status === "published")) ?? [];
   const publishedProfiles = profiles?.filter((p) => !p.archived && p.versions.some((v) => v.status === "published")) ?? [];
   const selectedProfile = publishedProfiles.find((p) => p.id === form.profile_id);
+  // Toggling a technology keeps the profile and the policies that still apply; only those the new selection cannot use
+  // are dropped once the matching lists are loaded (a TLS profile once several technologies are combined, an SSH policy
+  // once SSH is unticked...).
+  const activeKey = activeControls.join(",");
+  useEffect(() => {
+    if (!profiles) return;
+    setForm((f) => (f.profile_id && !publishedProfiles.some((p) => p.id === f.profile_id) ? { ...f, profile_id: "" } : f));
+  }, [profiles]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!policies) return;
+    setForm((f) => {
+      const kept = f.policy_ids.filter((id) => publishedPolicies.some((p) => p.id === id && activeControls.includes(p.technology as Technology)));
+      return kept.length === f.policy_ids.length ? f : { ...f, policy_ids: kept };
+    });
+  }, [policies, activeKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const policyTechnology = (id: string) => publishedPolicies.find((p) => p.id === id)?.technology;
+  const withoutPublishedPolicy = policies ? activeControls.filter((tech) => !publishedPolicies.some((p) => p.technology === tech)) : [];
+  const withoutSelectedPolicy = activeControls.filter((tech) => !form.policy_ids.some((id) => policyTechnology(id) === tech));
   const selectedProfileContent = selectedProfile?.versions.find((v) => v.status === "published")?.content as Record<string, any> | undefined; // eslint-disable-line @typescript-eslint/no-explicit-any
   const quicProfile = form.enabled_controls ? selectedProfileContent?.tls?.scan?.quic : selectedProfileContent?.scan?.quic;
   const quicInherited = quicProfile?.enabled === true;
@@ -58,6 +77,12 @@ function DefinitionDialog({ initial, onClose, onSaved }: { initial?: Definition;
   });
 
   async function save() {
+    // Same rules as the API, checked here so that nothing incomplete is sent and the reason is readable.
+    if (!form.profile_id) { setError(new Error(t("def.profileRequired"))); return; }
+    if (withoutSelectedPolicy.length) {
+      setError(new Error(t("def.policyRequired", { list: withoutSelectedPolicy.map((tech) => TECHNOLOGY_LABEL[tech]).join(", ") })));
+      return;
+    }
     try {
       const body = { ...form, report_template_id: form.report_template_id || null, exclusions: exclText.split(/[\s,;]+/).filter(Boolean) };
       if (initial) await api(`/scan-definitions/${initial.id}`, { method: "PUT", body }); else await api("/scan-definitions", { method: "POST", body });
@@ -74,7 +99,7 @@ function DefinitionDialog({ initial, onClose, onSaved }: { initial?: Definition;
               const current = f.enabled_controls ?? [f.control_type];
               const next = e.target.checked ? [...new Set([...current, key])] : current.filter((x) => x !== key);
               if (!next.length) return f;
-              return { ...f, enabled_controls: next, control_type: next.includes("tls") ? "tls" : next.includes("ipsec") ? "ipsec" : "tls", profile_id: "", policy_ids: [], ...(key === "tls" && !e.target.checked ? { mail_security: { ...f.mail_security, enabled: false }, quic_enabled: null } : {}) };
+              return { ...f, enabled_controls: next, control_type: next.includes("tls") ? "tls" : next.includes("ipsec") ? "ipsec" : "tls", ...(key === "tls" && !e.target.checked ? { mail_security: { ...f.mail_security, enabled: false }, quic_enabled: null } : {}) };
             })} />{label}
           </label>)}
         </fieldset>
@@ -112,10 +137,12 @@ function DefinitionDialog({ initial, onClose, onSaved }: { initial?: Definition;
           </div>
         </details>}
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label={t("def.profile")}><Select value={form.profile_id} onChange={(e) => set("profile_id", e.target.value)}><option value="">—</option>{publishedProfiles.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></Field>
+          <Field label={t("def.profile")}><Select value={form.profile_id} onChange={(e) => set("profile_id", e.target.value)}><option value="">—</option>{publishedProfiles.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select>
+            {profiles && !publishedProfiles.length && <Note tone="warning" className="mt-2">{t(form.enabled_controls ? "def.noGenericProfile" : "def.noProfile")}</Note>}</Field>
           <Field label={t("def.template")}><Select value={form.report_template_id} onChange={(e) => set("report_template_id", e.target.value)}><option value="">{t("def.defaultTemplate")}</option>{templates?.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</Select></Field>
         </div>
-        <Field label={t("def.policies")} hint={t("def.policiesHint")}><CheckList items={publishedPolicies.map((p) => ({ id: p.id, label: p.name, sub: `v${p.versions.find((v) => v.status === "published")?.version}` }))} selected={form.policy_ids} onChange={(v) => set("policy_ids", v)} empty={t("def.noPolicies")} /></Field>
+        <Field label={t("def.policies")} hint={t("def.policiesHint")}><CheckList items={publishedPolicies.filter((p) => activeControls.includes(p.technology as Technology)).map((p) => ({ id: p.id, label: p.name, sub: `${TECHNOLOGY_LABEL[p.technology as Technology]} · v${p.versions.find((v) => v.status === "published")?.version}` }))} selected={form.policy_ids} onChange={(v) => set("policy_ids", v)} empty={t("def.noPolicies")} />
+          {withoutPublishedPolicy.map((tech) => <Note key={tech} tone="warning" className="mt-2">{t("def.noPolicyFor", { tech: TECHNOLOGY_LABEL[tech] })}</Note>)}</Field>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label={t("col.si")}><CheckList items={(systems ?? []).map((s) => ({ id: s.id, label: (s.parent_id ? "↳ " : "") + s.name }))} selected={form.si_ids} onChange={(v) => set("si_ids", v)} /></Field>
           <Field label={t("col.tags")} hint={t("hint.commaSeparated")}><TagsInput value={form.tags} onChange={(v) => set("tags", v)} /></Field>
