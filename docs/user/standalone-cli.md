@@ -624,13 +624,13 @@ Qualys SSL Labs algorithm.
 Scan multiple subnets using the default fast port discovery:
 
 ```bash
-python3 orion.py 192.168.1.0/24,10.0.0.0/24
+python3 orion.py 192.0.2.0/24,10.0.0.0/24
 ```
 
 Scan several TCP ports:
 
 ```bash
-python3 orion.py -p 443,8443,9443 192.168.1.0/24
+python3 orion.py -p 443,8443,9443 192.0.2.0/24
 ```
 
 Scan a port range and individual ports:
@@ -642,7 +642,7 @@ python3 orion.py -p 443,8000-8010,8443 server.example.com
 Quickly discover common TCP ports before testing TLS:
 
 ```bash
-python3 orion.py -p fast 192.168.1.0/24
+python3 orion.py -p fast 192.0.2.0/24
 ```
 
 Scan standard SMTP and submission ports:
@@ -654,13 +654,13 @@ python3 orion.py -p 25,465,587 smtp.example.com
 Discover all open TCP ports before testing TLS:
 
 ```bash
-python3 orion.py -p all 192.168.1.10
+python3 orion.py -p all 192.0.2.10
 ```
 
 Scan multiple individual IP addresses without subnet notation:
 
 ```bash
-python3 orion.py 192.168.1.10,192.168.1.20,10.0.0.5
+python3 orion.py 192.0.2.10,192.0.2.20,10.0.0.5
 ```
 
 Scan multiple FQDNs:
@@ -673,19 +673,19 @@ Scan a mix of subnets, individual IP addresses, and FQDNs, then export the
 results:
 
 ```bash
-python3 orion.py 192.168.1.0/24,10.0.0.5,web.example.com results.csv
+python3 orion.py 192.0.2.0/24,10.0.0.5,web.example.com results.csv
 ```
 
 Disable DNS resolution and leave the `FQDN` column empty:
 
 ```bash
-python3 orion.py -i 192.168.1.0/24,10.0.0.5,web.example.com results.csv
+python3 orion.py -i 192.0.2.0/24,10.0.0.5,web.example.com results.csv
 ```
 
 Combine fast port discovery, multiple targets, disabled DNS, and CSV export:
 
 ```bash
-python3 orion.py -i -p fast 192.168.1.0/24,10.0.0.5 results.csv
+python3 orion.py -i -p fast 192.0.2.0/24,10.0.0.5 results.csv
 ```
 
 Display all command-line options:

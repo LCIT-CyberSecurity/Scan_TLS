@@ -64,7 +64,7 @@ Consult the official [python-gvm connection API](https://greenbone.github.io/pyt
 
 The earlier disposable GMP rehearsal is recorded in Jira LST-24 comment 10762. It passed the connector and import invariants against a temporary Orion database. It does **not** prove an import into the persistent Sandbox inventory.
 
-The follow-up inventory found no OpenVAS/GVM containers (active or stopped), Compose project, labeled volume/network, or deployment directory on the Orion integration VM. The local SSH configuration contained only the `vm-integrations` alias, but internal DNS did resolve `VM-OpenVAS.home` to `192.168.1.28` plus IPv6 records. That VM was checked directly: the IPv4 neighbor entry was `FAILED`, SSH returned `No route to host`, and targeted SSH/GMP (9390)/GSA (9392) TCP checks to the published addresses timed out or were unreachable. No network scan was run.
+The follow-up inventory found no OpenVAS/GVM containers (active or stopped), Compose project, labeled volume/network, or deployment directory on the Orion integration VM. The local SSH configuration contained only the `vm-integrations` alias, but internal DNS did resolve `<GMP host name>` to `<GMP host address>` plus IPv6 records. That VM was checked directly: the IPv4 neighbor entry was `FAILED`, SSH returned `No route to host`, and targeted SSH/GMP (9390)/GSA (9392) TCP checks to the published addresses timed out or were unreachable. No network scan was run.
 
 The API container's Greenbone configuration was also inspected without printing secrets: its allowed-host list was empty, the username was unset, and the CA, password, client certificate and client key paths were not present as non-empty files. Compose mount declarations existed, but they did not provide usable secret files. Therefore Orion could not initiate a real GMP request even if the manager host were reachable.
 
@@ -81,10 +81,10 @@ Run these read-only checks from the authorized integration host before schedulin
 ```sh
 ssh vm-integrations 'docker ps -a --format "{{.Names}} {{.Status}}"'
 ssh vm-integrations 'docker volume ls --format "{{.Name}}"'
-ssh vm-integrations 'getent ahostsv4 VM-OpenVAS.home; getent ahostsv6 VM-OpenVAS.home'
+ssh vm-integrations 'getent ahostsv4 <GMP host name>; getent ahostsv6 <GMP host name>'
 ssh vm-integrations 'docker network ls --format "{{.Name}} {{.Labels}}"'
 ssh vm-integrations 'docker image ls --format "{{.Repository}}:{{.Tag}} {{.Size}}" | grep -Ei "greenbone|openvas|gvm"'
-ssh vm-integrations 'timeout 3 bash -c "</dev/tcp/192.168.1.28/9390"'
+ssh vm-integrations 'timeout 3 bash -c "</dev/tcp/<GMP host address>/9390"'
 ```
 
 Once the named manager is reachable, inspect its Docker containers, volumes and networks before changing it. The Orion connector requires certificate-verified GMP over TLS, not the Greenbone WebUI API or a Unix socket. Verify the API allowlist is exact, mount the CA/password (and optional client cert/key) as non-empty secret files, and use a read-only GMP account for Targets. Take the Sandbox backup and inventory baseline before any import. Do not enable feeds/scanning or contact any other LAN host. Follow the E2E sequence above and record each scenario in Jira; do not infer a persistent import result from the previous disposable rehearsal.
@@ -96,7 +96,7 @@ Once the named manager is reachable, inspect its Docker containers, volumes and 
 | LST-24 schedule edit code/test from PR #36 | PASS | Jira comment 10762; PR #36 merged at `985d553b9eb6f52480d54330ed1a23bbc2752ace` |
 | Current Orion Sandbox Docker health | PASS | API/DB/WebUI healthy; worker/scheduler running; restart count 0; readiness HTTP 200 |
 | Current Sandbox login page visual check | PASS, login page only | Playwright response HTTP 200; self-signed HTTPS exception limited to the test context |
-| Current real Docker Orion → GMP connection | NOT EXECUTED | `VM-OpenVAS.home` resolves to 192.168.1.28, but its SSH/GMP/GSA endpoints are unreachable; Sandbox allowlist and secret files are unusable |
+| Current real Docker Orion → GMP connection | NOT EXECUTED | `<GMP host name>` resolves to <GMP host address>, but its SSH/GMP/GSA endpoints are unreachable; Sandbox allowlist and secret files are unusable |
 | Persistent Sandbox inventory baseline, preview and import | NOT EXECUTED | No GMP source; no inventory mutation was made |
 | Persistent idempotence/source-removal and authenticated WebUI flow | NOT EXECUTED | Depends on a real test manager and test account |
 | Confluence architecture page update | NOT EXECUTED | Search returned no accessible matching Scan TLS/Greenbone pages |

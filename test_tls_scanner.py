@@ -20,11 +20,11 @@ from tls_scanner import pki
 # Input normalization and command-line port validation.
 class NormalizeTargetsTests(unittest.TestCase):
     def test_normalizes_comma_separated_targets_for_nmap(self):
-        targets = "192.168.1.0/24, 10.0.0.5,web.example.com"
+        targets = "192.0.2.0/24, 10.0.0.5,web.example.com"
 
         self.assertEqual(
             scanner.normalize_targets(targets),
-            "192.168.1.0/24 10.0.0.5 web.example.com",
+            "192.0.2.0/24 10.0.0.5 web.example.com",
         )
 
 
