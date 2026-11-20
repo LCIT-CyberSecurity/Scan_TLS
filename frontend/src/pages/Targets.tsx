@@ -9,7 +9,7 @@ import { DiscoveriesTab, DnsDiscoveryDialog } from "../components/DnsDiscovery";
 import { DnsLookalikeMonitors } from "../components/DnsLookalikeMonitors";
 import { NetworkDiscovery } from "../components/NetworkDiscovery";
 import { EndpointExposureEditor } from "../components/EndpointExposureEditor";
-import { CheckList, ConfirmButton, Empty, ErrorNote, PageHeader, TagList, TagsInput, useLoad } from "../components/common";
+import { CheckList, ConfirmButton, Empty, ErrorNote, Note, PageHeader, TagList, TagsInput, useLoad } from "../components/common";
 import { Badge } from "../components/ui/badge";
 import { Button } from "../components/ui/button";
 import { Card } from "../components/ui/card";
@@ -203,7 +203,11 @@ export default function Targets() {
   const { user, atLeast } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedDiscovery = searchParams.get("discovery");
-  const [selectedTab, setSelectedTab] = useState(requestedDiscovery ? "dns" : "targets");
+  // `?target=<id>` / `?group=<id>` (links from Schedules...) open that record's existing dialog, or show it read-only
+  const requestedTarget = searchParams.get("target");
+  const requestedGroup = searchParams.get("group");
+  const [linkNote, setLinkNote] = useState<"notFound" | "readOnly" | null>(null);
+  const [selectedTab, setSelectedTab] = useState(requestedDiscovery ? "dns" : requestedGroup ? "groups" : "targets");
   const [q, setQ] = useState("");
   const [tag, setTag] = useState("");
   const [si, setSi] = useState("");
@@ -229,6 +233,27 @@ export default function Targets() {
     if (!requestedDiscovery) return;
     setSelectedTab("dns"); setDiscoverId(requestedDiscovery); setDialog("discover");
   }, [requestedDiscovery]);
+  useEffect(() => {
+    if (!requestedTarget || !targets.data) return;
+    const found = targets.data.find((x) => x.id === requestedTarget);
+    setSelectedTab("targets");
+    if (found && own(found.owner_id)) { setEditT(found); setDialog("target"); setLinkNote(null); }
+    else if (found) { setQ(found.value); setLinkNote("readOnly"); }
+    else if (!q && !tag && !si && !mine && !origin && !imported) setLinkNote("notFound");   // searched in the unfiltered list only
+  }, [requestedTarget, targets.data]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!requestedGroup || !groups.data) return;
+    const found = groups.data.find((g) => g.id === requestedGroup);
+    setSelectedTab("groups");
+    if (found && own(found.owner_id)) { setEditG(found); setDialog("group"); setLinkNote(null); }
+    else setLinkNote(found ? "readOnly" : "notFound");
+  }, [requestedGroup, groups.data]); // eslint-disable-line react-hooks/exhaustive-deps
+  function closeLinked() {
+    setDialog(null);
+    if (requestedTarget || requestedGroup) {
+      setSearchParams((prev) => { const next = new URLSearchParams(prev); next.delete("target"); next.delete("group"); return next; }, { replace: true });
+    }
+  }
   function closeDiscovery() {
     setDialog(null); setDiscoverId(undefined); setDiscoveries((n) => n + 1);
     const next = new URLSearchParams(searchParams); next.delete("discovery"); setSearchParams(next, { replace: true });
@@ -238,6 +263,7 @@ export default function Targets() {
     <>
       <PageHeader title={t("nav.targets")} />
       <ErrorNote error={err} />
+      {(requestedTarget || requestedGroup) && linkNote && <Note tone="warning" className="mb-3">{t(linkNote === "readOnly" ? (requestedGroup ? "group.linkReadOnly" : "target.linkReadOnly") : (requestedGroup ? "group.linkNotFound" : "target.linkNotFound"))}</Note>}
       <Tabs value={selectedTab} onValueChange={setSelectedTab}>
         <TabsList><TabsTrigger value="targets">{t("targets.targets")}</TabsTrigger><TabsTrigger value="groups">{t("targets.groups")}</TabsTrigger><TabsTrigger value="dns">{t("dd.tab")}</TabsTrigger>{atLeast("OPERATOR") && <TabsTrigger value="network-discovery">{t("map.snmp.title")}</TabsTrigger>}<TabsTrigger value="si">{t("targets.si")}</TabsTrigger><TabsTrigger value="tags">{t("targets.tags")}</TabsTrigger></TabsList>
         <TabsContent value="targets">
@@ -285,11 +311,11 @@ export default function Targets() {
           <Card><div className="flex flex-wrap gap-2 p-5">{tags.data?.length ? tags.data.map((x) => <Badge key={x.id} tone="primary">{x.name}{atLeast("OPERATOR") && <button aria-label={t("confirm.delete")} className="ml-1 opacity-60 hover:opacity-100" onClick={() => { if (window.confirm(t("confirm.delete"))) void remove(`/tags/${x.id}`, tags.reload)(); }}>×</button>}</Badge>) : <span className="text-sm text-muted">{t("tags.empty")}</span>}</div></Card>
         </TabsContent>
       </Tabs>
-      {dialog === "target" && systems.data && <TargetDialog enableRows initial={editT} systems={systems.data} onClose={() => setDialog(null)} onSaved={() => { void targets.reload(); void tags.reload(); }} />}
+      {dialog === "target" && systems.data && <TargetDialog enableRows initial={editT} systems={systems.data} onClose={closeLinked} onSaved={() => { void targets.reload(); void tags.reload(); }} />}
       {dialog === "discover" && <DnsDiscoveryDialog resumeId={discoverId} onClose={closeDiscovery} onDone={() => { void targets.reload(); void groups.reload(); void tags.reload(); }} onViewTargets={(id) => { setOrigin(""); setQ(""); setTag(""); setSi(""); setMine(false); setImported(id); }} />}
       {prov && <ProvenanceDialog target={prov} onClose={() => setProv(undefined)} />}
       {dialog === "import" && <ImportDialog onClose={() => setDialog(null)} onDone={() => { void targets.reload(); }} />}
-      {dialog === "group" && systems.data && <GroupDialog initial={editG} targets={targets.data ?? []} systems={systems.data} onClose={() => setDialog(null)} onSaved={() => void groups.reload()} />}
+      {dialog === "group" && systems.data && <GroupDialog initial={editG} targets={targets.data ?? []} systems={systems.data} onClose={closeLinked} onSaved={() => void groups.reload()} />}
     </>
   );
 }

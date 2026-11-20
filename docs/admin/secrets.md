@@ -10,6 +10,7 @@ WebUI deployment credentials are stored as host files under `ORION_SECRET_DIR` (
 | `local_admin_password` | API | Optional initial local-admin password |
 | `oidc_client_secret`, `google_client_secret`, `directory_client_secret`, `ldap_bind_password` | API | Configured identity providers/directories |
 | `greenbone_password`, `greenbone_ca.pem`, `greenbone_client.crt`, `greenbone_client.key` | API | Optional Greenbone GMP connection |
+| `greenbone_credential_key` | API, worker | Key encrypting the credentials entered in the WebUI and stored in PostgreSQL: GMP password, Entra client secret |
 | `smtp_password`, `graph_client_secret` | API, worker, scheduler as needed | Notifications |
 | `snmp_v3_auth_key`, `snmp_v3_priv_key` | API, worker | Optional read-only SNMPv3 |
 | `google_directory_key.json` | API | Optional Google directory lookup |
@@ -26,7 +27,7 @@ For an intentional rollback to an older release that still reads direct `.env` s
 
 ## Backup, restore, and rotation
 
-The standard application backup includes the PostgreSQL dump and persistent application data, not the secret directory, `.env`, or TLS certificate key. Keep encrypted, access-controlled backups of those deployment files separately. A recovery set needs the matching database password, session key, provider credentials, certificate and private key as applicable. Test restoration in an isolated deployment before replacing a live environment.
+The standard application backup includes the PostgreSQL dump and persistent application data, not the secret directory, `.env`, or TLS certificate key. Keep encrypted, access-controlled backups of those deployment files separately; `greenbone_credential_key` is required to read the GMP password and the Entra client secret stored encrypted in the database dump. A recovery set needs the matching database password, session key, provider credentials, certificate and private key as applicable. Test restoration in an isolated deployment before replacing a live environment.
 
 To rotate the database password, coordinate the PostgreSQL role password and both `postgres_password` and `database_password` files while services are stopped, preserving a protected old copy for rollback. For identity-provider, SMTP, Graph, SNMP, and Greenbone credentials, update the provider and the relevant host file as one operational change, then recreate affected services. Never expose a secret in command-line arguments, logs, screenshots, or Jira comments.
 

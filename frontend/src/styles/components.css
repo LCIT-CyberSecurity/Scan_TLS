@@ -329,6 +329,10 @@
   .card--flush .simple-table tbody tr:last-child td, .table-wrap .simple-table tbody tr:last-child td { border-bottom: 0; }
   .row-link { color: var(--text-primary); font-weight: 620; text-decoration: none; }
   .row-link:hover { color: var(--primary); }
+  /* A business reference (definition, target, group) that opens its existing record: looks like a link, keyboard-visible. */
+  .ref-link { color: var(--primary); text-decoration: underline; text-decoration-color: color-mix(in srgb, var(--primary) 40%, transparent); text-underline-offset: 2px; }
+  .ref-link:hover { text-decoration-color: currentColor; }
+  .ref-link:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; border-radius: 2px; }
   :root[data-theme="studio"] .simple-table th { padding: 9px 14px; background: var(--surface); letter-spacing: 0.02em; text-transform: none; }
   :root[data-theme="studio"] .simple-table td { padding: 10px 14px; font-size: 15.5px; line-height: 21px; }
   :root[data-appearance="dark"][data-theme="studio"] .simple-table th { background: var(--surface); }

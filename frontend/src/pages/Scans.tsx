@@ -179,6 +179,19 @@ export default function Scans() {
     try { const r = await api<{ run_id: string; deduplicated: boolean }>(`/scan-definitions/${id}/run`, { method: "POST" }); navigate(`/scans/${r.run_id}`); } catch (e) { setError(e); }
   }
   const canEdit = (d: Definition) => atLeast("OPERATOR") || d.owner_id === user?.id;
+  // `?definition=<id>` (links from Schedules, Reports...) opens that definition's existing edit dialog; closing it drops the
+  // parameter, so the browser's Back returns to the page the link came from.
+  const requestedDefinition = searchParams.get("definition");
+  const [definitionNote, setDefinitionNote] = useState<"notFound" | "readOnly" | null>(null);
+  useEffect(() => {
+    if (!requestedDefinition || !defs) return;
+    const found = defs.find((d) => d.id === requestedDefinition);
+    if (found && canEdit(found)) { setEditing(found); setDefinitionNote(null); } else setDefinitionNote(found ? "readOnly" : "notFound");
+  }, [requestedDefinition, defs]); // eslint-disable-line react-hooks/exhaustive-deps
+  const closeDefinition = () => {
+    setEditing(null);
+    if (requestedDefinition) setSearchParams((prev) => { const next = new URLSearchParams(prev); next.delete("definition"); return next; }, { replace: true });
+  };
 
   const phaseText = (r: Run) => `${r.status === "running" ? t(`phase.${r.phase}` as never) : ""}${r.progress ? ` ${r.progress.hosts_done}/${r.progress.hosts_total}` : ""}`.trim();
   const runMailChecks = (r: Run) => {
@@ -242,11 +255,12 @@ export default function Scans() {
             : <DataTable rows={runs} rowKey={(r) => r.id} columns={runColumns} defaultSort={{ key: "date", dir: "desc" }} />) : <Empty>{t("scans.none")}</Empty>}</Card>
         </TabsContent>
         <TabsContent value="scans">
+          {requestedDefinition && definitionNote && <Note tone="warning" className="mb-3">{t(definitionNote === "readOnly" ? "def.linkReadOnly" : "def.linkNotFound")}</Note>}
           <Card>{defs?.length ? <DataTable rows={defs} rowKey={(d) => d.id} columns={defColumns} /> : <Empty>{t("def.none")}</Empty>}</Card>
         </TabsContent>
         <TabsContent value="reports"><Reports embedded /></TabsContent>
       </Tabs>
-      {editing && <DefinitionDialog initial={editing === "new" ? undefined : editing} onClose={() => setEditing(null)} onSaved={() => { void reloadDefs(); setTab("scans"); }} />}
+      {editing && <DefinitionDialog initial={editing === "new" ? undefined : editing} onClose={closeDefinition} onSaved={() => { void reloadDefs(); setTab("scans"); }} />}
     </>
   );
 }
