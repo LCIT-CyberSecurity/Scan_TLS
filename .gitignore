@@ -24,3 +24,6 @@ tests/e2e/node_modules/
 compose.override.yaml
 
 ops/dev/.ldap-certs/
+
+# Local browser-automation session logs (Playwright MCP); never versioned.
+.playwright-mcp/
