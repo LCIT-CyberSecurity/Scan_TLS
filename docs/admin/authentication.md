@@ -19,7 +19,8 @@ decides a role** (no role is derived from groups or claims). The API and MCP key
 2. otherwise the **server environment** `ORION_OIDC_*` (existing installations keep working untouched after an update);
 3. choosing *Local accounts only* switches the external sign-in off even if the environment still describes one.
 
-**Secrets never live in the database or in the API.** They come from the environment or a protected file (`*_FILE`):
+**Secrets are never stored in clear and never returned by the API.** They come from the environment or a protected file
+(`*_FILE`); the Entra client secret may also be entered in the page (see below):
 
 | Secret | Variable |
 |---|---|
@@ -28,7 +29,29 @@ decides a role** (no role is derived from groups or claims). The API and MCP key
 | LDAP service-account password | `ORION_LDAP_BIND_PASSWORD` (`…_FILE`) |
 | Google Admin SDK key (directory lookup only) | `ORION_GOOGLE_DIRECTORY_KEY_FILE` |
 
-The page only shows whether each secret is set.
+The page only shows whether each secret is set, and for Entra where it comes from.
+
+### Entra client secret entered in the page
+
+With the provider *Microsoft Entra ID*, an administrator can enter **New Entra client secret** and its confirmation. Use the
+**Value** of a client secret created under *Certificates & secrets* in Entra — not its *Secret ID*, and never a user's password.
+
+* **Empty keeps the current secret.** The fields are never prefilled and are cleared after each save; only ADMIN can set or
+  remove the secret (API and page). The two fields must match, without spaces at either end, at most 512 characters.
+* **At rest**: encrypted with the deployment credential key, the protected file `greenbone_credential_key`
+  (`ORION_GREENBONE_CREDENTIAL_KEY_FILE`), which already protects the stored GMP password. It sits in its own setting, never in
+  the authentication settings the API returns, and is never logged or audited (the audit records `auth.entra_secret.replace`
+  and `auth.entra_secret.remove` without any value). Without that key file the page refuses to store it (use
+  `ORION_OIDC_CLIENT_SECRET_FILE`).
+* **Precedence**: a secret entered here takes precedence over `ORION_OIDC_CLIENT_SECRET` (or `_FILE`), which stays the fallback.
+  If the stored value cannot be decrypted (key file missing or replaced, e.g. after restoring a database without its key), the
+  server secret is used instead and the page shows a warning: enter the secret again.
+* **Rotation**: create a new secret in Entra (keep the old one valid), enter its value here and save, run *Test the
+  configuration* and a real sign-in, then delete the old secret in Entra. **Removal** ("Remove the secret stored in Orion")
+  falls back to the server secret and is refused when the active Entra sign-in would be left without any secret.
+* **Backups**: the database dump holds only the encrypted value; back up `greenbone_credential_key` with the other deployment
+  secrets, separately and protected (see [secret handling](secrets.md)). A database restored without its key loses this
+  value (the server secret, if any, takes over).
 
 ## People, roles and accounts
 
@@ -51,7 +74,7 @@ The page only shows whether each secret is set.
 1. Entra admin center → *App registrations* → *New registration*, **single tenant**.
 2. *Authentication* → add a **Web** platform with the redirect URI shown on the page
    (`<ORION_PUBLIC_BASE_URL>/api/auth/sso/callback`, https in production).
-3. *Certificates & secrets* → new client secret → put it in `ORION_OIDC_CLIENT_SECRET`.
+3. *Certificates & secrets* → new client secret → enter its **Value** in the page (*New Entra client secret*), or put it in `ORION_OIDC_CLIENT_SECRET` (`_FILE`).
 4. *Token configuration* → add the optional `email` claim if the sign-in name is not an e-mail address.
 5. In Orion: provider *Microsoft Entra ID*, **Tenant ID** and **Client ID** (the issuer is built from the tenant).
    The multi-tenant endpoints `common`, `organizations`, `consumers` are refused, and the token's `tid` must be your tenant.
