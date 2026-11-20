@@ -1,4 +1,4 @@
-# Instructions for Scan_TLS contributors
+# Instructions for Orion contributors
 
 This file is the common operating contract for Codex, Claude Code, and human contributors. Keep changes specific to the requested Jira issue and preserve existing behavior outside its scope.
 

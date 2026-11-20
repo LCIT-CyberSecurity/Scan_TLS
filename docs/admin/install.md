@@ -31,7 +31,7 @@ Each mode has its own menu (state, version, branch; `[0]` returns to the mode ch
 ## Standalone mode
 
 ```bash
-git clone <repo> && cd Scan_TLS
+git clone <repo> && cd Orion
 ./bootstrap_orion-deployment.sh --mode standalone install
 ```
 
@@ -54,7 +54,7 @@ Prerequisites: Linux host with Docker, the Compose plugin and `openssl`, outboun
 scan. Python, Nmap, Node.js and PostgreSQL are **never** installed on the host: they live in the images.
 
 ```bash
-git clone <repo> && cd Scan_TLS
+git clone <repo> && cd Orion
 ./bootstrap_orion-deployment.sh --mode webui install
 ```
 

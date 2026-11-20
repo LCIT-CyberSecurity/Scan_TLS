@@ -15,7 +15,7 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: "3.12"}
       - name: Check Python syntax
-        run: python -m compileall -q backend tls_scanner tls_scan.py
+        run: python -m compileall -q backend tls_scanner orion.py tls_scan.py
 
   engine:
     # Full suite belongs to feature/main changes, not automatic integration stages.
