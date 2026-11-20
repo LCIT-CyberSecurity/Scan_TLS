@@ -7,8 +7,9 @@ local accounts, which always work. Priority rule, applied here only:
 2. otherwise the environment (`ORION_OIDC_*`, or the legacy `TLS_SCAN_OIDC_*`), which keeps working untouched after an update;
 3. `provider = "none"` switches the external sign-in off even when the environment still describes one.
 
-Secrets never live in the database: the Entra / generic client secret is `ORION_OIDC_CLIENT_SECRET`, the Google one
-`ORION_GOOGLE_CLIENT_SECRET`, the LDAP service password `ORION_LDAP_BIND_PASSWORD` (each also as `*_FILE`).
+Secrets are never stored in clear: the Entra / generic client secret is `ORION_OIDC_CLIENT_SECRET`, the Google one
+`ORION_GOOGLE_CLIENT_SECRET`, the LDAP service password `ORION_LDAP_BIND_PASSWORD` (each also as `*_FILE`). The Entra client
+secret may instead be entered by an administrator; it is then stored encrypted (see `auth_secrets`) and takes precedence.
 """
 from __future__ import annotations
 
@@ -21,6 +22,7 @@ from sqlalchemy.orm import Session as DbSession
 
 from orion_app.config import Settings
 from orion_app.models import SystemSetting
+from orion_app.services import auth_secrets
 
 PROVIDERS = ("", "none", "entra", "google", "ldap")
 FORBIDDEN_TENANTS = {"common", "organizations", "consumers"}   # multi-tenant endpoints: never a single-tenant restriction
@@ -81,7 +83,7 @@ def effective(db: DbSession, settings: Settings) -> Effective:
     if provider == "entra" and cfg["entra"].get("tenant_id") and cfg["entra"].get("client_id"):
         e = cfg["entra"]
         return Effective(provider="entra", source="database", issuer=e.get("issuer") or entra_issuer(e["tenant_id"], settings.graph_login_url),
-                         client_id=e["client_id"], client_secret=settings.oidc_client_secret, tenant_id=e["tenant_id"],
+                         client_id=e["client_id"], client_secret=auth_secrets.entra_secret(db, settings)[0], tenant_id=e["tenant_id"],
                          default_role=role, auto_provision=auto)
     if provider == "google" and cfg["google"].get("client_id") and cfg["google"].get("allowed_domains"):
         g = cfg["google"]

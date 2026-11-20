@@ -38,7 +38,7 @@ def oidc_steps(cfg: auth_config.Effective, redirect_uri: str, public_base_url: s
     if missing:
         return steps
     steps.append(Step("client secret", "ok" if cfg.client_secret else "fail",
-                      "Set in the server environment." if cfg.client_secret else "No client secret: set ORION_OIDC_CLIENT_SECRET (Entra / generic) or ORION_GOOGLE_CLIENT_SECRET (Google), or the matching *_FILE variable."))
+                      "Set (its value is never shown)." if cfg.client_secret else "No client secret: enter it in Administration -> Authentication (Entra), or set ORION_OIDC_CLIENT_SECRET (Entra / generic) or ORION_GOOGLE_CLIENT_SECRET (Google), or the matching *_FILE variable."))
     if cfg.provider == "entra" and cfg.source == "database" and any(p in ("common", "organizations", "consumers") for p in cfg.issuer.lower().split("/")):
         steps.append(Step("tenant restriction", "fail", "The issuer is a multi-tenant endpoint: it would accept accounts from other tenants. Use your tenant ID."))
     else:

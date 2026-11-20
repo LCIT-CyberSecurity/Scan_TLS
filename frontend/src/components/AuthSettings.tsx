@@ -18,7 +18,8 @@ interface AuthValue {
 interface AuthData {
   stored: AuthValue; redirect_uri: string;
   effective: { provider: string; source: string; issuer: string; client_id: string; default_role: string; auto_provision: boolean; complete: boolean };
-  secrets: { oidc_client_secret: boolean; google_client_secret: boolean; ldap_bind_password: boolean };
+  secrets: { oidc_client_secret: boolean; google_client_secret: boolean; ldap_bind_password: boolean;
+    entra_client_secret: { configured: boolean; source: "webui" | "server" | ""; unreadable: boolean; stored: boolean } };
   environment: { oidc_configured: boolean; oidc_provider: string; auto_provision: boolean | null };
 }
 interface TestStep { step: string; status: "ok" | "fail" | "warn" | "info"; detail: string }
@@ -42,6 +43,8 @@ export function AuthSettings() {
   const [login, setLogin] = useState({ username: "", password: "" });
   const [err, setErr] = useState<unknown>();
   const [saved, setSaved] = useState(false);
+  // Write-only: never prefilled, cleared after each save; empty keeps the current secret.
+  const [entraSecret, setEntraSecret] = useState({ value: "", confirm: "" });
   if (!data) return <ErrorNote error={error} />;
   const v = draft ?? data.stored;
   const set = (patch: Partial<AuthValue>) => { setDraft({ ...v, ...patch }); setSaved(false); };
@@ -79,7 +82,14 @@ export function AuthSettings() {
               <Field label={t("auth.clientId")}><Input value={v.entra.client_id} onChange={(e) => set({ entra: { ...v.entra, client_id: e.target.value } })} /></Field>
               <Field label={t("auth.issuer")} hint={t("auth.issuerHint")}><Input value={v.entra.issuer} onChange={(e) => set({ entra: { ...v.entra, issuer: e.target.value } })} /></Field>
             </div>
-            <SecretState ok={data.secrets.oidc_client_secret} variable="ORION_OIDC_CLIENT_SECRET" />
+            <p className="text-xs text-muted" role="status"><Badge tone={data.secrets.entra_client_secret.configured ? "success" : "danger"}>{data.secrets.entra_client_secret.configured ? t("auth.secretSet") : t("auth.secretMissing")}</Badge>{" "}
+              {data.secrets.entra_client_secret.source === "webui" ? t("auth.entraSecretFromWebui") : data.secrets.entra_client_secret.source === "server" ? t("auth.entraSecretFromServer") : t("auth.entraSecretNone")}</p>
+            {data.secrets.entra_client_secret.unreadable && <Note tone="warning">{t("auth.entraSecretUnreadable")}</Note>}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label={t("auth.entraSecretNew")} hint={t("auth.entraSecretHint")}><Input type="password" autoComplete="new-password" maxLength={512} value={entraSecret.value} onChange={(e) => { setEntraSecret({ ...entraSecret, value: e.target.value }); setSaved(false); }} /></Field>
+              <Field label={t("auth.entraSecretConfirm")}><Input type="password" autoComplete="new-password" maxLength={512} value={entraSecret.confirm} onChange={(e) => { setEntraSecret({ ...entraSecret, confirm: e.target.value }); setSaved(false); }} /></Field>
+            </div>
+            {data.secrets.entra_client_secret.stored && <Button variant="outline" size="sm" onClick={() => { if (window.confirm(t("auth.entraSecretRemoveConfirm"))) void run(async () => { await api("/admin/auth/entra-secret", { method: "DELETE" }); await reload(); }); }}>{t("auth.entraSecretRemove")}</Button>}
           </div>)}
 
         {v.provider === "google" && (
@@ -113,7 +123,12 @@ export function AuthSettings() {
           </div>)}
 
         <div className="flex flex-wrap gap-3">
-          <Button onClick={() => void run(async () => { await api("/admin/auth", { method: "PUT", body: { value: v } }); setDraft(null); setSaved(true); await reload(); await diag.reload(); })}>{t("action.save")}</Button>
+          <Button onClick={() => void run(async () => {
+            if (entraSecret.value !== entraSecret.confirm) throw new Error(t("auth.entraSecretMismatch"));
+            const secret = entraSecret.value ? { entra_client_secret: entraSecret.value, entra_client_secret_confirm: entraSecret.confirm } : {};
+            await api("/admin/auth", { method: "PUT", body: { value: v, ...secret } });
+            setEntraSecret({ value: "", confirm: "" }); setDraft(null); setSaved(true); await reload(); await diag.reload();
+          })}>{t("action.save")}</Button>
           {testable && <Button variant="outline" onClick={() => void run(async () => { setSteps(await api<TestStep[]>(`/admin/auth/test/${testable}`, { method: "POST", body: {} })); await diag.reload(); })}>{t("auth.test")}</Button>}
           {saved && <span className="self-center text-sm text-success">{t("admin.saved")}</span>}
         </div>
