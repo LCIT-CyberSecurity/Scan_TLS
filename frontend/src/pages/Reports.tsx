@@ -41,7 +41,7 @@ export default function Reports({ embedded = false }: { embedded?: boolean }) {
   });
   const columns: Column<Run>[] = [
     { key: "name", header: t("col.name"), values: (r) => [r.name], sort: (r) => r.name, render: (r) => <Link to={`/scans/${r.id}`} className="row-link">{r.name}</Link> },
-    ...(canSeeDefinitions ? [{ key: "definition", header: t("scans.definitions"), values: (r: Run) => [definitionNames.get(r.definition_id ?? "") ?? ""], render: (r: Run) => definitionNames.get(r.definition_id ?? "") ?? "—" } as Column<Run>] : []),
+    ...(canSeeDefinitions ? [{ key: "definition", header: t("scans.definitions"), values: (r: Run) => [definitionNames.get(r.definition_id ?? "") ?? ""], render: (r: Run) => r.definition_id && definitionNames.has(r.definition_id) ? <Link className="ref-link" to={`/scans?tab=scans&definition=${r.definition_id}`}>{definitionNames.get(r.definition_id)}</Link> : "—" } as Column<Run>] : []),
     { key: "date", header: t("col.date"), sort: (r) => r.finished_at ?? "", values: (r) => (r.finished_at ? [new Date(r.finished_at).toLocaleDateString(locale)] : []), render: (r) => formatDate(r.finished_at, locale) },
     { key: "status", header: t("col.status"), values: (r) => [r.status], render: (r) => <StatusBadge status={r.status} /> },
     { key: "nc", header: t("col.nonCompliant"), sort: (r) => r.summary?.non_compliant_endpoints ?? -1, values: (r) => [String(r.summary?.non_compliant_endpoints ?? "—")], render: (r) => r.summary?.non_compliant_endpoints ?? "—" },
