@@ -24,7 +24,7 @@ bootstrap (Standalone / WebUI menu, install/update/backup/restore/reset-admin/re
 * The WebUI does not edit the Standalone YAML configuration; there is no CLI-to-WebUI link (not in V1).
 * CI: `.github/workflows/ci.yml` runs the same commands as the integration VM but **has not been executed on GitHub's runners**.
 * Licence: this repository has no LICENSE file, while code and design tokens were adapted from LCIT-Sign (GPL-3.0):
-  `auth/passwords.py`, `auth/oidc.py`, `frontend/src/styles/tokens.css`, the logos. Decide the licence of Scan_TLS before
+  `auth/passwords.py`, `auth/oidc.py`, `frontend/src/styles/tokens.css`, the logos. Decide the licence of Orion before
   publishing a release (GPL-3.0 is compatible).
 
 * **External API and MCP** (read-only, `docs/integrations`): one active key per user and service, 90-day validity, no scoped or write-capable keys, no per-SI visibility (roles are global, like the WebUI), in-process rate limits (single API process), no report download or scan launch through them. MCP is exercised with the official Python client only.

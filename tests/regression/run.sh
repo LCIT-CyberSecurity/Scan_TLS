@@ -10,6 +10,6 @@ mkdir -p "$tmp/base"
 git archive "$BASE" tls_scanner tls_scan.py | tar -x -C "$tmp/base"
 echo "Baseline engine: $BASE"
 ops/dev/vm.sh >/dev/null
-HOST="${VM_HOST:-vm-integrations}"; DEST="${VM_DEST:-/home/cdev/tlsscan-dev}"
+HOST="${VM_HOST:-vm-integrations}"; DEST="${VM_DEST:-/home/cdev/orion-dev}"
 rsync -rlz --delete "$tmp/base/" "$HOST:$DEST/.regression-base/"
 ssh "$HOST" "cd $DEST && bash tests/regression/compare.sh"

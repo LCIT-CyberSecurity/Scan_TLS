@@ -34,8 +34,7 @@ installations, clients or history rely on stops working.
 Kept on purpose (not product identity): the `tls_scanner` engine package and its `tls_scan` logger, the `tls_scan` scan
 phase, `scan_tls_host*` functions, CycloneDX CBOM property names `scan-tls:*` (an export format consumed by other tools),
 dated audit records such as `docs/dev/dependency-modernization.md`, historical rows in the database (results, notifications,
-audit events) and administrator-entered values that mention the former name. The Git repository `Scan_TLS`, the Jira project
-name and the integration VM paths change only with the external switchover below.
+audit events) and administrator-entered values that mention the former name. The Git repository is now `LCIT-CyberSecurity/Orion` (the former URLs redirect); see the external switchover below.
 
 Deprecation plan: the aliases (`tls_scan_app`, `tls_scan.py`, `bootstrap_tls-scan-deployment.sh`, `TLS_SCAN_*`, MCP
 `tls_scan_*` tools, legacy key prefixes and session cookie) stay for at least one major version; they will be removed only
@@ -92,22 +91,22 @@ Once Orion has been accepted, the TLS Scan volumes can be removed **manually**, 
 A backup archive of a TLS Scan installation can also be restored into a new Orion installation with the usual `restore`
 command: objects are recreated under the `orion` role, and the API applies the pending migrations at start.
 
-## External switchover (owner-coordinated, not automated)
+## External switchover (owner-coordinated)
 
-These operations change identities outside the repository. They are prepared here and executed only with the owner, in this
-order, each with its rollback:
+These operations change identities outside the repository. They were executed with the owner's authorization on
+20/11/2026, in this order, each with its rollback:
 
-| # | Operation | Preparation / verification | Rollback |
+| # | Operation | Status (20/11/2026) | Rollback |
 |---|---|---|---|
-| 1 | Merge the rebranding through `_SANDBOX` → `_EXPERIMENT` → `_UNSTABLE` → `_TESTING` → `main` | one PR per stage, as for any change | revert PR |
-| 2 | Integration VM: `update` the `tls-scan` stack from `/home/cdev/tlsscan-dev` (in-place upgrade, names pinned) | backup first; check health, sign-in, a scan | restore the backup with the previous image tag |
-| 3 | Integration VM: `migrate-orion` (maintenance window) | rehearsed on an isolated clone (see Jira LST-29) | `rollback-orion` |
-| 4 | Rename the GitHub repository `LCIT-CyberSecurity/Scan_TLS` → `LCIT-CyberSecurity/Orion` | GitHub keeps redirects for clones, PRs and links; update `git remote set-url` on the VM and workstations, `ops/dev/vm.sh` / `tests/regression/run.sh` defaults if the VM directory is renamed, branch protections, GitHub App installation, Actions secrets/variables, badges | rename back (redirects follow) |
-| 5 | Optionally add `orion.py` to the `compileall` step of `.github/workflows/ci.yml` (it already passes: `tls_scan.py` is kept) | CI change: owner approval | revert |
-| 6 | Rename the Jira project *LCIT Scan TLS* → *Orion* (display name only) | the key `LST` and every `LST-n`, history, links and PR references stay | rename back |
-| 7 | n8n: multi-project registry, allowlist, credentials, notifications, repository name | update after step 4; test a dry run without triggering a wave | previous workflow version |
-| 8 | Integration VM directory `/home/cdev/tlsscan-dev` → e.g. `/home/cdev/orion` | only together with the default `VM_DEST` of `ops/dev/vm.sh` and `tests/regression/run.sh`, after checking `rsync --delete` targets | move back |
-| 9 | After acceptance: remove the TLS Scan volumes; later major version: remove the aliases | last verified backup; announcement | restore the backup |
+| 1 | Merge the rebranding into `_SANDBOX` (PR #52, #53, #54) | done: `_SANDBOX` = `c466b2a`; promotion to `_EXPERIMENT` → `main` follows the usual one-step PRs | revert PR |
+| 2 | Integration VM: `update` the deployed stack in place (names pinned, verified backup) | done with the former script name; database at `0024`, row counts unchanged | restore the backup with the previous code (`releases/code-before-orion-*.tar.gz`) |
+| 3 | Integration VM: `migrate-orion` | done: project, database and role `orion`; 47 tables and 198 data entries identical; `tls-scan_*` volumes kept | `rollback-orion` |
+| 4 | GitHub repository `LCIT-CyberSecurity/Scan_TLS` → `LCIT-CyberSecurity/Orion` | done: same id (779231149), PRs, history and branch ruleset kept; old URLs redirect (web, API, git) | rename back (redirects follow) |
+| 5 | CI: `orion.py` in the `compileall` step of `.github/workflows/ci.yml` | done in this change | revert |
+| 6 | Jira project *LCIT Scan TLS* → *Orion* (display name only, key `LST` kept) | **manual**: Project settings → Details → Name; not available through the automation API | rename back |
+| 7 | n8n / runner: multi-project registry, allowlist, WF-08 notifications | verified unchanged: they use the stable identifier `LCIT-CyberSecurity/Scan_TLS` and the repository id, both still resolved by GitHub (checked from the runner). Renaming that identifier requires a coordinated registry + WF-08 + runner image change in the automation platform | n/a |
+| 8 | Integration VM directories: deployment `/home/cdev/tls-scan` → `/home/cdev/orion`, development sync `/home/cdev/tlsscan-dev` → `/home/cdev/orion-dev` | done, each former path kept as a symbolic link; `VM_DEST` defaults updated in this change | move back, remove the links |
+| 9 | After acceptance: remove the `tls-scan_*` volumes and the rehearsal `lst29*` volumes; later major version: remove the aliases | owner decision; last verified backup first | restore the backup |
 
 ## Verification references
 

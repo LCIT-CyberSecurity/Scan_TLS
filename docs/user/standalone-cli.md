@@ -245,13 +245,13 @@ Example `crontab` entries:
 
 ```cron
 # Daily external TLS scan at 02:00
-0 2 * * * cd /home/cdev/Git/Scan_TLS && .venv/bin/python orion.py --config config/scans/external-standard.yaml >> logs/cron-external-standard.log 2>&1
+0 2 * * * cd /opt/orion && .venv/bin/python orion.py --config config/scans/external-standard.yaml >> logs/cron-external-standard.log 2>&1
 
 # Weekly PQC scan every Monday at 03:00
-0 3 * * 1 cd /home/cdev/Git/Scan_TLS && .venv/bin/python orion.py --config config/scans/external-pqc.yaml >> logs/cron-external-pqc.log 2>&1
+0 3 * * 1 cd /opt/orion && .venv/bin/python orion.py --config config/scans/external-pqc.yaml >> logs/cron-external-pqc.log 2>&1
 
 # Monthly internal scan on the first day of the month at 04:00
-0 4 1 * * cd /home/cdev/Git/Scan_TLS && .venv/bin/python orion.py --config config/scans/internal-standard.yaml >> logs/cron-internal-standard.log 2>&1
+0 4 1 * * cd /opt/orion && .venv/bin/python orion.py --config config/scans/internal-standard.yaml >> logs/cron-internal-standard.log 2>&1
 ```
 
 Operational recommendations for cron jobs:
