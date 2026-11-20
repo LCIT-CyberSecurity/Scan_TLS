@@ -1142,6 +1142,12 @@ restart_legacy() {
     start_stack && api_health
 }
 
+# Failure before .env is switched: TLS Scan is restarted unchanged.
+migration_abort() {
+    step "Redémarrage de TLS Scan" start_stack || die "$1, et TLS Scan ne redémarre pas : sauvegarde ${MIGRATION_ARCHIVE:-non prise}."
+    die "$1 : TLS Scan redémarré, rien n'a été modifié."
+}
+
 web_do_migrate_orion() {
     banner
     say "${BOLD}MIGRATION VERS ORION${RESET} (projet, base PostgreSQL et volumes)"
@@ -1166,16 +1172,21 @@ web_do_migrate_orion() {
     MIGRATION_WORK="$(mktemp -d)"; chmod 700 "$MIGRATION_WORK"
     # shellcheck disable=SC2064
     trap "rm -rf '$MIGRATION_WORK'; rm -f '$LOG'" EXIT
-    begin_steps 13
-    step "Sauvegarde vérifiée de TLS Scan" migration_backup || die "Sauvegarde impossible : rien n'a été modifié."
+    begin_steps 14
+    # Nothing may write between the backup, the inventory and the copy: the application is stopped first, PostgreSQL
+    # alone keeps running for the dump. Until .env is switched, any failure restarts TLS Scan as it was.
+    # Images first, while TLS Scan still serves: rebuilding a tag leaves the running containers alone.
+    step "Construction des images Orion" build_images || die "Construction impossible : TLS Scan reste en service, rien n'a été modifié."
+    step "Arrêt de l'application TLS Scan (PostgreSQL conservé)" dc stop webui api worker scheduler \
+        || { start_stack >/dev/null 2>&1; die "Arrêt impossible : TLS Scan redémarré, rien n'a été modifié."; }
+    step "Sauvegarde vérifiée de TLS Scan" migration_backup || migration_abort "Sauvegarde impossible"
     say "    $MIGRATION_ARCHIVE"
-    step "Inventaire des données TLS Scan" migration_inventory || die "Inventaire impossible : rien n'a été modifié."
+    step "Inventaire des données TLS Scan" migration_inventory || migration_abort "Inventaire impossible"
     sed -n '$p' "$LOG" | sed 's/^/    /'
-    step "Lecture de la sauvegarde" migration_extract || die "Sauvegarde illisible : rien n'a été modifié."
-    step "Arrêt de TLS Scan (volumes conservés)" dc stop || die "Arrêt impossible : rien n'a été modifié."
+    step "Lecture de la sauvegarde" migration_extract || migration_abort "Sauvegarde illisible"
+    step "Arrêt de PostgreSQL TLS Scan (volumes conservés)" dc stop || migration_abort "Arrêt impossible"
     if step "Configuration Orion (.env copié)" migration_switch_env \
         && step "Validation Docker Compose" check_compose \
-        && step "Construction des images" build_images \
         && step "Création des volumes et de la base Orion" migration_create \
         && step "Restauration des données dans Orion" migration_restore \
         && step "Contrôle d'intégrité (comptages)" migration_compare \

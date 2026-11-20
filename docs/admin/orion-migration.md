@@ -62,17 +62,19 @@ kept, and restored automatically if Compose rejects the result. Delete the copy 
 Renaming a live database or volume in place is not done. `migrate-orion` copies instead, so that the TLS Scan
 installation stays intact and is the rollback:
 
-1. verified backup of the TLS Scan installation (`pg_dump -Fc` + data volume, SHA-256) and per-table row counts;
-2. TLS Scan is stopped (containers kept, **volumes untouched**); `.env` is copied to `.env.pre-orion-<UTC>`;
-3. `.env` gets `ORION_PROJECT=orion`, `ORION_DB_NAME=orion`, `ORION_DB_USER=orion`; the images are built; new volumes
-   `orion_pgdata` and `orion_data` are created and PostgreSQL initialised with the **same** protected password files;
+1. the Orion images are built while TLS Scan still serves (no downtime yet);
+2. the TLS Scan application (webui, api, worker, scheduler) is stopped, PostgreSQL alone keeps running, so that nothing
+   is written between the backup and the copy; verified backup (`pg_dump -Fc` + data volume, SHA-256) and per-table row
+   counts; PostgreSQL is then stopped too (containers kept, **volumes untouched**); `.env` is copied to `.env.pre-orion-<UTC>`;
+3. `.env` gets `ORION_PROJECT=orion`, `ORION_DB_NAME=orion`, `ORION_DB_USER=orion`; new volumes `orion_pgdata` and
+   `orion_data` are created and PostgreSQL initialised with the **same** protected password files;
 4. the dump is restored as role `orion` (`--no-owner --no-privileges`) and the data volume copied;
 5. the row counts of every table and the number of data entries must be identical **before Orion starts** (its scheduler may
    legitimately add rows afterwards); then Orion starts, migrations reach head and the five services are healthy.
 
-Any failure from step 3 on stops Orion, restores `.env` byte for byte and restarts TLS Scan; the Orion volumes are kept for
+A failure in step 2 restarts TLS Scan unchanged. Any failure from step 3 on stops Orion, restores `.env` byte for byte and restarts TLS Scan; the Orion volumes are kept for
 analysis. The command refuses to run if an `orion` project already exists. Expect a service interruption from step 2 to the
-end (backup + restore time); run it in a maintenance window.
+end (backup + restore time, no image build); run it in a maintenance window.
 
 ```bash
 ./bootstrap_orion-deployment.sh backup                  # your own backup first, kept outside the host
