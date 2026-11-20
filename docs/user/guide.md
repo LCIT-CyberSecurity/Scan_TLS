@@ -31,6 +31,17 @@ Everyone signed in can read shared results; only an object's owner (or an operat
    scope, profile or policy versions differ.
 7. **Schedules**: once, daily, weekly, monthly, or cron (≥ 5 min). Scheduled scans use the latest published policy
    versions. See next run, last result, and the history (including skipped occurrences and why).
+   The scheduled task's name opens its **scan definition** (targets, profile, policies…) in the usual edit dialog; frequency,
+   time zone and activation stay in *Schedules*. Its targets and groups, listed underneath, open their own record. A DNS
+   discovery is configured in the schedule itself and has no other screen.
+
+## Links between screens
+Business references open the record they name instead of being plain text: a scheduled task or a definition name in
+*Scans → Reports* opens the scan definition; a target or group opens it in *Targets*. A link only opens a record —
+nothing is changed until you save — and the usual rights apply: a record you may not edit is shown read-only with a
+message, and a deleted or inaccessible one is reported as such. Links can be bookmarked or shared
+(`/scans?tab=scans&definition=…`, `/targets?target=…`, `/targets?group=…`); closing the dialog or the browser's Back
+button returns to where you came from.
 
 ## Equivalent scans are shared
 If someone already runs an identical scan (same effective targets/ports, profile, policy versions), your request

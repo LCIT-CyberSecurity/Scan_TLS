@@ -2,7 +2,7 @@ import { Pencil, Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/client";
-import type { Definition, Schedule } from "../api/types";
+import type { Definition, Group, Schedule, Target } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { ConfirmButton, Empty, ErrorNote, PageHeader, StatusBadge, useLoad } from "../components/common";
 import { Badge } from "../components/ui/badge";
@@ -94,11 +94,30 @@ export default function Schedules() {
   const { user, atLeast } = useAuth();
   const { data, reload, error } = useLoad(() => api<Schedule[]>("/schedules"), [], 10000);
   const { data: defs } = useLoad(() => api<Definition[]>("/scan-definitions"));
+  const { data: targets } = useLoad(() => api<Target[]>("/targets"));
+  const { data: groups } = useLoad(() => api<Group[]>("/target-groups"));
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Schedule | null>(null);
   const [detail, setDetail] = useState<Schedule | null>(null);
   const [err, setErr] = useState<unknown>();
-  const name = (s: Schedule) => s.task_type === "dns_discovery" ? `${t("sched.task.dns")} · ${s.task_config?.domain ?? "—"}` : defs?.find((d) => d.id === s.definition_id)?.name ?? s.definition_id?.slice(0, 8) ?? "—";
+  // The task opens its scan definition (frequency, time zone and activation stay here); its targets and groups open their
+  // record. A DNS discovery is configured in the schedule itself, so it has no other screen to open.
+  const task = (s: Schedule) => {
+    if (s.task_type === "dns_discovery") return `${t("sched.task.dns")} · ${s.task_config?.domain ?? "—"}`;
+    const definition = defs?.find((d) => d.id === s.definition_id);
+    if (!definition) return <>{s.definition_id?.slice(0, 8) ?? "—"} <span className="text-xs font-normal text-muted">({t("sched.definitionMissing")})</span></>;
+    const refs = [
+      ...(definition.target_ids ?? []).map((id) => ({ key: `t-${id}`, to: `/targets?target=${id}`, label: targets?.find((x) => x.id === id)?.name || targets?.find((x) => x.id === id)?.value })),
+      ...(definition.group_ids ?? []).map((id) => ({ key: `g-${id}`, to: `/targets?group=${id}`, label: groups?.find((g) => g.id === id)?.name && `${t("sched.group")} ${groups?.find((g) => g.id === id)?.name}` })),
+    ].filter((ref) => ref.label);
+    return <>
+      <Link className="ref-link" to={`/scans?tab=scans&definition=${definition.id}`}>{definition.name}</Link>
+      {refs.length > 0 && <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs font-normal" aria-label={t("def.targets")}>
+        {refs.slice(0, 5).map((ref) => <Link key={ref.key} className="ref-link" to={ref.to}>{ref.label}</Link>)}
+        {refs.length > 5 && <Link className="ref-link" to={`/scans?tab=scans&definition=${definition.id}`}>{t("sched.moreTargets", { n: refs.length - 5 })}</Link>}
+      </div>}
+    </>;
+  };
   return (
     <>
       <PageHeader title={t("nav.schedules")} subtitle={atLeast("OPERATOR") ? t("sched.allSubtitle") : t("sched.mineSubtitle")} actions={<Button onClick={() => setOpen(true)} disabled={!defs || (!defs.length && !atLeast("OPERATOR"))}><Plus />{t("sched.new")}</Button>} />
@@ -106,7 +125,7 @@ export default function Schedules() {
       <Card>{data?.length ? (
         <Table><thead><tr><Th>{t("sched.taskType")}</Th><Th>{t("sched.frequency")}</Th><Th>{t("sched.next")}</Th><Th>{t("sched.last")}</Th><Th>{t("col.status")}</Th><Th /></tr></thead>
           <tbody>{data.map((s) => (
-            <tr key={s.id}><Td className="font-medium">{name(s)}</Td><Td>{t(`sched.${s.kind}` as never)}</Td><Td>{formatDate(s.next_run_at, locale)}</Td>
+            <tr key={s.id}><Td className="font-medium">{task(s)}</Td><Td>{t(`sched.${s.kind}` as never)}</Td><Td>{formatDate(s.next_run_at, locale)}</Td>
               <Td>{s.task_type === "dns_discovery" ? s.last_discovery ? <Link to={`/targets?discovery=${s.last_discovery.id}`} className="row-link"><Badge tone={s.last_discovery.status === "done" ? "success" : "warning"}>{t(`dd.status.${s.last_discovery.status}` as never)}</Badge></Link> : "—" : s.last_run ? <Link to={`/scans/${s.last_run.id}`} className="row-link flex items-center gap-2"><StatusBadge status={s.last_run.status as never} />{formatDuration(s.last_run.duration_seconds)}</Link> : "—"}</Td>
               <Td><Badge tone={s.active ? "success" : "neutral"}>{s.active ? t("sched.active") : t("sched.inactive")}</Badge></Td>
               <Td><div className="flex justify-end gap-2">
