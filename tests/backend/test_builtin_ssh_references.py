@@ -1,4 +1,4 @@
-"""LST-38: built-in "SSH Baseline" policy and "Standard (TLS, IPsec, SSH)" generic profile, seeded like ANSSI / Standard."""
+"""LST-38: built-in "ANSSI SSH" policy and "Standard (TLS, IPsec, SSH)" generic profile, seeded like ANSSI / Standard."""
 from __future__ import annotations
 
 import uuid
@@ -23,30 +23,38 @@ OPENSSH_10_DEFAULT = {
 
 
 def baseline() -> dict:
-    return yaml.safe_load((ROOT / "config/encryption_policy/ssh_baseline_policy.yaml").read_text(encoding="utf-8"))["ssh"]
+    return yaml.safe_load((ROOT / "config/encryption_policy/anssi_ssh_encryption_policy.yaml").read_text(encoding="utf-8"))["ssh"]
 
 
 def observation(**algorithms) -> dict:
     return {"status": "observed", "algorithms": {**OPENSSH_10_DEFAULT, **algorithms}, "rsa_key_sizes": [3072]}
 
 
-def test_baseline_file_is_a_valid_ssh_policy_without_weak_algorithms():
+def test_policy_file_follows_the_anssi_choices_of_the_tls_policy():
     from orion_app.services.ssh_audit import validate_ssh_policy
     policy = baseline()
     validate_ssh_policy(policy)
-    allowed = " ".join(name for key, names in policy.items() if key != "minimum_rsa_bits" for name in names)
-    for weak in ("sha1", "-cbc", "3des", "ssh-rsa ", "ssh-dss", "umac-64", "group1-", "group14-sha1", "arcfour"):
-        assert weak not in allowed + " ", weak
-    assert policy["minimum_rsa_bits"] >= 2048
+    allowed = " ".join(name for key, names in policy.items() if key != "minimum_rsa_bits" for name in names) + " "
+    for weak in ("sha1", "md5", "umac", "-cbc", "3des", "arcfour", "ssh-rsa ", "ssh-dss", "group1-", "group14-"):
+        assert weak not in allowed, weak
+    for outside in ("curve25519", "ed25519", "sntrup", "mlkem"):                   # not among the ANSSI recommendations
+        assert outside not in allowed, outside
+    assert policy["allowed_protocols"] == ["SSH-2.0"]
+    tls = yaml.safe_load((ROOT / "config/encryption_policy/anssi_encryption_policy.yaml").read_text(encoding="utf-8"))["tls"]
+    assert policy["minimum_rsa_bits"] == tls["minimum_rsa_bits"]                   # same RSA floor as the ANSSI TLS policy
 
 
-def test_baseline_on_real_openssh_10_flags_sha1_macs_and_accepts_a_hardened_server():
+def test_default_openssh_10_is_non_compliant_and_the_documented_hardening_is_compliant():
     from orion_app.services.ssh_audit import evaluate_ssh_policy
     policy = baseline()
-    assert evaluate_ssh_policy(observation(), policy) == "non_compliant"           # default MACs still offer hmac-sha1 / umac-64
-    hardened_macs = [m for m in OPENSSH_10_DEFAULT["mac"] if "sha1" not in m and "umac-64" not in m]
-    assert evaluate_ssh_policy(observation(mac=hardened_macs), policy) == "compliant"   # markers ext-info-s / kex-strict accepted
-    assert evaluate_ssh_policy({**observation(mac=hardened_macs), "rsa_key_sizes": [1024]}, policy) == "non_compliant"
+    assert evaluate_ssh_policy(observation(), policy) == "non_compliant"           # X25519 / ML-KEM, Ed25519, SHA-1 and UMAC offered
+    hardened = observation(
+        key_exchange=["ecdh-sha2-nistp521", "ecdh-sha2-nistp384", "ecdh-sha2-nistp256", "diffie-hellman-group-exchange-sha256",
+                      "ext-info-s", "kex-strict-s-v00@openssh.com"],
+        host_key=["rsa-sha2-512", "rsa-sha2-256", "ecdsa-sha2-nistp256"],
+        mac=["hmac-sha2-512-etm@openssh.com", "hmac-sha2-256-etm@openssh.com", "hmac-sha2-512", "hmac-sha2-256"])
+    assert evaluate_ssh_policy(hardened, policy) == "compliant"
+    assert evaluate_ssh_policy({**hardened, "rsa_key_sizes": [1024]}, policy) == "non_compliant"
     assert evaluate_ssh_policy({"status": "error", "algorithms": {}}, policy) == "indeterminate"   # never compliant without evidence
 
 
@@ -60,7 +68,7 @@ def test_generic_profile_content_is_valid_and_reuses_the_standard_tls_settings()
 
 # ---------- seeded and usable through the API (test stack) ----------
 def test_references_are_published_at_start_and_allow_a_tls_ssh_definition(admin, catalog):
-    ssh = [p for p in admin.get("/api/policies", params={"technology": "ssh"}).json() if p["name"] == "SSH Baseline"]
+    ssh = [p for p in admin.get("/api/policies", params={"technology": "ssh"}).json() if p["name"] == "ANSSI SSH"]
     generic = [p for p in admin.get("/api/profiles", params={"technology": "generic"}).json() if p["name"] == "Standard (TLS, IPsec, SSH)"]
     assert len(ssh) == 1 and len(generic) == 1
     assert any(v["status"] == "published" for v in ssh[0]["versions"]) and any(v["status"] == "published" for v in generic[0]["versions"])

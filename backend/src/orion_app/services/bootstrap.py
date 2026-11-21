@@ -28,8 +28,8 @@ PROFILE_DESCRIPTION = "Standard scan profile: engine defaults (standard ciphers,
 ANSSI_PROFILE_FILE = ANSSI_POLICY_FILE.parents[1] / "config.yaml"  # scan profile: the engine's `defaults` section
 POLICY_FIELDS = ("allowed_versions", "allowed_cipher_algorithms", "allowed_signature_hashes", "minimum_rsa_bits")
 # Built-in references for multi-technology scans (LST-38): an SSH policy and a generic profile combining TLS, IPsec and SSH.
-SSH_POLICY_NAME = "SSH Baseline"
-SSH_POLICY_FILE = ANSSI_POLICY_FILE.parent / "ssh_baseline_policy.yaml"
+SSH_POLICY_NAME = "ANSSI SSH"
+SSH_POLICY_FILE = ANSSI_POLICY_FILE.parent / "anssi_ssh_encryption_policy.yaml"
 GENERIC_PROFILE_NAME = "Standard (TLS, IPsec, SSH)"
 GENERIC_PROFILE_DESCRIPTION = ("Multi-technology profile: the Standard TLS settings, IKEv2 on UDP 500/4500 and a quick SSH audit on TCP 22. "
                                "Tick the technologies in each scan definition.")
@@ -55,7 +55,7 @@ def ensure_builtin_policies(db: DbSession, path: Path = ANSSI_POLICY_FILE) -> No
 
 
 def ensure_builtin_ssh_policy(db: DbSession, path: Path = SSH_POLICY_FILE) -> None:
-    """Create the "SSH Baseline" policy (technology ssh, published v1) once, from config/. Never overwritten, never recreated
+    """Create the "ANSSI SSH" policy (technology ssh, published v1) once, from config/. Never overwritten, never recreated
     if renamed, archived or edited, exactly like the ANSSI policy."""
     if not path.is_file() or db.execute(select(Policy).where(Policy.name == SSH_POLICY_NAME)).scalar_one_or_none():
         return
@@ -65,7 +65,7 @@ def ensure_builtin_ssh_policy(db: DbSession, path: Path = SSH_POLICY_FILE) -> No
         content = dict(data["ssh"])
         validate_ssh_policy(content)
     except (OSError, yaml.YAMLError, KeyError, TypeError, ValueError):
-        logger.warning("SSH baseline policy file %s is unreadable; not seeded", path)
+        logger.warning("ANSSI SSH policy file %s is unreadable; not seeded", path)
         return
     policy = Policy(name=SSH_POLICY_NAME, description=" ".join(str(data.get("description", "")).split()), technology="ssh")
     db.add(policy)
