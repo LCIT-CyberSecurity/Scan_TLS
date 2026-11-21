@@ -2,9 +2,15 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 from typing import Any
+
+ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;]*m")
+# ssh-audit failures meaning nothing speaks SSH on the port (closed, filtered, unreachable or another protocol).
+# The caller reports these as "no SSH service", not as a probe error; DNS failures stay errors.
+NO_SSH_SERVICE_MESSAGES = ("cannot connect to", "did not receive banner")
 
 
 def validate_ssh_profile(content: dict[str, Any]) -> None:
@@ -153,8 +159,9 @@ def audit_target(target: str, port: int, timeout_seconds: int = 2) -> dict[str, 
     try:
         parsed = json.loads(output)
     except json.JSONDecodeError:
-        err = result.stderr[:1000]
-        status = "filtered" if any(term in err.lower() for term in ("refused", "unreachable", "no route")) else "error"
+        # ssh-audit prints its "[exception] …" line on stdout, in colour, instead of JSON
+        err = ANSI_ESCAPE.sub("", f"{result.stdout}\n{result.stderr}").strip()[:1000]
+        status = "no_service" if any(term in err for term in NO_SSH_SERVICE_MESSAGES) else "error"
         return {"status": status, "evidence": {"engine": "ssh-audit", "exit_code": result.returncode, "error": err}}
     if isinstance(parsed, list):
         parsed = parsed[0] if parsed else {}

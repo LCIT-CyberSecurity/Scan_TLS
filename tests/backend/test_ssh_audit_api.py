@@ -40,13 +40,13 @@ def test_ssh_only_scan_uses_ssh_policy_and_separate_results(operator, user):
     run = wait_final(user, started.json()["run_id"], timeout=30)
     assert run["control_type"] == "ssh"
     assert run["endpoints"] == []
-    assert len(run["ssh_observations"]) == 1
-    assert run["ssh_observations"][0]["port"] == 22
-    assert run["ssh_observations"][0]["status"] in {"observed", "filtered", "timeout", "error"}
+    # lab-tls runs no SSH server: a port nobody answers on is not reported, never as a probe error
+    assert run["status"] == "completed", run
+    assert run["ssh_observations"] == []
     assert any(report["format"] == "ssh_html" for report in run["reports"])
     public_result = user.get(f"/api/results/{run['id']}")
     assert public_result.status_code == 200, public_result.text
-    assert len(public_result.json()["ssh_observations"]) == 1
+    assert public_result.json()["ssh_observations"] == []
     html_report = user.get(f"/api/scan-runs/{run['id']}/reports/ssh_html", params={"inline": "true"})
     assert html_report.status_code == 200
     assert "SSH audit results" in html_report.text
