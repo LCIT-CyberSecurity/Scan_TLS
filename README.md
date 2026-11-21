@@ -47,7 +47,7 @@ and [secret handling](docs/admin/secrets.md). Never commit credentials or paste 
 - Users: [user guide](docs/user/guide.md) · [API results](docs/user/api-results.md)
 - Administrators: [installation](docs/admin/install.md) · [operations](docs/admin/operations.md) ·
   [authentication](docs/admin/authentication.md) · [exposure risk operations](docs/admin/exposure-risk-operations.md)
-- Architecture: [overview](docs/architecture/overview.md) · [data model](docs/architecture/data-model.md)
+- Architecture: [overview](docs/architecture/overview.md) · [data model](docs/architecture/data-model.md) · [secrets](docs/architecture/secrets.md)
 - Development: [contributing](docs/dev/contributing.md) · [tests](docs/dev/testing.md) · [CrashTest](docs/dev/crashtest.md)
 - [Limitations and V2](docs/limitations.md)
 
