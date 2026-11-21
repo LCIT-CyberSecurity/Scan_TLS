@@ -1,0 +1,42 @@
+name: anssi_ssh_encryption_policy
+version: "1.0"
+description: >-
+  ANSSI SSH encryption policy template, the SSH counterpart of the ANSSI TLS policy. SSHv2 only; SHA-2 only (no
+  SHA-1, MD5 or UMAC); AES-GCM, ChaCha20-Poly1305 and AES-CTR encryption (no CBC, 3DES or RC4); ECDH on NIST curves or
+  Diffie-Hellman of at least 2048 bits for key exchange; ECDSA or RSA-SHA2 host keys, RSA of at least 2048 bits (no DSA).
+  Algorithms not explicitly allowed are considered forbidden.
+source: ANSSI (ANSSI-BP-007 Recommandations pour un usage sécurisé d'(Open)SSH; Guide de sélection d'algorithmes cryptographiques)
+
+# Names as ssh-audit reports them (checked against OpenSSH 10.0, Debian 13).
+ssh:
+  allowed_protocols:
+    - SSH-2.0
+  allowed_kex:
+    - ecdh-sha2-nistp256
+    - ecdh-sha2-nistp384
+    - ecdh-sha2-nistp521
+    - diffie-hellman-group-exchange-sha256
+    - diffie-hellman-group16-sha512
+    - diffie-hellman-group18-sha512
+    # protocol markers advertised in the key-exchange list, not algorithms (extension negotiation, Terrapin protection)
+    - ext-info-s
+    - kex-strict-s-v00@openssh.com
+  allowed_encryption:
+    - aes256-gcm@openssh.com
+    - aes128-gcm@openssh.com
+    - chacha20-poly1305@openssh.com
+    - aes256-ctr
+    - aes192-ctr
+    - aes128-ctr
+  allowed_macs:
+    - hmac-sha2-512-etm@openssh.com
+    - hmac-sha2-256-etm@openssh.com
+    - hmac-sha2-512
+    - hmac-sha2-256
+  allowed_host_keys:
+    - ecdsa-sha2-nistp256
+    - ecdsa-sha2-nistp384
+    - ecdsa-sha2-nistp521
+    - rsa-sha2-512
+    - rsa-sha2-256
+  minimum_rsa_bits: 2048

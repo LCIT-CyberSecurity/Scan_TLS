@@ -27,6 +27,14 @@ STANDARD_PROFILE_NAME = "Standard"
 PROFILE_DESCRIPTION = "Standard scan profile: engine defaults (standard ciphers, certificate trust and revocation checks)."
 ANSSI_PROFILE_FILE = ANSSI_POLICY_FILE.parents[1] / "config.yaml"  # scan profile: the engine's `defaults` section
 POLICY_FIELDS = ("allowed_versions", "allowed_cipher_algorithms", "allowed_signature_hashes", "minimum_rsa_bits")
+# Built-in references for multi-technology scans (LST-38): an SSH policy and a generic profile combining TLS, IPsec and SSH.
+SSH_POLICY_NAME = "ANSSI SSH"
+SSH_POLICY_FILE = ANSSI_POLICY_FILE.parent / "anssi_ssh_encryption_policy.yaml"
+GENERIC_PROFILE_NAME = "Standard (TLS, IPsec, SSH)"
+GENERIC_PROFILE_DESCRIPTION = ("Multi-technology profile: the Standard TLS settings, IKEv2 on UDP 500/4500 and a quick SSH audit on TCP 22. "
+                               "Tick the technologies in each scan definition.")
+GENERIC_IPSEC = {"versions": ["IKEv2"], "ports": [500, 4500], "nat_t": True, "timeout_ms": 1000, "retries": 0, "aggressive_mode": False}
+GENERIC_SSH = {"ports": [22], "timeout_seconds": 2, "preset": "quick", "max_targets": 256, "retries": 0}
 
 
 def ensure_builtin_policies(db: DbSession, path: Path = ANSSI_POLICY_FILE) -> None:
@@ -44,6 +52,46 @@ def ensure_builtin_policies(db: DbSession, path: Path = ANSSI_POLICY_FILE) -> No
     db.flush()
     db.add(PolicyVersion(policy_id=policy.id, version=1, status=PUBLISHED, content=content, published_at=datetime.now(UTC)))
     audit.record(db, "policy.builtin_seeded", actor_label="system", resource_type="policy", resource_id=str(policy.id), detail={"name": ANSSI_POLICY_NAME})
+
+
+def ensure_builtin_ssh_policy(db: DbSession, path: Path = SSH_POLICY_FILE) -> None:
+    """Create the "ANSSI SSH" policy (technology ssh, published v1) once, from config/. Never overwritten, never recreated
+    if renamed, archived or edited, exactly like the ANSSI policy."""
+    if not path.is_file() or db.execute(select(Policy).where(Policy.name == SSH_POLICY_NAME)).scalar_one_or_none():
+        return
+    from orion_app.services.ssh_audit import validate_ssh_policy
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+        content = dict(data["ssh"])
+        validate_ssh_policy(content)
+    except (OSError, yaml.YAMLError, KeyError, TypeError, ValueError):
+        logger.warning("ANSSI SSH policy file %s is unreadable; not seeded", path)
+        return
+    policy = Policy(name=SSH_POLICY_NAME, description=" ".join(str(data.get("description", "")).split()), technology="ssh")
+    db.add(policy)
+    db.flush()
+    db.add(PolicyVersion(policy_id=policy.id, version=1, status=PUBLISHED, content=content, published_at=datetime.now(UTC)))
+    audit.record(db, "policy.builtin_seeded", actor_label="system", resource_type="policy", resource_id=str(policy.id), detail={"name": SSH_POLICY_NAME})
+
+
+def ensure_builtin_generic_profile(db: DbSession, path: Path = ANSSI_PROFILE_FILE) -> None:
+    """Create the "Standard (TLS, IPsec, SSH)" generic profile (published v1) once: its TLS section is the Standard profile's
+    content, from the same config/config.yaml defaults. Never overwritten, never recreated if renamed, archived or edited."""
+    if not path.is_file() or db.execute(select(ScanProfile).where(ScanProfile.name == GENERIC_PROFILE_NAME)).scalar_one_or_none():
+        return
+    from orion_app.services.planner import PlanError, validate_generic_profile_content
+    try:
+        defaults = yaml.safe_load(path.read_text(encoding="utf-8"))["defaults"]
+        content = {"tls": {"scan": defaults["scan"], "checks": defaults["checks"]}, "ipsec": {"ike": dict(GENERIC_IPSEC)}, "ssh": dict(GENERIC_SSH)}
+        validate_generic_profile_content(content)
+    except (OSError, yaml.YAMLError, KeyError, TypeError, ValueError, PlanError):
+        logger.warning("Scan defaults in %s are unreadable; multi-technology profile not seeded", path)
+        return
+    profile = ScanProfile(name=GENERIC_PROFILE_NAME, description=GENERIC_PROFILE_DESCRIPTION, technology="generic")
+    db.add(profile)
+    db.flush()
+    db.add(ScanProfileVersion(profile_id=profile.id, version=1, status=PUBLISHED, content=content, published_at=datetime.now(UTC)))
+    audit.record(db, "profile.builtin_seeded", actor_label="system", resource_type="profile", resource_id=str(profile.id), detail={"name": GENERIC_PROFILE_NAME})
 
 
 def ensure_builtin_profiles(db: DbSession, path: Path = ANSSI_PROFILE_FILE) -> None:
@@ -95,6 +143,8 @@ def ensure_bootstrap(db: DbSession, settings: Settings) -> None:
         db.add(admin)
         audit.record(db, "user.bootstrap_admin", actor_label="system", resource_type="user", detail={"username": admin.subject})
     ensure_builtin_policies(db)
+    ensure_builtin_ssh_policy(db)
     ensure_builtin_profiles(db)
+    ensure_builtin_generic_profile(db)
     db.commit()
 

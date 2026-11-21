@@ -4,6 +4,32 @@ Published generic profiles store independent `tls`, `ipsec`, and `ssh` sections 
 
 New WebUI scan definitions use a generic profile and independently select TLS, IPsec/IKE, and SSH. TLS and IPsec/IKE are on by default for a new definition; SSH is off. Each enabled technology must have a published policy of that same technology. Policy version IDs, generic profile version ID, effective controls, targets and settings are captured in the run snapshot. The worker runs enabled engines sequentially under the existing global worker and duration limits. IKE and SSH evidence are stored separately from TLS endpoints and each has its own HTML, Markdown, and CSV report formats (`ipsec_*`, `ssh_*`).
 
+Two built-in references are seeded at start, published, like *ANSSI* and *Standard*: created once, never overwritten,
+editable and versioned afterwards.
+
+- **Standard (TLS, IPsec, SSH)**, a generic profile. Its TLS section is the *Standard* profile; IPsec uses IKEv2 on UDP
+  500/4500; SSH runs a quick audit of TCP 22, 2 s timeout, 256 targets at most. Tick the technologies in each definition.
+- **ANSSI SSH**, an SSH policy (`config/encryption_policy/anssi_ssh_encryption_policy.yaml`). It is the SSH counterpart
+  of the *ANSSI* TLS policy, built from the ANSSI recommendations (ANSSI-BP-007 for OpenSSH and the cryptographic algorithm
+  selection guide): SSHv2 only; SHA-2 only (no SHA-1, MD5 or UMAC); AES-GCM, ChaCha20-Poly1305 or AES-CTR (no CBC, 3DES,
+  RC4); ECDH on NIST P-256/384/521 or Diffie-Hellman of at least 2048 bits; ECDSA or RSA-SHA2 host keys, RSA of at least
+  2048 bits as in the TLS policy (no DSA). The `ext-info-s` and `kex-strict-s-v00@openssh.com` entries are protocol
+  markers, not algorithms. Algorithms outside these recommendations (X25519, Ed25519, the post-quantum hybrids ML-KEM /
+  sntrup761) are not allowed: an organisation that accepts them edits the policy and publishes a new version.
+
+A default OpenSSH 10 offers X25519 and ML-KEM key exchange, an Ed25519 host key and SHA-1 / UMAC MACs, so it is reported
+**non-compliant**. An `sshd_config` that complies (then remove the Ed25519 `HostKey`):
+
+```
+KexAlgorithms ecdh-sha2-nistp521,ecdh-sha2-nistp384,ecdh-sha2-nistp256,diffie-hellman-group-exchange-sha256
+Ciphers aes256-gcm@openssh.com,aes128-gcm@openssh.com,chacha20-poly1305@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr
+MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com,hmac-sha2-512,hmac-sha2-256
+HostKeyAlgorithms ecdsa-sha2-nistp256,ecdsa-sha2-nistp384,ecdsa-sha2-nistp521,rsa-sha2-512,rsa-sha2-256
+```
+
+To combine TLS and SSH in a definition: tick both technologies, choose *Standard (TLS, IPsec, SSH)* and select *ANSSI*
+(TLS) and *ANSSI SSH* (SSH). IPsec additionally needs a published IPsec policy.
+
 SSH uses Debian's `ssh-audit` package with unauthenticated protocol inspection only. The quick preset checks the first configured port; deep checks all configured ports. Each probe has a 1–5 second timeout, and the number of expanded targets is capped. No passwords, keys, authentication attempts, DHEat, or rate tests are used. SSH policy results compare observed protocol and algorithm offers; missing observations and missing RSA key-size evidence remain indeterminate.
 
 The nullable `scan_definitions.enabled_controls` column is intentionally left `NULL` on legacy definitions. This lets the planner retain their pre-multiprotocol `control_type` behavior without retroactively enabling a new check. The API rejects profiles or policies whose technologies do not match the selected controls.
