@@ -36,7 +36,7 @@ def scan_ssh(config: dict, cancel, emit):
     ports = settings.get("ports", [22])
     if settings.get("preset", "quick") == "quick":
         ports = ports[:1]
-    total = len(targets) * len(ports)
+    total, done = len(targets) * len(ports), 0
     for target in targets:
         for port in ports:
             if cancel.is_set():
@@ -45,16 +45,21 @@ def scan_ssh(config: dict, cancel, emit):
             observation = audit_target(target, int(port), int(settings.get("timeout_seconds", 2)))
             retries = int(settings.get("retries", 0))
             for _ in range(retries):
-                if observation.get("status") != "timeout" or cancel.is_set():
+                if observation.get("status") not in {"timeout", "no_service"} or cancel.is_set():
                     break
                 observation = audit_target(target, int(port), int(settings.get("timeout_seconds", 2)))
+            done += 1
+            if observation.get("status") == "no_service":
+                # no SSH server answered: nothing to audit, so nothing is reported for this port
+                emit("host_done", {"target": target, "hosts_done": done, "hosts_total": total})
+                continue
             verdicts = {p["name"]: evaluate_ssh_policy(observation, p["content"]) for p in policies}
             values = set(verdicts.values())
             observation.update({"target": target, "port": int(port), "verdict": (
                 "non_compliant" if "non_compliant" in values else "compliant" if values == {"compliant"} else "indeterminate")})
             observation.setdefault("evidence", {})["policy_verdicts"] = verdicts
             observations.append(observation)
-            emit("host_done", {"target": target, "hosts_done": len(observations), "hosts_total": total})
+            emit("host_done", {"target": target, "hosts_done": done, "hosts_total": total})
         if cancel.is_set():
             break
     return observations, targets

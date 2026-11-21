@@ -30,7 +30,7 @@ HostKeyAlgorithms ecdsa-sha2-nistp256,ecdsa-sha2-nistp384,ecdsa-sha2-nistp521,rs
 To combine TLS and SSH in a definition: tick both technologies, choose *Standard (TLS, IPsec, SSH)* and select *ANSSI*
 (TLS) and *ANSSI SSH* (SSH). IPsec additionally needs a published IPsec policy.
 
-SSH uses Debian's `ssh-audit` package with unauthenticated protocol inspection only. The quick preset checks the first configured port; deep checks all configured ports. Each probe has a 1–5 second timeout, and the number of expanded targets is capped. No passwords, keys, authentication attempts, DHEat, or rate tests are used. SSH policy results compare observed protocol and algorithm offers; missing observations and missing RSA key-size evidence remain indeterminate.
+SSH uses Debian's `ssh-audit` package with unauthenticated protocol inspection only. The quick preset checks the first configured port; deep checks all configured ports. Each probe has a 1–5 second timeout, and the number of expanded targets is capped. No passwords, keys, authentication attempts, DHEat, or rate tests are used. SSH policy results compare observed protocol and algorithm offers; missing observations and missing RSA key-size evidence remain indeterminate. A port where no SSH server answers (closed, filtered, unreachable, or another protocol that sends no SSH banner) is not reported at all; a DNS failure or an unexpected ssh-audit output is reported as `error`.
 
 The nullable `scan_definitions.enabled_controls` column is intentionally left `NULL` on legacy definitions. This lets the planner retain their pre-multiprotocol `control_type` behavior without retroactively enabling a new check. The API rejects profiles or policies whose technologies do not match the selected controls.
 

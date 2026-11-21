@@ -84,3 +84,53 @@ def test_audit_invocation_is_bounded_and_never_runs_rate_tests(monkeypatch):
     assert args == ["/usr/bin/ssh-audit", "--json", "--port", "2222", "--timeout", "3", "--skip-rate-test", "example.test"]
     assert kwargs["timeout"] == 5
     assert observation["status"] == "observed"
+
+
+def _fake_ssh_audit(monkeypatch, stdout: str, returncode: int = 1):
+    import orion_app.services.ssh_audit as ssh_audit
+
+    monkeypatch.setattr(ssh_audit.shutil, "which", lambda _: "/usr/bin/ssh-audit")
+    monkeypatch.setattr(ssh_audit.subprocess, "run",
+                        lambda args, **kwargs: SimpleNamespace(returncode=returncode, stdout=stdout, stderr=""))
+
+
+@pytest.mark.parametrize("message", [
+    "\x1b[0;31m[exception] cannot connect to 192.0.2.1 port 22: [Errno 111] Connection refused\x1b[0m\n",
+    "\x1b[0;31m[exception] cannot connect to 192.0.2.1 port 22: timed out\x1b[0m\n",
+    "[exception] did not receive banner.\n",
+])
+def test_port_without_ssh_server_is_reported_as_no_service(monkeypatch, message):
+    _fake_ssh_audit(monkeypatch, message)
+    observation = audit_target("192.0.2.1", 22, 2)
+    assert observation["status"] == "no_service"
+    assert "\x1b" not in observation["evidence"]["error"]
+
+
+def test_dns_failure_stays_a_visible_error(monkeypatch):
+    _fake_ssh_audit(monkeypatch, "[exception] host missing.example.test has no DNS records\n")
+    observation = audit_target("missing.example.test", 22, 2)
+    assert observation["status"] == "error"
+    assert observation["evidence"]["error"] == "[exception] host missing.example.test has no DNS records"
+
+
+def test_ssh_scan_reports_nothing_for_ports_without_ssh_server(monkeypatch):
+    from orion_app.workers import child
+
+    answers = {
+        "192.0.2.1": {"status": "no_service", "evidence": {"error": "[exception] cannot connect"}},
+        "192.0.2.2": parse_ssh_audit_json({"banner": {"protocol": "2.0", "software": "OpenSSH_9.8", "raw": "SSH-2.0-OpenSSH_9.8"}, "kex": ["curve25519-sha256"],
+                                           "enc": ["chacha20-poly1305@openssh.com"],
+                                           "mac": ["hmac-sha2-256-etm@openssh.com"], "key": ["ssh-ed25519"]}),
+    }
+    calls = []
+    monkeypatch.setattr(child, "audit_target", lambda target, port, timeout: calls.append(target) or dict(answers[target]))
+    events = []
+    cancel = SimpleNamespace(is_set=lambda: False)
+    config = {"settings": {"ports": [22], "retries": 1}, "targets": ["192.0.2.1", "192.0.2.2"],
+              "policies": [{"name": "p", "content": POLICY}]}
+    observations, targets = child.scan_ssh(config, cancel, lambda name, data: events.append((name, data)))
+    assert [o["target"] for o in observations] == ["192.0.2.2"]
+    assert observations[0]["verdict"] == "compliant"
+    assert targets == ["192.0.2.1", "192.0.2.2"]
+    assert calls == ["192.0.2.1", "192.0.2.1", "192.0.2.2"]  # one retry for the silent port, as configured
+    assert [d["hosts_done"] for name, d in events if name == "host_done"] == [1, 2]
