@@ -20,7 +20,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DbSession
 
-from orion_app.models import RunEndpoint, RunFinding, ScanDefinition, ScanRun
+from orion_app.models import RunEndpoint, RunFinding, RunSshObservation, ScanDefinition, ScanRun
 
 FINISHED = ("completed", "partial")
 EXPIRY_WINDOW_DAYS = 30
@@ -70,6 +70,13 @@ def posture(db: DbSession, finished: list[ScanRun]) -> dict[str, Any]:
     for e in sorted(db.execute(select(RunEndpoint).where(RunEndpoint.run_id.in_(run_by_id))).scalars(), key=lambda x: -order[x.run_id]):
         endpoints[_endpoint_key(e)] = e  # iterating oldest -> newest basis run: the newest overwrites
     kept_ids = {(e.run_id, e.endpoint_id) for e in endpoints.values()}
+    # SSH servers have no TLS endpoint row: keep each one from the newest basis run that observed it
+    ssh_servers: dict[str, uuid.UUID] = {}
+    for o in sorted(db.execute(select(RunSshObservation).where(RunSshObservation.run_id.in_(run_by_id),
+                                                               RunSshObservation.status == "observed")).scalars(),
+                    key=lambda x: -order[x.run_id]):
+        ssh_servers[f"{o.target}:{o.port}/tcp"] = o.run_id
+    kept_ids |= {(run_id, endpoint_id) for endpoint_id, run_id in ssh_servers.items()}
     counts = {"compliant": 0, "non_compliant": 0}
     for e in endpoints.values():
         if e.compliance_status in counts:

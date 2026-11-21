@@ -37,3 +37,18 @@ The nullable `scan_definitions.enabled_controls` column is intentionally left `N
 Service identification is an independent scan option, off by default, and can be enabled without publishing a profile change. It uses Nmap `-sV` with light probes by default and an optional detailed intensity. With TLS enabled, it consumes only the open TCP ports discovered during that scan; on non-TLS scans, it stays within the scan profile's port scope. Targets, services, parallelism and total duration are bounded, and no NSE scripts or CVE inference are used.
 
 Service observations (including source, confidence, state and scan time) are stored with the run and shown separately from TLS grades. They can be included as a CSV report when CSV export is enabled. The network-map host panel shows the most recent service observations independently of the latest TLS run, so disabling this option on a later run does not erase older evidence. The map does not infer topology from service banners. SNMP/LLDP remains a separate optional discovery workflow.
+
+## SSH findings
+
+SSH policy violations are also stored as run **findings** (category `SSH`), so they appear in the run's findings, the
+dashboard, evolution, comparisons and *new non-compliance* notifications. Each affected server is listed as
+`<target>:<port>/tcp`, and the evidence names the offending offers. TLS grades and endpoint counts are unchanged.
+
+| Finding | Severity | Raised when the server offers… |
+|---|---|---|
+| `SSH_WEAK_KEX`, `SSH_WEAK_CIPHER`, `SSH_WEAK_MAC`, `SSH_WEAK_HOST_KEY`, `SSH_WEAK_PROTOCOL` | high | an offer outside the policy that is weak in itself: SHA-1, MD5, CBC, 3DES, RC4, Blowfish, CAST, DSA, `ssh-rsa` (SHA-1 signature), 64-bit or truncated MACs, `none`, SSHv1 |
+| `SSH_KEX_NOT_ALLOWED`, `SSH_CIPHER_NOT_ALLOWED`, `SSH_MAC_NOT_ALLOWED`, `SSH_HOST_KEY_NOT_ALLOWED`, `SSH_PROTOCOL_NOT_ALLOWED` | medium | a strong offer the policy does not list (for example X25519 or Ed25519 under *ANSSI SSH*) |
+| `SSH_RSA_KEY_TOO_SHORT` | high | an RSA host key shorter than the policy's `minimum_rsa_bits` |
+
+An indeterminate observation raises no finding. A comparison reports an SSH finding as fixed only when that server
+answered again in the newer run. Scans run before this change are not recalculated.

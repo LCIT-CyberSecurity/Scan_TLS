@@ -6,7 +6,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session as DbSession
 
-from orion_app.models import RunEndpoint, RunFinding, ScanRun
+from orion_app.models import RunEndpoint, RunFinding, RunSshObservation, ScanRun
 
 OPEN_STATUSES_EXCLUDED = {"compliant", "pass", "ok"}
 
@@ -17,6 +17,12 @@ def _findings(db: DbSession, run: ScanRun) -> dict[str, RunFinding]:
 
 def _endpoints(db: DbSession, run: ScanRun) -> dict[str, RunEndpoint]:
     return {e.endpoint_id: e for e in db.execute(select(RunEndpoint).where(RunEndpoint.run_id == run.id)).scalars()}
+
+
+def _ssh_servers(db: DbSession, run: ScanRun) -> set[str]:
+    """SSH servers that answered in a run, under the endpoint id their SSH findings use."""
+    return {f"{o.target}:{o.port}/tcp" for o in db.execute(
+        select(RunSshObservation).where(RunSshObservation.run_id == run.id, RunSshObservation.status == "observed")).scalars()}
 
 
 def scope_of(run: ScanRun) -> set[str]:
@@ -34,6 +40,7 @@ def _tls_check_changes(old: list[dict], new: list[dict]) -> list[dict]:
 def compare_runs(db: DbSession, old: ScanRun, new: ScanRun) -> dict[str, Any]:
     old_f, new_f = _findings(db, old), _findings(db, new)
     old_e, new_e = _endpoints(db, old), _endpoints(db, new)
+    observed_again = set(new_e) | _ssh_servers(db, new)
 
     # Findings are generic ("CERTIFICATE_SELF_SIGNED") and apply to endpoints, so compare (finding, endpoint) pairs.
     def pairs(findings: dict[str, RunFinding]) -> dict[tuple[str, str], RunFinding]:
@@ -56,7 +63,7 @@ def compare_runs(db: DbSession, old: ScanRun, new: ScanRun) -> dict[str, Any]:
         if key in new_p:
             continue
         # Fixed only when that very endpoint was observed again in the new run; otherwise we simply do not know.
-        (fixed_keys if key[1] in new_e else not_retested_keys).append(key)
+        (fixed_keys if key[1] in observed_again else not_retested_keys).append(key)
 
     endpoint_changes = []
     for eid in sorted(set(old_e) & set(new_e)):
