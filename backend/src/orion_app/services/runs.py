@@ -40,6 +40,7 @@ from orion_app.services import (
     report_branding,
 )
 from orion_app.services.mail_security import attach_smtp_observations
+from orion_app.services.ssh_audit import findings_from_observations as ssh_findings
 
 STALE_HEARTBEAT_SECONDS = 120
 CLAIM_LOCK_KEY = 727301  # pg advisory lock serialising queue claims (global concurrency cap)
@@ -214,6 +215,10 @@ def persist_results(db: DbSession, run: ScanRun, outcome: dict[str, Any], status
             remediation=finding.get("remediation", ""), affected_endpoint_ids=list(finding.get("affected_endpoint_ids", [])),
             contextual_risk_by_endpoint=risk_by_finding.get(finding.get("finding_id", ""), {}),
         ))
+    # SSH policy violations become findings too (dashboard, evolution, comparison, notifications); no TLS grade changes
+    ssh_policies = ((run.config_snapshot or {}).get("ssh") or {}).get("policies") or []
+    for finding in ssh_findings(outcome.get("ssh_observations", []), ssh_policies):
+        db.add(RunFinding(run_id=run.id, **finding))
     files = []
     branding = run.config_snapshot.get("branding")
     # what the previous scans bring to this report (evolution, renewals, trend, scope): needs this run's rows and end state

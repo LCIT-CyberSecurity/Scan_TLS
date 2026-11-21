@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 from typing import Any
@@ -163,3 +164,60 @@ def audit_target(target: str, port: int, timeout_seconds: int = 2) -> dict[str, 
     observation = parse_ssh_audit_json(parsed)
     observation["evidence"] |= {"exit_code": result.returncode, "stderr": result.stderr[:1000]}
     return observation
+
+
+# Offers that are broken or weak whatever the policy: SHA-1, MD5, CBC, 3DES/RC4/Blowfish/CAST, DSA and SHA-1 RSA
+# signatures, truncated or 64-bit MACs, "none", and SSHv1. A policy violation matching one of them is high severity;
+# a strong algorithm that the policy simply does not list is medium.
+WEAK_SSH_OFFER = re.compile(r"sha1|md5|-cbc|3des|arcfour|rc4|blowfish|cast128|ssh-dss|^ssh-rsa(-cert|$)|umac-64|-96($|@)|^none$|^SSH-1")
+SSH_FINDING_CATEGORIES = (
+    # (observation key, policy key, finding id stem, title label, sshd_config directive)
+    ("protocol_versions", "allowed_protocols", "PROTOCOL", "Protocol Version", "the server version (Protocol)"),
+    ("key_exchange", "allowed_kex", "KEX", "Key Exchange", "KexAlgorithms"),
+    ("encryption", "allowed_encryption", "CIPHER", "Cipher", "Ciphers"),
+    ("mac", "allowed_macs", "MAC", "MAC", "MACs"),
+    ("host_key", "allowed_host_keys", "HOST_KEY", "Host Key Algorithm", "HostKeyAlgorithms and HostKey"),
+)
+
+
+def findings_from_observations(observations: list[dict[str, Any]], policies: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Turn the policy violations of observed SSH servers into run findings, one per problem type.
+
+    Endpoints are `<target>:<port>/tcp`. Only what was observed is reported: an indeterminate observation (missing
+    algorithms or RSA size) produces no finding."""
+    grouped: dict[str, dict[str, Any]] = {}
+
+    def add(finding_id: str, title: str, severity: str, endpoint: str, offers: list[str], remediation: str) -> None:
+        item = grouped.setdefault(finding_id, {"finding_id": finding_id, "title": title, "category": "SSH", "severity": severity,
+                                               "status": "KO", "remediation": remediation, "by_endpoint": {}})
+        item["by_endpoint"].setdefault(endpoint, set()).update(offers)
+
+    for observation in observations:
+        if observation.get("status") != "observed":
+            continue
+        endpoint = f"{observation['target']}:{observation['port']}/tcp"
+        algorithms = observation.get("algorithms") or {}
+        for policy in policies:
+            content = policy["content"]
+            for key, allowed, stem, label, directive in SSH_FINDING_CATEGORIES:
+                rejected = sorted(set(algorithms.get(key) or []) - set(content[allowed]))
+                weak = [name for name in rejected if WEAK_SSH_OFFER.search(name)]
+                strong = [name for name in rejected if name not in weak]
+                remediation = (f"Remove the listed offers from {directive} in sshd_config and keep only those the SSH policy allows; "
+                               "reload sshd and scan again.")
+                if weak:
+                    add(f"SSH_WEAK_{stem}", f"Weak SSH {label} Offered", "high", endpoint, weak, remediation)
+                if strong:
+                    add(f"SSH_{stem}_NOT_ALLOWED", f"SSH {label} Not Allowed by Policy", "medium", endpoint, strong, remediation)
+            short = sorted({size for size in observation.get("rsa_key_sizes") or [] if size < content["minimum_rsa_bits"]})
+            if short:
+                add("SSH_RSA_KEY_TOO_SHORT", "SSH RSA Host Key Too Short", "high", endpoint, [f"{size} bits" for size in short],
+                    f"Replace the RSA host key with one of at least {content['minimum_rsa_bits']} bits (ssh-keygen -t rsa -b 4096), "
+                    "or serve only the host key types the policy allows.")
+    findings = []
+    for item in grouped.values():
+        by_endpoint = item.pop("by_endpoint")
+        item["affected_endpoint_ids"] = sorted(by_endpoint)
+        item["evidence"] = "; ".join(f"{endpoint}: {', '.join(sorted(offers))}" for endpoint, offers in sorted(by_endpoint.items()))
+        findings.append(item)
+    return sorted(findings, key=lambda f: f["finding_id"])
